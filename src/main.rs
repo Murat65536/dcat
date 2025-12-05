@@ -1,4 +1,4 @@
-use cgmath::{Deg, Matrix4, Rad};
+use cgmath::{Deg, Matrix4, Rad, InnerSpace};
 use clap::Parser;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -8,7 +8,7 @@ use termion::screen::IntoAlternateScreen;
 use crate::camera::Camera;
 use crate::cli::Args;
 use crate::gpu::{RenderParams, TextureParams};
-use crate::model::{load_obj, calculate_camera_distance};
+use crate::model::{load_obj, calculate_camera_setup};
 use crate::terminal::{
     calculate_render_dimensions, render_kitty,
     render_sixel, render_terminal,
@@ -107,10 +107,15 @@ fn run(terminal_guard: HideCursor<std::io::Stdout>, args: Args) -> Result<(), Bo
         .map_err(|_| "Model loading thread panicked")?
         .map_err(|e| format!("Failed to load model: {}", e))?;
 
-    let camera_distance = args.camera_distance.unwrap_or_else(|| {
-        let distance = calculate_camera_distance(&vertices);
-        distance
-    });
+    let camera_setup = calculate_camera_setup(&vertices);
+    
+    let (camera_position, camera_target) = if let Some(distance) = args.camera_distance {
+        let direction = (camera_setup.position - camera_setup.target).normalize();
+        let position = camera_setup.target + direction * distance;
+        (position, camera_setup.target)
+    } else {
+        (camera_setup.position, camera_setup.target)
+    };
 
     let mut cpu_vertex_data = Vec::with_capacity(vertices.len() * 14);
 
@@ -143,7 +148,7 @@ fn run(terminal_guard: HideCursor<std::io::Stdout>, args: Args) -> Result<(), Bo
 
     let mut current_width = width;
     let mut current_height = height;
-    let mut camera = Camera::new(width, height, camera_distance, Deg(60.0));
+    let mut camera = Camera::new(width, height, camera_position, camera_target, Deg(60.0));
     let mut view = camera.view_matrix();
     let mut projection = camera.projection_matrix();
 
@@ -163,7 +168,8 @@ fn run(terminal_guard: HideCursor<std::io::Stdout>, args: Args) -> Result<(), Bo
             camera = Camera::new(
                 current_width,
                 current_height,
-                camera_distance,
+                camera_position,
+                camera_target,
                 Deg(60.0),
             );
             view = camera.view_matrix();

@@ -1,11 +1,19 @@
 use crate::vertex::Vertex;
-use cgmath::Vector3;
+use cgmath::{Point3, Vector3};
 use russimp::scene::{PostProcess, Scene};
 use std::path::Path;
 
-pub fn calculate_camera_distance(vertices: &[Vertex]) -> f32 {
+pub struct CameraSetup {
+    pub position: Point3<f32>,
+    pub target: Point3<f32>,
+}
+
+pub fn calculate_camera_setup(vertices: &[Vertex]) -> CameraSetup {
     if vertices.is_empty() {
-        return 3.0;
+        return CameraSetup {
+            position: Point3::new(0.0, 0.0, 3.0),
+            target: Point3::new(0.0, 0.0, 0.0),
+        };
     }
 
     let mut min = Vector3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
@@ -20,11 +28,33 @@ pub fn calculate_camera_distance(vertices: &[Vertex]) -> f32 {
         max.z = max.z.max(vertex.position.z);
     }
 
+    let center = Point3::new(
+        (min.x + max.x) * 0.5,
+        (min.y + max.y) * 0.5,
+        (min.z + max.z) * 0.5,
+    );
+
     let size = max - min;
-
     let diagonal = (size.x * size.x + size.y * size.y + size.z * size.z).sqrt();
+    
+    let distance = diagonal * 1.2;
+    
+    let camera_offset = Vector3::new(
+        diagonal * 0.3,
+        diagonal * 0.2,
+        distance,
+    );
+    
+    let position = Point3::new(
+        center.x + camera_offset.x,
+        center.y + camera_offset.y,
+        center.z + camera_offset.z,
+    );
 
-    diagonal
+    CameraSetup {
+        position,
+        target: center,
+    }
 }
 
 pub fn load_obj(
