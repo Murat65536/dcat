@@ -43,4 +43,8 @@ pub struct Args {
     /// Disable lighting calculations
     #[arg(long)]
     pub no_lighting: bool,
+
+    /// Enable first-person camera controls (WASD to move, arrow keys to look around)
+    #[arg(long)]
+    pub fps_controls: bool,
 }

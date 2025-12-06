@@ -2,8 +2,12 @@ use cgmath::{Deg, Matrix4, Rad, InnerSpace};
 use clap::Parser;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::io::{self, Write};
+use std::os::fd::AsRawFd;
 use termion::cursor::HideCursor;
 use termion::screen::IntoAlternateScreen;
+use termion::raw::IntoRawMode;
+use input_query::{InputHandler, KeyCode};
 
 use crate::camera::Camera;
 use crate::cli::Args;
@@ -27,8 +31,18 @@ fn main() {
     let args = Args::parse();
 
     let terminal_guard = HideCursor::from(std::io::stdout());
+    
+    // Enable focus tracking
+    print!("\x1b[?1004h");
+    io::stdout().flush().ok();
 
-    if let Err(e) = run(terminal_guard, args) {
+    let result = run(terminal_guard, args);
+    
+    // Disable focus tracking
+    print!("\x1b[?1004l");
+    io::stdout().flush().ok();
+
+    if let Err(e) = result {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }
@@ -139,8 +153,14 @@ fn run(terminal_guard: HideCursor<std::io::Stdout>, args: Args) -> Result<(), Bo
     }
 
     const ROTATION_SPEED: f32 = 0.6;
+    const MOVE_SPEED_BASE: f32 = 0.5;
+    const ROTATION_SENSITIVITY: f32 = 2.0;
+    
+    // Scale movement speed with model size
+    let move_speed = MOVE_SPEED_BASE * camera_setup.model_scale;
 
-    // Enter alternate screen
+    // Enter raw mode and alternate screen
+    let mut _raw_mode = std::io::stdout().into_raw_mode()?;
     let mut _alternate_screen = terminal_guard.into_alternate_screen()?;
 
     let mut accumulated_time = 0.0_f32;
@@ -151,6 +171,56 @@ fn run(terminal_guard: HideCursor<std::io::Stdout>, args: Args) -> Result<(), Bo
     let mut camera = Camera::new(width, height, camera_position, camera_target, Deg(60.0));
     let mut view = camera.view_matrix();
     let mut projection = camera.projection_matrix();
+
+    let query = if args.fps_controls {
+        Some(InputHandler::new())
+    } else {
+        None
+    };
+    
+    let is_focused = Arc::new(AtomicBool::new(true));
+    let focus_clone = is_focused.clone();
+    
+    // Spawn thread to read focus events from stdin
+    std::thread::spawn(move || {
+        use std::io::stdin;
+        
+        let stdin_fd = stdin().as_raw_fd();
+        
+        let mut buffer = [0u8; 64];
+        loop {
+            // Use poll to check if data is available
+            let mut pollfd = libc::pollfd {
+                fd: stdin_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            
+            unsafe {
+                // Poll with 16ms timeout
+                let ret = libc::poll(&mut pollfd as *mut libc::pollfd, 1, 16);
+                
+                if ret > 0 && (pollfd.revents & libc::POLLIN) != 0 {
+                    // Data available, try to read
+                    let n = libc::read(stdin_fd, buffer.as_mut_ptr() as *mut libc::c_void, buffer.len());
+                    
+                    if n > 0 {
+                        let n = n as usize;
+                        // Scan for focus sequences
+                        for i in 0..n.saturating_sub(2) {
+                            if buffer[i] == 0x1b && buffer[i + 1] == b'[' {
+                                if buffer[i + 2] == b'I' {
+                                    focus_clone.store(true, Ordering::SeqCst);
+                                } else if buffer[i + 2] == b'O' {
+                                    focus_clone.store(false, Ordering::SeqCst);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
 
     loop {
         if !running.load(Ordering::SeqCst) {
@@ -186,9 +256,60 @@ fn run(terminal_guard: HideCursor<std::io::Stdout>, args: Args) -> Result<(), Bo
 
         accumulated_time += delta_time;
 
+        // Handle FPS camera controls (only when focused)
+        if let Some(ref query) = query {
+            if is_focused.load(Ordering::SeqCst) {
+                // Check for quit key
+                if query.is_pressed(KeyCode::KeyQ) {
+                    break;
+                }
+                
+                let movement_amount = move_speed * delta_time;
+                let rotation_amount = ROTATION_SENSITIVITY * delta_time;
+
+                if query.is_pressed(KeyCode::KeyW) {
+                    camera.move_forward(movement_amount);
+                }
+                if query.is_pressed(KeyCode::KeyS) {
+                    camera.move_backward(movement_amount);
+                }
+                if query.is_pressed(KeyCode::KeyA) {
+                    camera.move_left(movement_amount);
+                }
+                if query.is_pressed(KeyCode::KeyD) {
+                    camera.move_right(movement_amount);
+                }
+                if query.is_pressed(KeyCode::KeySpace) {
+                    camera.move_up(movement_amount);
+                }
+                if query.is_pressed(KeyCode::KeyLeftShift) {
+                    camera.move_down(movement_amount);
+                }
+                
+                if query.is_pressed(KeyCode::KeyLeft) {
+                    camera.rotate(-rotation_amount, 0.0);
+                }
+                if query.is_pressed(KeyCode::KeyRight) {
+                    camera.rotate(rotation_amount, 0.0);
+                }
+                if query.is_pressed(KeyCode::KeyUp) {
+                    camera.rotate(0.0, rotation_amount);
+                }
+                if query.is_pressed(KeyCode::KeyDown) {
+                    camera.rotate(0.0, -rotation_amount);
+                }
+
+                view = camera.view_matrix();
+            }
+        }
+
         let angle = accumulated_time * ROTATION_SPEED;
 
-        let model = Matrix4::from_angle_y(Rad(angle * 0.7));
+        let model = if args.fps_controls {
+            Matrix4::from_angle_y(Rad(0.0))
+        } else {
+            Matrix4::from_angle_y(Rad(angle * 0.7))
+        };
 
         let mvp = projection * view * model;
 

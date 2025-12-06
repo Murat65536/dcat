@@ -6,6 +6,7 @@ use std::path::Path;
 pub struct CameraSetup {
     pub position: Point3<f32>,
     pub target: Point3<f32>,
+    pub model_scale: f32,
 }
 
 pub fn calculate_camera_setup(vertices: &[Vertex]) -> CameraSetup {
@@ -13,6 +14,7 @@ pub fn calculate_camera_setup(vertices: &[Vertex]) -> CameraSetup {
         return CameraSetup {
             position: Point3::new(0.0, 0.0, 3.0),
             target: Point3::new(0.0, 0.0, 0.0),
+            model_scale: 1.0,
         };
     }
 
@@ -54,6 +56,7 @@ pub fn calculate_camera_setup(vertices: &[Vertex]) -> CameraSetup {
     CameraSetup {
         position,
         target: center,
+        model_scale: diagonal,
     }
 }
 

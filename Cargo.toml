@@ -16,6 +16,7 @@ wgpu = "27.0"
 pollster = "0.4"
 bytemuck = { version = "1.24", features = ["derive"] }
 libc = "0.2.177"
+input_query = "0.3"
 
 [profile.release]
 opt-level = 3
