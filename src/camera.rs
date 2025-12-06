@@ -24,7 +24,7 @@ impl Camera {
             up: Vector3::new(0.0, 1.0, 0.0),
             fov: fov.into(),
             aspect: width as f32 / height as f32,
-            near: 0.1,
+            near: 0.0001,
             far: 100.0,
             yaw,
             pitch,

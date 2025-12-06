@@ -155,6 +155,8 @@ fn run(terminal_guard: HideCursor<std::io::Stdout>, args: Args) -> Result<(), Bo
     const ROTATION_SPEED: f32 = 0.6;
     const MOVE_SPEED_BASE: f32 = 0.5;
     const ROTATION_SENSITIVITY: f32 = 2.0;
+    const TARGET_FPS: u64 = 60;
+    const FRAME_TIME: std::time::Duration = std::time::Duration::from_micros(1_000_000 / TARGET_FPS);
     
     // Scale movement speed with model size
     let move_speed = MOVE_SPEED_BASE * camera_setup.model_scale;
@@ -348,6 +350,12 @@ fn run(terminal_guard: HideCursor<std::io::Stdout>, args: Args) -> Result<(), Bo
             Err(e) => {
                 return Err(format!("Rendering failure: {}", e).into());
             }
+        }
+        
+        // Limit frame rate to reduce CPU usage
+        let frame_duration = frame_start.elapsed();
+        if frame_duration < FRAME_TIME {
+            std::thread::sleep(FRAME_TIME - frame_duration);
         }
     }
 
