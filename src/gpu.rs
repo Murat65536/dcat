@@ -4,7 +4,11 @@ const VERTEX_DATA_STRIDE: usize = 14;
 
 #[inline]
 fn create_gpu_vertex(chunk: &[f32]) -> GpuVertex {
-    debug_assert_eq!(chunk.len(), VERTEX_DATA_STRIDE, "chunk must have exactly VERTEX_DATA_STRIDE elements");
+    debug_assert_eq!(
+        chunk.len(),
+        VERTEX_DATA_STRIDE,
+        "chunk must have exactly VERTEX_DATA_STRIDE elements"
+    );
     GpuVertex {
         position: [chunk[0], chunk[1], chunk[2]],
         texcoord: [chunk[3], chunk[4]],
@@ -233,16 +237,14 @@ impl GpuRenderer {
             .await?;
 
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("Render Device"),
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::default(),
-                    memory_hints: wgpu::MemoryHints::Performance,
-                    experimental_features: Default::default(),
-                    trace: Default::default(),
-                },
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("Render Device"),
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                memory_hints: wgpu::MemoryHints::Performance,
+                experimental_features: Default::default(),
+                trace: Default::default(),
+            })
             .await?;
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -450,6 +452,18 @@ impl GpuRenderer {
         if self.cached_rgb_buffer.capacity() < rgb_buffer_size {
             self.cached_rgb_buffer = Vec::with_capacity(rgb_buffer_size);
         }
+    }
+
+    pub fn set_light_direction(&mut self, direction: [f32; 3]) {
+        let length = (direction[0] * direction[0]
+            + direction[1] * direction[1]
+            + direction[2] * direction[2])
+            .sqrt();
+        self.normalized_light_dir = [
+            direction[0] / length,
+            direction[1] / length,
+            direction[2] / length,
+        ];
     }
 
     pub fn render(

@@ -93,4 +93,12 @@ impl Camera {
         
         self.update_direction();
     }
+
+    pub fn forward_direction(&self) -> Vector3<f32> {
+        Vector3::new(
+            self.yaw.cos() * self.pitch.cos(),
+            self.pitch.sin(),
+            self.yaw.sin() * self.pitch.cos(),
+        )
+    }
 }

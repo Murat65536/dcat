@@ -318,6 +318,9 @@ fn run(terminal_guard: HideCursor<std::io::Stdout>, args: Args) -> Result<(), Bo
         let mvp_array: [[f32; 4]; 4] = mvp.into();
         let model_array: [[f32; 4]; 4] = model.into();
 
+        let forward = camera.forward_direction();
+        gpu_renderer.set_light_direction([-forward.x, -forward.y, -forward.z]);
+
         let texture_params = TextureParams {
             data: &texture.data,
             width: texture.width,
