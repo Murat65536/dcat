@@ -1,6 +1,6 @@
 use sixel_rs::sys::PixelFormat;
 use std::ffi::{c_uchar, c_void};
-use std::io::Write;
+use std::io::{self, Write};
 use std::{ptr, slice};
 use termion::{terminal_size, terminal_size_pixels};
 
@@ -167,14 +167,85 @@ pub fn render_sixel(buffer: &[u8], width: u32, height: u32) {
     }
 }
 
-pub fn render_kitty(buffer: &[u8], width: u32, height: u32) {
+#[cfg(unix)]
+fn create_shared_memory(data: &[u8]) -> io::Result<String> {
+    use std::ffi::CString;
+    // Generate a unique shared memory name
+    let shm_name = format!("/kitty_graphics_{}", std::process::id());
+
+    let c_name = CString::new(shm_name.as_bytes()).unwrap();
+
+    unsafe {
+        // Create shared memory object
+        let fd = libc::shm_open(c_name.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
+
+        if fd == -1 {
+            return Err(io::Error::last_os_error());
+        }
+
+        // Set size
+        if libc::ftruncate(fd, data.len() as i64) == -1 {
+            libc::close(fd);
+            libc::shm_unlink(c_name.as_ptr());
+            return Err(io::Error::last_os_error());
+        }
+
+        // Map memory
+        let ptr = libc::mmap(
+            std::ptr::null_mut(),
+            data.len(),
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_SHARED,
+            fd,
+            0,
+        );
+
+        if ptr == libc::MAP_FAILED {
+            libc::close(fd);
+            libc::shm_unlink(c_name.as_ptr());
+            return Err(io::Error::last_os_error());
+        }
+
+        // Copy data to shared memory
+        std::ptr::copy_nonoverlapping(data.as_ptr(), ptr as *mut u8, data.len());
+
+        // Unmap and close
+        libc::munmap(ptr, data.len());
+        libc::close(fd);
+
+        Ok(shm_name)
+    }
+}
+
+pub fn render_kitty_shm(data: &[u8], width: u32, height: u32) -> io::Result<()> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let shm_name = create_shared_memory(data)?;
+
+    // Encode the shared memory name in base64
+    let encoded_name = STANDARD.encode(shm_name);
+
+    // Build the Kitty graphics command
+    // Format: ESC _G a=T,f=32,s=width,v=height,t=s,i=id; base64_shm_name ESC \
+    let command = format!(
+        "\x1b_Ga=T,f=24,s={},v={},t=s,i=1,C=1,q=1;{}\x1b\\",
+        width, height, encoded_name
+    );
+
+    // Send to stdout
+    io::stdout().write_all(command.as_bytes())?;
+    io::stdout().flush()?;
+
+    Ok(())
+}
+
+pub fn render_kitty_base64(data: &[u8], width: u32, height: u32) {
     use base64::{Engine, engine::general_purpose::STANDARD};
 
     let mut output = String::with_capacity(32768);
 
     output.push_str("\x1b[H"); // Home cursor to 0,0
 
-    let encoded = STANDARD.encode(buffer);
+    let encoded = STANDARD.encode(data);
 
     const CHUNK_SIZE: usize = 4096;
 
@@ -237,4 +308,3 @@ pub fn calculate_render_dimensions(
         (pixel_width, pixel_height)
     }
 }
-

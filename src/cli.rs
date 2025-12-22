@@ -36,10 +36,6 @@ pub struct Args {
     #[arg(short = 'K', long)]
     pub kitty: bool,
 
-    /// Enable Kitty graphics protocol mode
-    #[arg(short = 'P', long)]
-    pub pixels: bool,
-
     /// Disable lighting calculations
     #[arg(long)]
     pub no_lighting: bool,

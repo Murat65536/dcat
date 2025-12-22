@@ -14,8 +14,7 @@ use crate::cli::Args;
 use crate::gpu::{RenderParams, TextureParams};
 use crate::model::{load_obj, calculate_camera_setup};
 use crate::terminal::{
-    calculate_render_dimensions, render_kitty,
-    render_sixel, render_terminal,
+    calculate_render_dimensions, render_kitty_base64, render_kitty_shm, render_sixel, render_terminal
 };
 use crate::texture::Texture;
 
@@ -351,7 +350,10 @@ fn run(terminal_guard: HideCursor<std::io::Stdout>, args: Args) -> Result<(), Bo
         match render_result {
             Ok(fb) => {
                 if use_kitty {
-                    render_kitty(&fb, current_width, current_height);
+                    #[cfg(unix)]
+                    let _ = render_kitty_shm(&fb, current_width, current_height);
+                    #[cfg(not(unix))]
+                    let _ = render_kitty_base64(&fb, current_width, current_height);
                 } else if use_sixel {
                     render_sixel(&fb, current_width, current_height);
                 } else {
