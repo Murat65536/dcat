@@ -8,7 +8,7 @@ Camera::Camera(uint32_t width, uint32_t height, glm::vec3 pos, glm::vec3 tgt, fl
     , up(0.0f, 1.0f, 0.0f)
     , fov(glm::radians(fovDegrees))
     , aspect(static_cast<float>(width) / static_cast<float>(height))
-    , near(0.1f)
+    , near(0.00001f)
     , far(100.0f)
 {
     glm::vec3 direction = glm::normalize(target - position);

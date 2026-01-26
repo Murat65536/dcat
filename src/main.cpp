@@ -148,12 +148,24 @@ int main(int argc, char* argv[]) {
     // Calculate camera setup
     CameraSetup cameraSetup = calculateCameraSetup(vertices);
     
-    glm::vec3 cameraPosition = cameraSetup.position;
-    glm::vec3 cameraTarget = cameraSetup.target;
+    // Scale and center the model to a fixed size
+    const float TARGET_SIZE = 4.0f;
+    float modelScaleFactor = 1.0f;
+    glm::vec3 modelCenter = glm::vec3(0.0f);
+
+    if (cameraSetup.modelScale > 0.0f) {
+        modelScaleFactor = TARGET_SIZE / cameraSetup.modelScale;
+        modelCenter = cameraSetup.target;
+    }
+
+    // Recalculate camera for the standardized model size (centered at 0,0,0)
+    glm::vec3 cameraOffset = (cameraSetup.position - cameraSetup.target) * modelScaleFactor;
+    glm::vec3 cameraTarget = glm::vec3(0.0f); 
+    glm::vec3 cameraPosition = cameraTarget + cameraOffset;
     
     if (args.cameraDistance > 0) {
-        glm::vec3 direction = glm::normalize(cameraSetup.position - cameraSetup.target);
-        cameraPosition = cameraSetup.target + direction * args.cameraDistance;
+        glm::vec3 direction = glm::normalize(cameraOffset);
+        cameraPosition = cameraTarget + direction * args.cameraDistance;
     }
     
     // Constants
@@ -162,7 +174,8 @@ int main(int argc, char* argv[]) {
     constexpr float ROTATION_SENSITIVITY = 2.0f;
     constexpr auto TARGET_FRAME_TIME = std::chrono::microseconds(1000000 / 60);
     
-    float moveSpeed = MOVE_SPEED_BASE * cameraSetup.modelScale;
+    // Normalize movement speed based on target size
+    float moveSpeed = MOVE_SPEED_BASE * TARGET_SIZE;
     
     // Initialize input devices for FPS controls
     bool inputDevicesReady = false;
@@ -285,13 +298,16 @@ int main(int argc, char* argv[]) {
         }
         
         // Calculate model matrix
-        glm::mat4 model;
-        if (args.fpsControls && inputDevicesReady) {
-            model = glm::mat4(1.0f);
-        } else {
+        glm::mat4 model = glm::mat4(1.0f);
+        
+        if (!args.fpsControls || !inputDevicesReady) {
             float angle = accumulatedTime * MODEL_ROTATION_SPEED * 0.7f;
-            model = glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 1.0f, 0.0f));
+            model = glm::rotate(model, angle, glm::vec3(0.0f, 1.0f, 0.0f));
         }
+
+        // Apply normalization (Center at origin, then Scale)
+        model = glm::scale(model, glm::vec3(modelScaleFactor));
+        model = glm::translate(model, -modelCenter);
         
         glm::mat4 mvp = projection * view * model;
         
