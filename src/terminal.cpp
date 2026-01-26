@@ -47,8 +47,8 @@ void renderTerminal(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t
     
     for (uint32_t y = 0; y < height; y += 2) {
         for (uint32_t x = 0; x < width; x++) {
-            size_t idxUpper = (y * width + x) * 3;
-            size_t idxLower = ((y + 1) * width + x) * 3;
+            size_t idxUpper = (y * width + x) * 4;
+            size_t idxLower = ((y + 1) * width + x) * 4;
             
             uint8_t rUpper = 0, gUpper = 0, bUpper = 0;
             if (idxUpper + 2 < bufferLen) {
@@ -98,10 +98,10 @@ void renderSixel(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t he
     std::vector<uint8_t> pixels = buffer;
 
     sixel_dither_initialize(dither, pixels.data(), width, height,
-                            SIXEL_PIXELFORMAT_RGB888, SIXEL_LARGE_NORM,
+                            SIXEL_PIXELFORMAT_RGBA8888, SIXEL_LARGE_NORM,
                             SIXEL_REP_CENTER_BOX, SIXEL_QUALITY_LOW);
 
-    sixel_encode(pixels.data(), width, height, 3, dither, output);
+    sixel_encode(pixels.data(), width, height, 4, dither, output);
 
     sixel_dither_unref(dither);
     sixel_output_unref(output);
@@ -145,7 +145,7 @@ void renderKittyShm(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t
     close(fd);
     
     // Send Kitty graphics command
-    std::cout << "\x1b_Ga=T,f=24,s=" << width << ",v=" << height 
+    std::cout << "\x1b_Ga=T,f=32,s=" << width << ",v=" << height 
               << ",t=s,i=1,C=1,q=1;" << encodedName << "\x1b\\" << std::flush;
 }
 

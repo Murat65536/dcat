@@ -1116,26 +1116,15 @@ std::vector<uint8_t> VulkanRenderer::render(
 
     vkFreeCommandBuffers(device_, commandPool_, 1, &commandBuffer);
 
-    // Read back result and convert RGBA to RGB
+    // Read back result (RGBA)
     vkMapMemory(device_, stagingBufferMemory_, 0, width_ * height_ * 4, 0, &data);
     
-    std::vector<uint8_t> rgbBuffer(width_ * height_ * 3);
-    uint8_t* srcData = static_cast<uint8_t*>(data);
-    uint8_t* dstData = rgbBuffer.data();
-    
-    // Fast RGBA to RGB conversion using SIMD-friendly loop
-    const uint32_t pixelCount = width_ * height_;
-    for (uint32_t i = 0; i < pixelCount; i++) {
-        dstData[0] = srcData[0];
-        dstData[1] = srcData[1];
-        dstData[2] = srcData[2];
-        srcData += 4;
-        dstData += 3;
-    }
+    std::vector<uint8_t> rgbaBuffer(width_ * height_ * 4);
+    std::memcpy(rgbaBuffer.data(), data, width_ * height_ * 4);
     
     vkUnmapMemory(device_, stagingBufferMemory_);
 
-    return rgbBuffer;
+    return rgbaBuffer;
 }
 
 void VulkanRenderer::cleanup() {
