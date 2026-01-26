@@ -38,14 +38,18 @@ void Camera::updateDirection() {
 
 void Camera::moveForward(float distance) {
     glm::vec3 forward = glm::normalize(target - position);
-    position += forward * distance;
-    target += forward * distance;
+    glm::vec3 right = glm::normalize(glm::cross(forward, up));
+    glm::vec3 horizontalForward = glm::normalize(glm::cross(up, right));
+    position += horizontalForward * distance;
+    target += horizontalForward * distance;
 }
 
 void Camera::moveBackward(float distance) {
     glm::vec3 forward = glm::normalize(target - position);
-    position -= forward * distance;
-    target -= forward * distance;
+    glm::vec3 right = glm::normalize(glm::cross(forward, up));
+    glm::vec3 horizontalForward = glm::normalize(glm::cross(up, right));
+    position -= horizontalForward * distance;
+    target -= horizontalForward * distance;
 }
 
 void Camera::moveLeft(float distance) {
