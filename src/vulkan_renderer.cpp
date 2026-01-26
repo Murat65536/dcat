@@ -10,7 +10,7 @@
 VulkanRenderer::VulkanRenderer(uint32_t width, uint32_t height)
     : width_(width)
     , height_(height)
-    , normalizedLightDir_(glm::normalize(glm::vec3(0.0f, 0.5f, 0.3f)))
+    , normalizedLightDir_(glm::normalize(glm::vec3(0.0f, -1.0f, -0.5f)))  // Light from above and slightly behind
 {
 }
 

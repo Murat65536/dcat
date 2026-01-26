@@ -36,8 +36,15 @@ void main() {
         tangentNormal.z * N
     );
     
-    float lightIntensity = max(dot(perturbedNormal, fragUniforms.lightDir), 0.2);
-    vec3 finalColor = diffuseColor.rgb * lightIntensity;
-    
+    // Calculate both diffuse and ambient lighting
+    float diffuseIntensity = max(dot(perturbedNormal, fragUniforms.lightDir), 0.0);
+    float ambientIntensity = 0.5;
+    float totalIntensity = diffuseIntensity + ambientIntensity;
+
+    // Clamp to prevent over-brightening
+    totalIntensity = min(totalIntensity, 1.0);
+
+    vec3 finalColor = diffuseColor.rgb * totalIntensity;
+
     outColor = vec4(finalColor, 1.0);
 }

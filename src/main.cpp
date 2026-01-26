@@ -310,10 +310,9 @@ int main(int argc, char* argv[]) {
         model = glm::translate(model, -modelCenter);
         
         glm::mat4 mvp = projection * view * model;
-        
-        // Update light direction based on camera
-        glm::vec3 forward = camera.forwardDirection();
-        renderer.setLightDirection(-forward);
+
+        // Use fixed light direction instead of camera-relative
+        renderer.setLightDirection(glm::vec3(0.0f, -1.0f, -0.5f));  // Light coming from above and slightly behind
         
         // Render
         std::vector<uint8_t> framebuffer = renderer.render(
