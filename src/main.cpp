@@ -258,7 +258,7 @@ int main(int argc, char* argv[]) {
             currentWidth = newWidth;
             currentHeight = newHeight;
             renderer.resize(currentWidth, currentHeight);
-            camera = Camera(currentWidth, currentHeight, camera.position, camera.target, 60.0f);
+            camera = Camera(currentWidth, currentHeight, camera.position, camera.target, 90.0f);
             view = camera.viewMatrix();
             projection = camera.projectionMatrix();
         }
