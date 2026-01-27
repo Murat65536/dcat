@@ -1,8 +1,12 @@
 #include "input_device.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
+#include <string>
+#include <vector>
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -15,42 +19,24 @@
 #include <linux/input.h>
 #include <linux/input-event-codes.h>
 
-// Global state
-struct pollfd input_devices[MAX_OPEN_INPUT_DEVICES];
-struct pollfd* keyboards = nullptr;
-struct pollfd* mice = nullptr;
-
-int num_devices = 0;
-int num_keyboards = 0;
-int num_mice = 0;
-
-static bool devices_initialized = false;
-
 namespace {
 
-template<typename T>
-void swap_values(T& a, T& b) {
-    T tmp = a;
-    a = b;
-    b = tmp;
-}
-
-enum { KEYBOARD_DEVICE_TYPE, MOUSE_DEVICE_TYPE, NUM_DEVICE_TYPES };
+enum DeviceType {
+    DEVICE_UNKNOWN = 0,
+    DEVICE_KEYBOARD,
+    DEVICE_MOUSE
+};
 
 struct DeviceInfo {
-    unsigned long capabilities;
-    int test_key;
+    int fd;
+    unsigned long long id;
+    DeviceType type;
+    std::string path;
 };
 
-DeviceInfo desired_devices[NUM_DEVICE_TYPES] = {
-    { 0x120013, KEY_ESC },   // Keyboard: SYN, KEY, MSC:SCAN, LED, REP
-    { 0x17, BTN_MOUSE },     // Mouse: SYN, KEY, REL, MSC:SCAN
-};
-
-bool is_character_device(const char* filename) {
-    struct stat sb;
-    return (stat(filename, &sb) == 0) && ((sb.st_mode & S_IFMT) == S_IFCHR);
-}
+// Helper to close fd when DeviceInfo goes out of scope if not moved? 
+// Actually, we'll just manage it manually or use a wrapper. 
+// For now, let's just be careful.
 
 unsigned long long ev_get_id(int fd) {
     unsigned short id[4];
@@ -75,228 +61,174 @@ bool ev_has_key(int fd, unsigned key) {
            (bits[key / 8] & (1 << (key % 8)));
 }
 
+bool is_character_device(const std::string& path) {
+    struct stat sb;
+    return (stat(path.c_str(), &sb) == 0) && ((sb.st_mode & S_IFMT) == S_IFCHR);
+}
+
+DeviceType classify_device(int fd) {
+    unsigned long capabilities = ev_get_capabilities(fd);
+    
+    // Keyboard: SYN, KEY, MSC:SCAN, LED, REP -> 0x120013
+    // But we might want to be more lenient or strict. 
+    // The original code checked for exact capability match + specific key.
+    
+    // Original: { 0x120013, KEY_ESC }
+    if (capabilities == 0x120013 && ev_has_key(fd, KEY_ESC)) {
+        return DEVICE_KEYBOARD;
+    }
+    
+    // Original: { 0x17, BTN_MOUSE }
+    if (capabilities == 0x17 && ev_has_key(fd, BTN_MOUSE)) {
+        return DEVICE_MOUSE;
+    }
+    
+    return DEVICE_UNKNOWN;
+}
+
 } // anonymous namespace
 
-char* get_device_name(int fd, char* name, size_t n) {
-    int count = ioctl(fd, EVIOCGNAME(n), name);
-    if (count < 0) *name = '\0';
-    return (count < 0) ? nullptr : name;
+InputManager::InputManager() : initialized(false) {}
+
+InputManager::~InputManager() {
+    cleanup();
 }
 
-char* get_device_path(int fd, char* path, size_t n) {
-    char spath[50];
-    sprintf(spath, "/proc/self/fd/%d", fd);
-    
-    ssize_t len = readlink(spath, path, n);
-    if (len < 0) {
-        *path = '\0';
-        return nullptr;
-    }
-    
-    path[len] = '\0';
-    return path;
-}
-
-void finalize_devices() {
-    if (num_devices) {
-        while (num_devices--) {
-            tcflush(input_devices[num_devices].fd, TCIFLUSH);
-            close(input_devices[num_devices].fd);
+void InputManager::cleanup() {
+    for (const auto& pfd : poll_fds) {
+        if (pfd.fd >= 0) {
+            tcflush(pfd.fd, TCIFLUSH);
+            close(pfd.fd);
         }
     }
-    num_devices = 0;
+    poll_fds.clear();
     num_keyboards = 0;
     num_mice = 0;
-    keyboards = nullptr;
-    mice = nullptr;
-    devices_initialized = false;
+    initialized = false;
 }
 
-bool initialize_devices(bool want_mice) {
-    if (devices_initialized) return num_keyboards > 0;
-    
-    unsigned long long device_IDs[MAX_OPEN_INPUT_DEVICES];
-    
-    constexpr size_t NTH_SIZE = 128;
-    char is_nth_a_mouse[NTH_SIZE] = {0};
-    int nth_fd[NTH_SIZE];
-    memset(nth_fd, -1, sizeof(nth_fd));
-    
-    // Scan /dev/input for event devices
+bool InputManager::initialize(bool want_mice) {
+    if (initialized) return num_keyboards > 0;
+
+    std::vector<DeviceInfo> found_keyboards;
+    std::vector<DeviceInfo> found_mice;
+
+    // Scan /dev/input
     DIR* dir = opendir("/dev/input/");
-    if (!dir) {
-        return false;
-    }
-    
+    if (!dir) return false;
+
     struct dirent* dirent;
     while ((dirent = readdir(dir))) {
         if (strncmp(dirent->d_name, "event", 5) != 0) continue;
-        
-        int N = atoi(dirent->d_name + 5);
-        if (N >= static_cast<int>(NTH_SIZE)) continue;
-        
-        char filename[1024] = "/dev/input/";
-        strcat(filename, dirent->d_name);
-        
+
+        std::string filename = std::string("/dev/input/") + dirent->d_name;
         if (!is_character_device(filename)) continue;
-        
-        int fd = open(filename, O_RDONLY);
+
+        int fd = open(filename.c_str(), O_RDONLY);
         if (fd < 0) continue;
-        
-        input_devices[num_devices].fd = fd;
-        input_devices[num_devices].events = POLLIN;
-        nth_fd[N] = fd;
-        
-        unsigned long device_capabilities = ev_get_capabilities(fd);
-        device_IDs[num_devices] = ev_get_id(fd);
-        
-        bool found = false;
-        for (int type = 0; type < (want_mice ? NUM_DEVICE_TYPES : 1); type++) {
-            if ((device_capabilities == desired_devices[type].capabilities) &&
-                ev_has_key(fd, desired_devices[type].test_key)) {
-                
-                is_nth_a_mouse[N] = (type == MOUSE_DEVICE_TYPE);
-                
-                if (is_nth_a_mouse[N]) {
-                    ++num_mice;
-                } else {
-                    swap_values(input_devices[num_keyboards].fd, input_devices[num_devices].fd);
-                    swap_values(device_IDs[num_keyboards], device_IDs[num_devices]);
-                    ++num_keyboards;
-                }
-                
-                num_devices++;
-                found = true;
-                break;
-            }
-        }
-        
-        if (!found) {
+
+        DeviceType type = classify_device(fd);
+        if (type == DEVICE_UNKNOWN || (type == DEVICE_MOUSE && !want_mice)) {
             close(fd);
-            nth_fd[N] = INVALID_FD;
+            continue;
+        }
+
+        DeviceInfo info;
+        info.fd = fd;
+        info.id = ev_get_id(fd);
+        info.type = type;
+        info.path = filename;
+
+        if (type == DEVICE_KEYBOARD) {
+            found_keyboards.push_back(info);
+        } else {
+            found_mice.push_back(info);
         }
     }
-    
     closedir(dir);
-    
+
     // Cull keyboards pretending to be mice
     if (want_mice) {
-        for (int ik = 0; ik < num_keyboards; ik++) {
-            for (int im = 0; im < num_mice; im++) {
-                if ((device_IDs[ik] & ~0xFFFFULL) == (device_IDs[num_keyboards + im] & ~0xFFFFULL)) {
-                    swap_values(input_devices[num_keyboards + im].fd, input_devices[num_devices - 1].fd);
-                    swap_values(device_IDs[num_keyboards + im], device_IDs[num_devices - 1]);
-                    close(input_devices[--num_mice, --num_devices].fd);
+        auto it_mouse = found_mice.begin();
+        while (it_mouse != found_mice.end()) {
+            bool duplicate = false;
+            for (const auto& kb : found_keyboards) {
+                if ((kb.id & ~0xFFFFULL) == (it_mouse->id & ~0xFFFFULL)) {
+                    duplicate = true;
+                    break;
                 }
+            }
+
+            if (duplicate) {
+                close(it_mouse->fd);
+                it_mouse = found_mice.erase(it_mouse);
+            } else {
+                ++it_mouse;
             }
         }
     }
-    
-    if (!num_keyboards) {
-        finalize_devices();
+
+    if (found_keyboards.empty()) {
+        // Clean up any mice we might have opened
+        for (const auto& m : found_mice) close(m.fd);
         return false;
     }
-    
-    // Sort devices for consistency
-    keyboards = input_devices;
-    struct pollfd* kb_ptr = input_devices;
-    for (size_t n = 0; n < NTH_SIZE; n++) {
-        if (nth_fd[n] >= 0 && !is_nth_a_mouse[n]) {
-            (kb_ptr++)->fd = nth_fd[n];
-        }
+
+    // Populate poll_fds
+    // Keyboards first
+    for (const auto& kb : found_keyboards) {
+        struct pollfd pfd;
+        pfd.fd = kb.fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        poll_fds.push_back(pfd);
     }
-    
-    mice = kb_ptr;
-    struct pollfd* mouse_ptr = kb_ptr;
-    for (size_t n = 0; n < NTH_SIZE; n++) {
-        if (nth_fd[n] >= 0 && is_nth_a_mouse[n]) {
-            (mouse_ptr++)->fd = nth_fd[n];
-        }
+    num_keyboards = found_keyboards.size();
+
+    // Then mice
+    for (const auto& m : found_mice) {
+        struct pollfd pfd;
+        pfd.fd = m.fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        poll_fds.push_back(pfd);
     }
-    
-    mice = kb_ptr;
-    keyboards = input_devices;
-    
+    num_mice = found_mice.size();
+
     // Make devices non-blocking
-    for (int n = 0; n < num_devices; n++) {
-        int flags = fcntl(input_devices[n].fd, F_GETFL);
-        fcntl(input_devices[n].fd, F_SETFL, flags | O_NONBLOCK);
+    for (auto& pfd : poll_fds) {
+        int flags = fcntl(pfd.fd, F_GETFL);
+        fcntl(pfd.fd, F_SETFL, flags | O_NONBLOCK);
     }
-    
-    devices_initialized = true;
+
+    initialized = true;
     return true;
 }
 
-static int poll_devices_(int begin, int end, int timeout_ms) {
-    if (end < begin) swap_values(begin, end);
-    if (begin == end) return INVALID_FD;
-    
-    for (int n = 0; n < num_devices; n++) {
-        input_devices[n].revents = 0;
-    }
-    
-    if (poll(input_devices + begin, end - begin, timeout_ms) > 0) {
-        for (int n = 0; n < (end - begin); n++) {
-            if (input_devices[begin + n].revents) {
-                return input_devices[begin + n].fd;
-            }
-        }
-    }
-    
-    return INVALID_FD;
+bool InputManager::isAvailable() const {
+    return initialized && num_keyboards > 0;
 }
 
-int poll_devices(int timeout_ms) {
-    return poll_devices_(0, num_devices, timeout_ms);
-}
+void InputManager::processEvents(KeyState& state) {
+    if (!initialized || poll_fds.empty()) return;
 
-int poll_device(int n, int timeout_ms) {
-    return ((0 <= n) && (n < num_devices))
-        ? poll_devices_(n, n + 1, timeout_ms)
-        : INVALID_FD;
-}
-
-int poll_keyboards(int timeout_ms) {
-    return num_keyboards
-        ? poll_devices_(0, num_keyboards, timeout_ms)
-        : INVALID_FD;
-}
-
-int poll_keyboard(int n, int timeout_ms) {
-    return ((0 <= n) && (n < num_keyboards))
-        ? poll_devices_(n, n + 1, timeout_ms)
-        : INVALID_FD;
-}
-
-int poll_mice(int timeout_ms) {
-    return num_mice
-        ? poll_devices_(num_keyboards, num_keyboards + num_mice, timeout_ms)
-        : INVALID_FD;
-}
-
-int poll_mouse(int n, int timeout_ms) {
-    return ((0 <= n) && (n < num_mice))
-        ? poll_devices_(num_keyboards + n, num_keyboards + n + 1, timeout_ms)
-        : INVALID_FD;
-}
-
-bool input_devices_available() {
-    return devices_initialized && num_keyboards > 0;
-}
-
-void process_input_events(KeyState& state) {
-    // Reset relative mouse movement each frame
+    // Reset relative mouse movement
     state.mouse_dx = 0;
     state.mouse_dy = 0;
+
+    // Check for events (using poll with 0 timeout for non-blocking check)
+    // Actually, original code read directly. Since we set O_NONBLOCK, we can just read.
+    // But poll is nice to check availability.
+    // Original code: loop through keyboards, then mice.
     
     struct input_event ev;
-    
-    // Process all keyboard events
-    for (int i = 0; i < num_keyboards; i++) {
-        while (read(keyboards[i].fd, &ev, sizeof(ev)) == sizeof(ev)) {
+
+    // Process keyboards
+    for (size_t i = 0; i < num_keyboards; ++i) {
+        while (read(poll_fds[i].fd, &ev, sizeof(ev)) == sizeof(ev)) {
             if (ev.type == EV_KEY) {
-                bool pressed = (ev.value != 0);  // 1 = press, 0 = release, 2 = repeat
-                
+                bool pressed = (ev.value != 0); // 1=press, 2=repeat, 0=release
+
                 switch (ev.code) {
                     case KEY_W: state.w = pressed; break;
                     case KEY_A: state.a = pressed; break;
@@ -319,11 +251,12 @@ void process_input_events(KeyState& state) {
             }
         }
     }
-    
-    // Process all mouse events
-    for (int i = 0; i < num_mice; i++) {
-        while (read(mice[i].fd, &ev, sizeof(ev)) == sizeof(ev)) {
-            if (ev.type == EV_REL) {
+
+    // Process mice
+    for (size_t i = 0; i < num_mice; ++i) {
+        size_t idx = num_keyboards + i;
+        while (read(poll_fds[idx].fd, &ev, sizeof(ev)) == sizeof(ev)) {
+             if (ev.type == EV_REL) {
                 switch (ev.code) {
                     case REL_X: state.mouse_dx += ev.value; break;
                     case REL_Y: state.mouse_dy += ev.value; break;

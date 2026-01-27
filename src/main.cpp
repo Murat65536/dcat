@@ -180,8 +180,10 @@ int main(int argc, char* argv[]) {
     // Initialize input devices for FPS controls
     bool inputDevicesReady = false;
     KeyState keyState;
+    InputManager inputManager;
+
     if (args.fpsControls) {
-        inputDevicesReady = initialize_devices(true);
+        inputDevicesReady = inputManager.initialize(true);
         if (!inputDevicesReady) {
             std::cerr << "Warning: Could not initialize input devices for FPS controls.\n"
                       << "Ensure you have permissions for /dev/input/ (add user to 'input' group).\n"
@@ -263,7 +265,7 @@ int main(int argc, char* argv[]) {
         
         // Handle FPS controls using Linux Input Subsystem
         if (args.fpsControls && inputDevicesReady && isFocused.load()) {
-            process_input_events(keyState);
+            inputManager.processEvents(keyState);
             
             if (keyState.q) {
                 g_running.store(false);
@@ -344,10 +346,6 @@ int main(int argc, char* argv[]) {
     
     // Cleanup
     inputThread.join();
-    
-    if (inputDevicesReady) {
-        finalize_devices();
-    }
     
     disableRawMode();
     exitAlternateScreen();
