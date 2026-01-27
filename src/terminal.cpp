@@ -121,7 +121,7 @@ std::string base64Encode(const uint8_t* data, size_t length) {
     return result;
 }
 
-void renderTerminal(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t height) {
+void renderTerminal(const uint8_t* buffer, uint32_t width, uint32_t height) {
     static FastBuffer fastBuffer;
 
     // Estimate buffer size:
@@ -134,7 +134,7 @@ void renderTerminal(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t
     const char* header = "\x1b[?2026h\x1b[H";
     fastBuffer.append(header, 11); // strlen("\x1b[?2026h\x1b[H") is 11
     
-    const uint8_t* src = buffer.data();
+    const uint8_t* src = buffer;
     
     for (uint32_t y = 0; y < height; y += 2) {
         const uint8_t* rowUpper = src + (y * width * 4);
@@ -167,7 +167,7 @@ static int sixelWrite(char* data, int size, void* priv) {
     return size;
 }
 
-void renderSixel(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t height) {
+void renderSixel(const uint8_t* buffer, uint32_t width, uint32_t height) {
     safe_write("\x1b[H", 3);
 
     sixel_output_t* output = nullptr;
@@ -183,7 +183,7 @@ void renderSixel(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t he
     }
 
     // Create a mutable copy since sixel_dither_initialize modifies the data
-    std::vector<uint8_t> pixels = buffer;
+    std::vector<uint8_t> pixels(buffer, buffer + width * height * 4);
 
     sixel_dither_initialize(dither, pixels.data(), width, height,
                             SIXEL_PIXELFORMAT_RGBA8888, SIXEL_LARGE_NORM,
@@ -195,12 +195,15 @@ void renderSixel(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t he
     sixel_output_unref(output);
 }
 
-void renderKittyShm(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t height) {
-    static std::string shmName = "/kitty_graphics_" + std::to_string(getpid());
-    static std::string encodedName = base64Encode(
+void renderKittyShm(const uint8_t* buffer, uint32_t width, uint32_t height) {
+    static uint32_t bufferIdx = 0;
+    bufferIdx = (bufferIdx + 1) % 32;
+    
+    std::string shmName = "/dcat_shm_" + std::to_string(getpid()) + "_" + std::to_string(bufferIdx);
+    std::string encodedName = base64Encode(
         reinterpret_cast<const uint8_t*>(shmName.c_str()), shmName.size());
     
-    size_t dataSize = buffer.size();
+    size_t dataSize = width * height * 4;
     
     // Create shared memory fresh each frame (Kitty unlinks it after reading)
     int fd = shm_open(shmName.c_str(), O_CREAT | O_RDWR, 0600);
@@ -225,7 +228,7 @@ void renderKittyShm(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t
     }
     
     // Copy data to shared memory
-    std::memcpy(ptr, buffer.data(), dataSize);
+    std::memcpy(ptr, buffer, dataSize);
     
     // Unmap and close fd (Kitty will shm_unlink after reading)
     munmap(ptr, dataSize);

@@ -614,7 +614,44 @@ bool VulkanRenderer::createStagingBuffer() {
     createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                  stagingBuffer_, stagingBufferMemory_);
+    
+    // Persistent mapping
+    if (vkMapMemory(device_, stagingBufferMemory_, 0, bufferSize, 0, &mappedData_) != VK_SUCCESS) {
+        std::cerr << "Failed to map staging buffer memory" << std::endl;
+        return false;
+    }
+    
     return true;
+}
+
+// ... in resize ...
+
+
+
+
+// ... in render ...
+
+
+
+void VulkanRenderer::cleanup() {
+    if (device_ == VK_NULL_HANDLE) return;
+    
+    vkDeviceWaitIdle(device_);
+    
+    if (sampler_ != VK_NULL_HANDLE) vkDestroySampler(device_, sampler_, nullptr);
+    
+    // ...
+    
+    if (stagingBuffer_ != VK_NULL_HANDLE) {
+        if (mappedData_) {
+            vkUnmapMemory(device_, stagingBufferMemory_);
+            mappedData_ = nullptr;
+        }
+        vkDestroyBuffer(device_, stagingBuffer_, nullptr);
+        vkFreeMemory(device_, stagingBufferMemory_, nullptr);
+    }
+    
+    // ...
 }
 
 bool VulkanRenderer::createUniformBuffers() {
@@ -981,11 +1018,17 @@ void VulkanRenderer::resize(uint32_t width, uint32_t height) {
     
     // Recreate staging buffer
     if (stagingBuffer_ != VK_NULL_HANDLE) {
+        if (mappedData_) {
+            vkUnmapMemory(device_, stagingBufferMemory_);
+            mappedData_ = nullptr;
+        }
         vkDestroyBuffer(device_, stagingBuffer_, nullptr);
         vkFreeMemory(device_, stagingBufferMemory_, nullptr);
     }
     createStagingBuffer();
 }
+
+
 
 void VulkanRenderer::cleanupRenderTargets() {
     if (framebuffer_ != VK_NULL_HANDLE) {
@@ -1012,7 +1055,7 @@ void VulkanRenderer::cleanupRenderTargets() {
     }
 }
 
-std::vector<uint8_t> VulkanRenderer::render(
+const uint8_t* VulkanRenderer::render(
     const std::vector<Vertex>& vertices,
     const std::vector<uint32_t>& indices,
     const glm::mat4& mvp,
@@ -1139,71 +1182,6 @@ std::vector<uint8_t> VulkanRenderer::render(
 
     vkFreeCommandBuffers(device_, commandPool_, 1, &commandBuffer);
 
-    // Read back result (RGBA)
-    vkMapMemory(device_, stagingBufferMemory_, 0, width_ * height_ * 4, 0, &data);
-    
-    std::vector<uint8_t> rgbaBuffer(width_ * height_ * 4);
-    std::memcpy(rgbaBuffer.data(), data, width_ * height_ * 4);
-    
-    vkUnmapMemory(device_, stagingBufferMemory_);
-
-    return rgbaBuffer;
+    return static_cast<const uint8_t*>(mappedData_);
 }
 
-void VulkanRenderer::cleanup() {
-    if (device_ == VK_NULL_HANDLE) return;
-    
-    vkDeviceWaitIdle(device_);
-    
-    if (sampler_ != VK_NULL_HANDLE) vkDestroySampler(device_, sampler_, nullptr);
-    
-    if (diffuseImageView_ != VK_NULL_HANDLE) vkDestroyImageView(device_, diffuseImageView_, nullptr);
-    if (diffuseImage_ != VK_NULL_HANDLE) {
-        vkDestroyImage(device_, diffuseImage_, nullptr);
-        vkFreeMemory(device_, diffuseImageMemory_, nullptr);
-    }
-    
-    if (normalImageView_ != VK_NULL_HANDLE) vkDestroyImageView(device_, normalImageView_, nullptr);
-    if (normalImage_ != VK_NULL_HANDLE) {
-        vkDestroyImage(device_, normalImage_, nullptr);
-        vkFreeMemory(device_, normalImageMemory_, nullptr);
-    }
-    
-    if (vertexBuffer_ != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device_, vertexBuffer_, nullptr);
-        vkFreeMemory(device_, vertexBufferMemory_, nullptr);
-    }
-    
-    if (indexBuffer_ != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device_, indexBuffer_, nullptr);
-        vkFreeMemory(device_, indexBufferMemory_, nullptr);
-    }
-    
-    if (uniformBuffer_ != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device_, uniformBuffer_, nullptr);
-        vkFreeMemory(device_, uniformBufferMemory_, nullptr);
-    }
-    
-    if (fragmentUniformBuffer_ != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device_, fragmentUniformBuffer_, nullptr);
-        vkFreeMemory(device_, fragmentUniformBufferMemory_, nullptr);
-    }
-    
-    if (stagingBuffer_ != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device_, stagingBuffer_, nullptr);
-        vkFreeMemory(device_, stagingBufferMemory_, nullptr);
-    }
-    
-    cleanupRenderTargets();
-    
-    if (graphicsPipeline_ != VK_NULL_HANDLE) vkDestroyPipeline(device_, graphicsPipeline_, nullptr);
-    if (wireframePipeline_ != VK_NULL_HANDLE) vkDestroyPipeline(device_, wireframePipeline_, nullptr);
-    if (pipelineLayout_ != VK_NULL_HANDLE) vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
-    if (renderPass_ != VK_NULL_HANDLE) vkDestroyRenderPass(device_, renderPass_, nullptr);
-    if (descriptorSetLayout_ != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(device_, descriptorSetLayout_, nullptr);
-    if (descriptorPool_ != VK_NULL_HANDLE) vkDestroyDescriptorPool(device_, descriptorPool_, nullptr);
-    if (commandPool_ != VK_NULL_HANDLE) vkDestroyCommandPool(device_, commandPool_, nullptr);
-    
-    if (device_ != VK_NULL_HANDLE) vkDestroyDevice(device_, nullptr);
-    if (instance_ != VK_NULL_HANDLE) vkDestroyInstance(instance_, nullptr);
-}

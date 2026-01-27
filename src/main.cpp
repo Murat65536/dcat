@@ -333,7 +333,7 @@ int main(int argc, char* argv[]) {
         renderer.setLightDirection(glm::vec3(0.0f, -1.0f, -0.5f));  // Light coming from above and slightly behind
         
         // Render
-        std::vector<uint8_t> framebuffer = renderer.render(
+        const uint8_t* framebuffer = renderer.render(
             vertices, indices, mvp, model,
             diffuseTexture, normalTexture, !args.noLighting,
             camera.position

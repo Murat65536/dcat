@@ -37,7 +37,9 @@ public:
     void setLightDirection(const glm::vec3& direction);
     void setWireframeMode(bool enabled);
     
-    std::vector<uint8_t> render(
+    // Renders the scene and returns a pointer to the pixel data (RGBA)
+    // The pointer is valid until the next render call or resize
+    const uint8_t* render(
         const std::vector<Vertex>& vertices,
         const std::vector<uint32_t>& indices,
         const glm::mat4& mvp,
@@ -47,6 +49,8 @@ public:
         bool enableLighting,
         const glm::vec3& cameraPos
     );
+
+    size_t getFrameSize() const { return width_ * height_ * 4; }
     
 private:
     uint32_t width_;
@@ -82,6 +86,7 @@ private:
     // Staging buffer for readback
     VkBuffer stagingBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory stagingBufferMemory_ = VK_NULL_HANDLE;
+    void* mappedData_ = nullptr;
     
     // Uniform buffers
     VkBuffer uniformBuffer_ = VK_NULL_HANDLE;
