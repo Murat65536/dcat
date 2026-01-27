@@ -133,8 +133,17 @@ void renderTerminal(const uint8_t* buffer, uint32_t width, uint32_t height) {
     // Header: Synchronized update start + Home cursor
     const char* header = "\x1b[?2026h\x1b[H";
     fastBuffer.append(header, 11); // strlen("\x1b[?2026h\x1b[H") is 11
+
+    // Copy to local buffer to avoid slow reads from uncached (Vulkan mapped) memory
+    // static to avoid reallocation
+    static std::vector<uint8_t> localBuffer;
+    size_t requiredSize = width * height * 4;
+    if (localBuffer.size() < requiredSize) {
+        localBuffer.resize(requiredSize);
+    }
+    std::memcpy(localBuffer.data(), buffer, requiredSize);
     
-    const uint8_t* src = buffer;
+    const uint8_t* src = localBuffer.data();
     
     for (uint32_t y = 0; y < height; y += 2) {
         const uint8_t* rowUpper = src + (y * width * 4);

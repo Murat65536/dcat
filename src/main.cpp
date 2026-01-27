@@ -176,7 +176,8 @@ int main(int argc, char* argv[]) {
     constexpr float MODEL_ROTATION_SPEED = 0.6f;
     constexpr float MOVE_SPEED_BASE = 0.5f;
     constexpr float ROTATION_SENSITIVITY = 2.0f;
-    constexpr auto TARGET_FRAME_TIME = std::chrono::microseconds(1000000 / 60);
+    constexpr int TARGET_FPS = 60;
+    constexpr auto TARGET_FRAME_TIME = std::chrono::microseconds(1000000 / TARGET_FPS);
     
     // Normalize movement speed based on target size
     float moveSpeed = MOVE_SPEED_BASE * TARGET_SIZE;
@@ -220,8 +221,8 @@ int main(int argc, char* argv[]) {
             pfd.fd = STDIN_FILENO;
             pfd.events = POLLIN;
             
-            int ret = poll(&pfd, 1, 16);  // 16ms timeout
-            
+            int ret = poll(&pfd, 1, 0);
+
             if (ret > 0 && (pfd.revents & POLLIN)) {
                 ssize_t n = read(STDIN_FILENO, buffer, sizeof(buffer));
                 
