@@ -12,6 +12,21 @@ find_package(glm REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SIXEL REQUIRED libsixel)
 
+include(FetchContent)
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG master
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(stb)
+
+# stb doesn't have a CMakeLists.txt, so we define the target manually if it wasn't created
+if(NOT TARGET stb)
+    add_library(stb INTERFACE)
+    target_include_directories(stb INTERFACE ${stb_SOURCE_DIR})
+endif()
+
 # Add executable
 add_executable(dcat
     src/main.cpp
@@ -34,6 +49,7 @@ target_link_libraries(dcat PRIVATE
     assimp
     glm::glm
     ${SIXEL_LIBRARIES}
+    stb
     rt
 )
 
