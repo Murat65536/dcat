@@ -29,6 +29,7 @@ struct Args {
     bool useKitty = false;
     bool noLighting = false;
     bool fpsControls = false;
+    bool showStatusBar = false;
 };
 
 static std::atomic<bool> g_running{true};
@@ -52,6 +53,7 @@ void printUsage(const char* programName) {
               << "  -K, --kitty              Enable Kitty graphics protocol mode\n"
               << "  --no-lighting            Disable lighting calculations\n"
               << "  --fps-controls           Enable first-person camera controls\n"
+              << "  -s, --status-bar         Show status bar\n"
               << "  -h, --help               Print this help message\n";
 }
 
@@ -92,6 +94,8 @@ Args parseArgs(int argc, char* argv[]) {
             args.noLighting = true;
         } else if (arg == "--fps-controls") {
             args.fpsControls = true;
+        } else if (arg == "-s" || arg == "--status-bar") {
+            args.showStatusBar = true;
         } else if (arg[0] != '-') {
             args.modelPath = arg;
         }
@@ -122,7 +126,7 @@ int main(int argc, char* argv[]) {
     enableFocusTracking();
     
     // Calculate render dimensions
-    auto [width, height] = calculateRenderDimensions(args.width, args.height, args.useSixel, args.useKitty);
+    auto [width, height] = calculateRenderDimensions(args.width, args.height, args.useSixel, args.useKitty, args.showStatusBar);
     
     // Initialize Vulkan renderer
     VulkanRenderer renderer(width, height);
@@ -248,7 +252,7 @@ int main(int argc, char* argv[]) {
     // Main render loop
     while (g_running.load()) {
         // Check for terminal resize
-        auto [newWidth, newHeight] = calculateRenderDimensions(args.width, args.height, args.useSixel, args.useKitty);
+        auto [newWidth, newHeight] = calculateRenderDimensions(args.width, args.height, args.useSixel, args.useKitty, args.showStatusBar);
         if (newWidth != currentWidth || newHeight != currentHeight) {
             currentWidth = newWidth;
             currentHeight = newHeight;
@@ -342,6 +346,10 @@ int main(int argc, char* argv[]) {
             renderSixel(framebuffer, currentWidth, currentHeight);
         } else {
             renderTerminal(framebuffer, currentWidth, currentHeight);
+        }
+        
+        if (args.showStatusBar) {
+            drawStatusBar(deltaTime > 0 ? 1.0f / deltaTime : 0.0f);
         }
         
         // Frame rate limiting

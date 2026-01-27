@@ -11,9 +11,11 @@ void renderSixel(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t he
 void renderKittyShm(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t height);
 
 std::pair<uint32_t, uint32_t> calculateRenderDimensions(
-    int explicitWidth, int explicitHeight, bool useSixel, bool useKitty);
+    int explicitWidth, int explicitHeight, bool useSixel, bool useKitty, bool reserveBottomLine = false);
 std::pair<uint32_t, uint32_t> getTerminalSize();
 std::pair<uint32_t, uint32_t> getTerminalSizePixels();
+
+void drawStatusBar(float fps);
 
 void enableRawMode();
 void disableRawMode();

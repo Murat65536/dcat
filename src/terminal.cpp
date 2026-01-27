@@ -256,8 +256,22 @@ std::pair<uint32_t, uint32_t> getTerminalSizePixels() {
     return { DEFAULT_TERM_WIDTH, DEFAULT_TERM_HEIGHT };
 }
 
+void drawStatusBar(float fps) {
+    auto [cols, rows] = getTerminalSize();
+    if (rows == 0) return;
+
+    char buffer[128];
+    // Start sync update (\x1b[?2026h), Move to bottom row, clear line, print status, home cursor, End sync update (\x1b[?2026l)
+    int len = snprintf(buffer, sizeof(buffer), 
+        "\x1b[?2026h\x1b[%d;1H\x1b[2K\x1b[7m STATUS: %.1f FPS \x1b[0m\x1b[H\x1b[?2026l", 
+        rows, fps);
+    if (len > 0) {
+        safe_write(buffer, static_cast<size_t>(len));
+    }
+}
+
 std::pair<uint32_t, uint32_t> calculateRenderDimensions(
-    int explicitWidth, int explicitHeight, bool useSixel, bool useKitty) {
+    int explicitWidth, int explicitHeight, bool useSixel, bool useKitty, bool reserveBottomLine) {
     
     if (explicitWidth > 0 && explicitHeight > 0) {
         return { static_cast<uint32_t>(explicitWidth), static_cast<uint32_t>(explicitHeight) };
@@ -265,9 +279,21 @@ std::pair<uint32_t, uint32_t> calculateRenderDimensions(
     
     if (useSixel || useKitty) {
         auto [pixelWidth, pixelHeight] = getTerminalSizePixels();
+        if (reserveBottomLine) {
+            auto [cols, rows] = getTerminalSize();
+            if (rows > 0) {
+                uint32_t charHeight = pixelHeight / rows;
+                if (pixelHeight > charHeight) {
+                    pixelHeight -= charHeight;
+                }
+            }
+        }
         return { pixelWidth, pixelHeight };
     } else {
         auto [cols, rows] = getTerminalSize();
+        if (reserveBottomLine && rows > 0) {
+            rows--;
+        }
         return { cols, rows * 2 };
     }
 }
