@@ -206,6 +206,7 @@ int main(int argc, char* argv[]) {
     auto lastFrameTime = std::chrono::high_resolution_clock::now();
     
     std::atomic<bool> isFocused{true};
+    bool lastMState = false;
     
     // Input handling thread
     std::thread inputThread([&]() {
@@ -271,6 +272,13 @@ int main(int argc, char* argv[]) {
                 g_running.store(false);
                 break;
             }
+
+            if (keyState.m && !lastMState) {
+                static bool wireframe = false;
+                wireframe = !wireframe;
+                renderer.setWireframeMode(wireframe);
+            }
+            lastMState = keyState.m;
 
             // Speed Control
             if (keyState.v) moveSpeed /= (1.0f + deltaTime);

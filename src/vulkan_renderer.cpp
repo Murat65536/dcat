@@ -96,6 +96,7 @@ bool VulkanRenderer::createLogicalDevice() {
     queueCreateInfo.pQueuePriorities = &queuePriority;
 
     VkPhysicalDeviceFeatures deviceFeatures{};
+    deviceFeatures.fillModeNonSolid = VK_TRUE;
 
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -463,8 +464,19 @@ bool VulkanRenderer::createGraphicsPipeline() {
     pipelineInfo.renderPass = renderPass_;
     pipelineInfo.subpass = 0;
 
+    // Create Solid Pipeline
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     if (vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline_) != VK_SUCCESS) {
-        std::cerr << "Failed to create graphics pipeline" << std::endl;
+        std::cerr << "Failed to create graphics pipeline (solid)" << std::endl;
+        vkDestroyShaderModule(device_, fragShaderModule, nullptr);
+        vkDestroyShaderModule(device_, vertShaderModule, nullptr);
+        return false;
+    }
+
+    // Create Wireframe Pipeline
+    rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
+    if (vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &wireframePipeline_) != VK_SUCCESS) {
+        std::cerr << "Failed to create graphics pipeline (wireframe)" << std::endl;
         vkDestroyShaderModule(device_, fragShaderModule, nullptr);
         vkDestroyShaderModule(device_, vertShaderModule, nullptr);
         return false;
@@ -951,6 +963,10 @@ void VulkanRenderer::setLightDirection(const glm::vec3& direction) {
     normalizedLightDir_ = glm::normalize(direction);
 }
 
+void VulkanRenderer::setWireframeMode(bool enabled) {
+    wireframeMode_ = enabled;
+}
+
 void VulkanRenderer::resize(uint32_t width, uint32_t height) {
     vkDeviceWaitIdle(device_);
     
@@ -1065,7 +1081,7 @@ std::vector<uint8_t> VulkanRenderer::render(
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline_);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, wireframeMode_ ? wireframePipeline_ : graphicsPipeline_);
 
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -1179,6 +1195,7 @@ void VulkanRenderer::cleanup() {
     cleanupRenderTargets();
     
     if (graphicsPipeline_ != VK_NULL_HANDLE) vkDestroyPipeline(device_, graphicsPipeline_, nullptr);
+    if (wireframePipeline_ != VK_NULL_HANDLE) vkDestroyPipeline(device_, wireframePipeline_, nullptr);
     if (pipelineLayout_ != VK_NULL_HANDLE) vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
     if (renderPass_ != VK_NULL_HANDLE) vkDestroyRenderPass(device_, renderPass_, nullptr);
     if (descriptorSetLayout_ != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(device_, descriptorSetLayout_, nullptr);

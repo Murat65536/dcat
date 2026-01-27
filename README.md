@@ -63,7 +63,7 @@ make -j$(nproc)
 
 When `--fps-controls` is enabled:
 - `W/A/S/D` - Move forward/left/backward/right
-- Arrow keys - Look around
+- `I/J/K/L` - Look around
 - Space - Move up
 - Shift - Move down
 

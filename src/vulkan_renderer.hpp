@@ -35,6 +35,7 @@ public:
     bool initialize();
     void resize(uint32_t width, uint32_t height);
     void setLightDirection(const glm::vec3& direction);
+    void setWireframeMode(bool enabled);
     
     std::vector<uint8_t> render(
         const std::vector<Vertex>& vertices,
@@ -64,6 +65,8 @@ private:
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkRenderPass renderPass_ = VK_NULL_HANDLE;
     VkPipeline graphicsPipeline_ = VK_NULL_HANDLE;
+    VkPipeline wireframePipeline_ = VK_NULL_HANDLE;
+    bool wireframeMode_ = false;
     
     // Render targets
     VkImage colorImage_ = VK_NULL_HANDLE;

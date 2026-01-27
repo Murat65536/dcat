@@ -244,6 +244,7 @@ void InputManager::processEvents(KeyState& state) {
                     case KEY_LEFTCTRL:
                     case KEY_RIGHTCTRL: state.ctrl = pressed; break;
                     case KEY_Q: state.q = pressed; break;
+                    case KEY_M: state.m = pressed; break;
                     case KEY_V: state.v = pressed; break;
                     case KEY_B: state.b = pressed; break;
                     default: break;

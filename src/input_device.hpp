@@ -18,6 +18,7 @@ struct KeyState {
     bool shift = false;
     bool ctrl = false;
     bool q = false;
+    bool m = false;
     bool v = false;
     bool b = false;
     int mouse_dx = 0;
