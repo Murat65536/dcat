@@ -1,6 +1,5 @@
 #include "terminal.hpp"
 #include <iostream>
-#include <sstream>
 #include <cstring>
 #include <cerrno>
 #include <unistd.h>
@@ -10,13 +9,99 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sixel.h>
+#include <cstdio> // for snprintf
 
 static struct termios originalTermios;
 static bool rawModeEnabled = false;
 
 // Base64 encoding table
 static const char base64Chars[] = 
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+
+namespace {
+
+// Robust write helper to handle EINTR and partial writes
+inline void safe_write(const char* data, size_t size) {
+    size_t remaining = size;
+    while (remaining > 0) {
+        ssize_t written = ::write(STDOUT_FILENO, data, remaining);
+        if (written < 0) {
+            if (errno == EINTR) continue; // Interrupted system call, retry
+            break; // Error occurred
+        }
+        data += written;
+        remaining -= written;
+    }
+}
+
+// Lightweight wrapper for fast buffer writing
+class FastBuffer {
+public:
+    void ensureCapacity(size_t size) {
+        if (buffer_.capacity() < size) {
+            buffer_.reserve(size);
+        }
+        buffer_.resize(size);
+        ptr_ = buffer_.data();
+    }
+
+    void append(const char* str) {
+        while (*str) *ptr_++ = *str++;
+    }
+
+    void append(const char* str, size_t len) {
+        std::memcpy(ptr_, str, len);
+        ptr_ += len;
+    }
+
+    // Optimized integer to string conversion
+    void appendU8(uint8_t v) {
+        if (v >= 100) {
+            *ptr_++ = '0' + (v / 100);
+            v %= 100;
+            *ptr_++ = '0' + (v / 10);
+            *ptr_++ = '0' + (v % 10);
+        } else if (v >= 10) {
+            *ptr_++ = '0' + (v / 10);
+            *ptr_++ = '0' + (v % 10);
+        } else {
+            *ptr_++ = '0' + v;
+        }
+    }
+
+    void appendColorBlock(uint8_t rU, uint8_t gU, uint8_t bU, 
+                          uint8_t rL, uint8_t gL, uint8_t bL) {
+        // \x1b[38;2;R;G;B;48;2;r;g;bm▀
+        
+        // Foreground color
+        *ptr_++ = '\x1b'; *ptr_++ = '['; *ptr_++ = '3'; *ptr_++ = '8'; 
+        *ptr_++ = ';'; *ptr_++ = '2'; *ptr_++ = ';';
+        appendU8(rU); *ptr_++ = ';';
+        appendU8(gU); *ptr_++ = ';';
+        appendU8(bU);
+        
+        // Background color
+        *ptr_++ = ';'; *ptr_++ = '4'; *ptr_++ = '8'; 
+        *ptr_++ = ';'; *ptr_++ = '2'; *ptr_++ = ';';
+        appendU8(rL); *ptr_++ = ';';
+        appendU8(gL); *ptr_++ = ';';
+        appendU8(bL);
+        
+        // Character (upper half block)
+        *ptr_++ = 'm';
+        *ptr_++ = '\xE2'; *ptr_++ = '\x96'; *ptr_++ = '\x80';
+    }
+
+    void flush() {
+        safe_write(buffer_.data(), ptr_ - buffer_.data());
+    }
+
+private:
+    std::vector<char> buffer_;
+    char* ptr_ = nullptr;
+};
+
+} // namespace
 
 std::string base64Encode(const uint8_t* data, size_t length) {
     std::string result;
@@ -37,55 +122,58 @@ std::string base64Encode(const uint8_t* data, size_t length) {
 }
 
 void renderTerminal(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t height) {
-    std::ostringstream output;
-    output.str().reserve(width * (height / 2) * 28 + 100);
+    static FastBuffer fastBuffer;
+
+    // Estimate buffer size:
+    // Header + Footer: ~50 bytes
+    // Per block: ~45 bytes max
+    size_t estSize = 100 + (width * (height / 2) * 45);
+    fastBuffer.ensureCapacity(estSize);
     
-    output << "\x1b[?2026h";  // Begin synchronized update
-    output << "\x1b[H";       // Home cursor
+    // Header: Synchronized update start + Home cursor
+    const char* header = "\x1b[?2026h\x1b[H";
+    fastBuffer.append(header, 11); // strlen("\x1b[?2026h\x1b[H") is 11
     
-    size_t bufferLen = buffer.size();
+    const uint8_t* src = buffer.data();
     
     for (uint32_t y = 0; y < height; y += 2) {
+        const uint8_t* rowUpper = src + (y * width * 4);
+        const uint8_t* rowLower = src + ((y + 1) * width * 4);
+        bool hasLowerRow = (y + 1 < height);
+        
         for (uint32_t x = 0; x < width; x++) {
-            size_t idxUpper = (y * width + x) * 4;
-            size_t idxLower = ((y + 1) * width + x) * 4;
+            uint8_t rU = rowUpper[0], gU = rowUpper[1], bU = rowUpper[2];
+            rowUpper += 4;
             
-            uint8_t rUpper = 0, gUpper = 0, bUpper = 0;
-            if (idxUpper + 2 < bufferLen) {
-                rUpper = buffer[idxUpper];
-                gUpper = buffer[idxUpper + 1];
-                bUpper = buffer[idxUpper + 2];
+            uint8_t rL = 0, gL = 0, bL = 0;
+            if (hasLowerRow) {
+                rL = rowLower[0]; gL = rowLower[1]; bL = rowLower[2];
+                rowLower += 4;
             }
             
-            uint8_t rLower = 0, gLower = 0, bLower = 0;
-            if (idxLower + 2 < bufferLen && y + 1 < height) {
-                rLower = buffer[idxLower];
-                gLower = buffer[idxLower + 1];
-                bLower = buffer[idxLower + 2];
-            }
-            
-            output << "\x1b[38;2;" << (int)rUpper << ";" << (int)gUpper << ";" << (int)bUpper
-                   << ";48;2;" << (int)rLower << ";" << (int)gLower << ";" << (int)bLower << "m▀";
+            fastBuffer.appendColorBlock(rU, gU, bU, rL, gL, bL);
         }
     }
     
-    output << "\x1b[0m";      // Clear formatting
-    output << "\x1b[?2026l";  // End synchronized update
+    // Footer: Clear formatting + Synchronized update end
+    const char* footer = "\x1b[0m\x1b[?2026l";
+    fastBuffer.append(footer, 12); // strlen("\x1b[0m\x1b[?2026l") is 12
     
-    std::cout << output.str() << std::flush;
+    fastBuffer.flush();
 }
 
 static int sixelWrite(char* data, int size, void* priv) {
-    return static_cast<int>(fwrite(data, 1, size, reinterpret_cast<FILE*>(priv)));
+    safe_write(data, size);
+    return size;
 }
 
 void renderSixel(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t height) {
-    std::cout << "\x1b[H" << std::flush;
+    safe_write("\x1b[H", 3);
 
     sixel_output_t* output = nullptr;
     sixel_dither_t* dither = nullptr;
 
-    if (sixel_output_new(&output, sixelWrite, stdout, nullptr) != SIXEL_OK) {
+    if (sixel_output_new(&output, sixelWrite, nullptr, nullptr) != SIXEL_OK) {
         return;
     }
 
@@ -105,7 +193,6 @@ void renderSixel(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t he
 
     sixel_dither_unref(dither);
     sixel_output_unref(output);
-    fflush(stdout);
 }
 
 void renderKittyShm(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t height) {
@@ -145,8 +232,12 @@ void renderKittyShm(const std::vector<uint8_t>& buffer, uint32_t width, uint32_t
     close(fd);
     
     // Send Kitty graphics command
-    std::cout << "\x1b_Ga=T,f=32,s=" << width << ",v=" << height 
-              << ",t=s,i=1,C=1,q=1;" << encodedName << "\x1b\\" << std::flush;
+    char cmd[512];
+    int len = snprintf(cmd, sizeof(cmd), "\x1b_Ga=T,f=32,s=%u,v=%u,t=s,i=1,C=1,q=1;%s\x1b\\", 
+                      width, height, encodedName.c_str());
+    if (len > 0) {
+        safe_write(cmd, static_cast<size_t>(len));
+    }
 }
 
 std::pair<uint32_t, uint32_t> getTerminalSize() {
@@ -182,7 +273,7 @@ std::pair<uint32_t, uint32_t> calculateRenderDimensions(
 }
 
 void enableRawMode() {
-    if (rawModeEnabled) return;
+    if (rawModeEnabled) return; 
     
     tcgetattr(STDIN_FILENO, &originalTermios);
     struct termios raw = originalTermios;
@@ -200,25 +291,25 @@ void disableRawMode() {
 }
 
 void enterAlternateScreen() {
-    std::cout << "\x1b[?1049h" << std::flush;
+    safe_write("\x1b[?1049h", 8);
 }
 
 void exitAlternateScreen() {
-    std::cout << "\x1b[?1049l" << std::flush;
+    safe_write("\x1b[?1049l", 8);
 }
 
 void hideCursor() {
-    std::cout << "\x1b[?25l" << std::flush;
+    safe_write("\x1b[?25l", 6);
 }
 
 void showCursor() {
-    std::cout << "\x1b[?25h" << std::flush;
+    safe_write("\x1b[?25h", 6);
 }
 
 void enableFocusTracking() {
-    std::cout << "\x1b[?1004h" << std::flush;
+    safe_write("\x1b[?1004h", 8);
 }
 
 void disableFocusTracking() {
-    std::cout << "\x1b[?1004l" << std::flush;
+    safe_write("\x1b[?1004l", 8);
 }
