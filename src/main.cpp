@@ -269,6 +269,10 @@ int main(int argc, char* argv[]) {
                 g_running.store(false);
                 break;
             }
+
+            // Speed Control
+            if (keyState.v) moveSpeed /= (1.0f + deltaTime);
+            if (keyState.b) moveSpeed *= (1.0f + deltaTime);
             
             // Movement
             float speed = moveSpeed * deltaTime;
@@ -317,7 +321,8 @@ int main(int argc, char* argv[]) {
         // Render
         std::vector<uint8_t> framebuffer = renderer.render(
             vertices, indices, mvp, model,
-            diffuseTexture, normalTexture, !args.noLighting
+            diffuseTexture, normalTexture, !args.noLighting,
+            camera.position
         );
         
         // Output to terminal

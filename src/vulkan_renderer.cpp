@@ -1001,7 +1001,8 @@ std::vector<uint8_t> VulkanRenderer::render(
     const glm::mat4& model,
     const Texture& diffuseTexture,
     const Texture& normalTexture,
-    bool enableLighting
+    bool enableLighting,
+    const glm::vec3& cameraPos
 ) {
     // Update resources
     updateDiffuseTexture(diffuseTexture);
@@ -1023,6 +1024,10 @@ std::vector<uint8_t> VulkanRenderer::render(
     FragmentUniforms fragUniforms{};
     fragUniforms.lightDir = normalizedLightDir_;
     fragUniforms.enableLighting = enableLighting ? 1 : 0;
+    fragUniforms.cameraPos = cameraPos;
+    fragUniforms.fogStart = 5.0f;
+    fragUniforms.fogColor = glm::vec3(0.0f, 0.0f, 0.0f);
+    fragUniforms.fogEnd = 25.0f;
     
     vkMapMemory(device_, fragmentUniformBufferMemory_, 0, sizeof(fragUniforms), 0, &data);
     memcpy(data, &fragUniforms, sizeof(fragUniforms));

@@ -18,6 +18,10 @@ struct Uniforms {
 struct FragmentUniforms {
     glm::vec3 lightDir;
     uint32_t enableLighting;
+    glm::vec3 cameraPos;
+    float fogStart;
+    glm::vec3 fogColor;
+    float fogEnd;
 };
 
 class VulkanRenderer {
@@ -39,7 +43,8 @@ public:
         const glm::mat4& model,
         const Texture& diffuseTexture,
         const Texture& normalTexture,
-        bool enableLighting
+        bool enableLighting,
+        const glm::vec3& cameraPos
     );
     
 private:

@@ -15,6 +15,7 @@ layout(location = 0) out vec2 fragTexCoord;
 layout(location = 1) out vec3 fragWorldNormal;
 layout(location = 2) out vec3 fragWorldTangent;
 layout(location = 3) out vec3 fragWorldBitangent;
+layout(location = 4) out vec3 fragWorldPos;
 
 void main() {
     gl_Position = uniforms.mvp * vec4(inPosition, 1.0);
@@ -22,4 +23,5 @@ void main() {
     fragWorldNormal = (uniforms.model * vec4(inNormal, 0.0)).xyz;
     fragWorldTangent = (uniforms.model * vec4(inTangent, 0.0)).xyz;
     fragWorldBitangent = (uniforms.model * vec4(inBitangent, 0.0)).xyz;
+    fragWorldPos = (uniforms.model * vec4(inPosition, 1.0)).xyz;
 }

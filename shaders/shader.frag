@@ -6,12 +6,17 @@ layout(set = 0, binding = 2) uniform sampler2D normalTexture;
 layout(set = 0, binding = 3) uniform FragmentUniforms {
     vec3 lightDir;
     uint enableLighting;
+    vec3 cameraPos;
+    float fogStart;
+    vec3 fogColor;
+    float fogEnd;
 } fragUniforms;
 
 layout(location = 0) in vec2 fragTexCoord;
 layout(location = 1) in vec3 fragWorldNormal;
 layout(location = 2) in vec3 fragWorldTangent;
 layout(location = 3) in vec3 fragWorldBitangent;
+layout(location = 4) in vec3 fragWorldPos;
 
 layout(location = 0) out vec4 outColor;
 
@@ -45,6 +50,11 @@ void main() {
     totalIntensity = min(totalIntensity, 1.0);
 
     vec3 finalColor = diffuseColor.rgb * totalIntensity;
+
+    // Calculate fog
+    float dist = distance(fragWorldPos, fragUniforms.cameraPos);
+    float fogFactor = clamp((dist - fragUniforms.fogStart) / (fragUniforms.fogEnd - fragUniforms.fogStart), 0.0, 1.0);
+    finalColor = mix(finalColor, fragUniforms.fogColor, fogFactor);
 
     outColor = vec4(finalColor, 1.0);
 }

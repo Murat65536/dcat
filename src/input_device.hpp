@@ -57,6 +57,8 @@ struct KeyState {
     bool shift = false;
     bool ctrl = false;
     bool q = false;
+    bool v = false;
+    bool b = false;
     int mouse_dx = 0;
     int mouse_dy = 0;
 };
