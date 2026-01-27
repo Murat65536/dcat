@@ -34,10 +34,6 @@ struct DeviceInfo {
     std::string path;
 };
 
-// Helper to close fd when DeviceInfo goes out of scope if not moved? 
-// Actually, we'll just manage it manually or use a wrapper. 
-// For now, let's just be careful.
-
 unsigned long long ev_get_id(int fd) {
     unsigned short id[4];
     if (ioctl(fd, EVIOCGID, id) == 0) {
@@ -69,16 +65,10 @@ bool is_character_device(const std::string& path) {
 DeviceType classify_device(int fd) {
     unsigned long capabilities = ev_get_capabilities(fd);
     
-    // Keyboard: SYN, KEY, MSC:SCAN, LED, REP -> 0x120013
-    // But we might want to be more lenient or strict. 
-    // The original code checked for exact capability match + specific key.
-    
-    // Original: { 0x120013, KEY_ESC }
     if (capabilities == 0x120013 && ev_has_key(fd, KEY_ESC)) {
         return DEVICE_KEYBOARD;
     }
     
-    // Original: { 0x17, BTN_MOUSE }
     if (capabilities == 0x17 && ev_has_key(fd, BTN_MOUSE)) {
         return DEVICE_MOUSE;
     }
@@ -86,7 +76,7 @@ DeviceType classify_device(int fd) {
     return DEVICE_UNKNOWN;
 }
 
-} // anonymous namespace
+}
 
 InputManager::InputManager() : initialized(false) {}
 
@@ -113,7 +103,6 @@ bool InputManager::initialize(bool want_mice) {
     std::vector<DeviceInfo> found_keyboards;
     std::vector<DeviceInfo> found_mice;
 
-    // Scan /dev/input
     DIR* dir = opendir("/dev/input/");
     if (!dir) return false;
 
@@ -169,13 +158,10 @@ bool InputManager::initialize(bool want_mice) {
     }
 
     if (found_keyboards.empty()) {
-        // Clean up any mice we might have opened
         for (const auto& m : found_mice) close(m.fd);
         return false;
     }
 
-    // Populate poll_fds
-    // Keyboards first
     for (const auto& kb : found_keyboards) {
         struct pollfd pfd;
         pfd.fd = kb.fd;
@@ -185,7 +171,6 @@ bool InputManager::initialize(bool want_mice) {
     }
     num_keyboards = found_keyboards.size();
 
-    // Then mice
     for (const auto& m : found_mice) {
         struct pollfd pfd;
         pfd.fd = m.fd;
@@ -195,7 +180,6 @@ bool InputManager::initialize(bool want_mice) {
     }
     num_mice = found_mice.size();
 
-    // Make devices non-blocking
     for (auto& pfd : poll_fds) {
         int flags = fcntl(pfd.fd, F_GETFL);
         fcntl(pfd.fd, F_SETFL, flags | O_NONBLOCK);
@@ -215,11 +199,6 @@ void InputManager::processEvents(KeyState& state) {
     // Reset relative mouse movement
     state.mouse_dx = 0;
     state.mouse_dy = 0;
-
-    // Check for events (using poll with 0 timeout for non-blocking check)
-    // Actually, original code read directly. Since we set O_NONBLOCK, we can just read.
-    // But poll is nice to check availability.
-    // Original code: loop through keyboards, then mice.
     
     struct input_event ev;
 

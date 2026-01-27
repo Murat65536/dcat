@@ -9,7 +9,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sixel.h>
-#include <cstdio> // for snprintf
+#include <cstdio>
 
 static struct termios originalTermios;
 static bool rawModeEnabled = false;
@@ -20,7 +20,7 @@ static const char base64Chars[] =
 
 namespace {
 
-// Robust write helper to handle EINTR and partial writes
+// Helper to handle EINTR and partial writes
 inline void safe_write(const char* data, size_t size) {
     size_t remaining = size;
     while (remaining > 0) {
@@ -54,7 +54,7 @@ public:
         ptr_ += len;
     }
 
-    // Optimized integer to string conversion
+    // Optimized integer to string conversion since the numbers will only be up to 255
     void appendU8(uint8_t v) {
         if (v >= 100) {
             *ptr_++ = '0' + (v / 100);
@@ -127,7 +127,8 @@ void renderTerminal(const uint8_t* buffer, uint32_t width, uint32_t height) {
     // Estimate buffer size:
     // Header + Footer: ~50 bytes
     // Per block: ~45 bytes max
-    size_t estSize = 100 + (width * (height / 2) * 45);
+    // Use (height + 1) / 2 to account for odd heights
+    size_t estSize = 100 + (width * ((height + 1) / 2) * 45);
     fastBuffer.ensureCapacity(estSize);
     
     // Header: Synchronized update start + Home cursor
@@ -268,15 +269,15 @@ std::pair<uint32_t, uint32_t> getTerminalSizePixels() {
     return { DEFAULT_TERM_WIDTH, DEFAULT_TERM_HEIGHT };
 }
 
-void drawStatusBar(float fps) {
+void drawStatusBar(float fps, float speed, const glm::vec3& pos) {
     auto [cols, rows] = getTerminalSize();
     if (rows == 0) return;
 
-    char buffer[128];
+    char buffer[256];
     // Start sync update (\x1b[?2026h), Move to bottom row, clear line, print status, home cursor, End sync update (\x1b[?2026l)
     int len = snprintf(buffer, sizeof(buffer), 
-        "\x1b[?2026h\x1b[%d;1H\x1b[2K\x1b[7m STATUS: %.1f FPS \x1b[0m\x1b[H\x1b[?2026l", 
-        rows, fps);
+        "\x1b[?2026h\x1b[%d;1H\x1b[2K\x1b[7m FPS: %.1f | SPEED: %.2f | POS: %.2f, %.2f, %.2f \x1b[0m\x1b[H\x1b[?2026l", 
+        rows, fps, speed, pos.x, pos.y, pos.z);
     if (len > 0) {
         safe_write(buffer, static_cast<size_t>(len));
     }

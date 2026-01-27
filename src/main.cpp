@@ -350,7 +350,7 @@ int main(int argc, char* argv[]) {
         }
         
         if (args.showStatusBar) {
-            drawStatusBar(deltaTime > 0 ? 1.0f / deltaTime : 0.0f);
+            drawStatusBar(deltaTime > 0 ? 1.0f / deltaTime : 0.0f, moveSpeed, camera.position);
         }
         
         // Frame rate limiting
