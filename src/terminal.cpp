@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <sixel.h>
 #include <cstdio>
+#include <charconv>
+#include <string_view>
 
 static struct termios originalTermios;
 static bool rawModeEnabled = false;
@@ -44,39 +46,20 @@ public:
         ptr_ = buffer_.data();
     }
 
-    void append(const char* str) {
-        size_t len = strlen(str);
-        std::memcpy(ptr_, str, len);
-        ptr_ += len;
+    void append(std::string_view str) {
+        std::memcpy(ptr_, str.data(), str.size());
+        ptr_ += str.size();
     }
 
     // Optimized integer to string conversion since the numbers will only be up to 255
     void appendU8(uint8_t v) {
-        if (v >= 100) {
-            *ptr_++ = '0' + (v / 100);
-            v %= 100;
-            *ptr_++ = '0' + (v / 10);
-            *ptr_++ = '0' + (v % 10);
-        } else if (v >= 10) {
-            *ptr_++ = '0' + (v / 10);
-            *ptr_++ = '0' + (v % 10);
-        } else {
-            *ptr_++ = '0' + v;
-        }
+        ptr_ = std::to_chars(ptr_, ptr_ + 3, v).ptr;
     }
 
     void appendColorBlock(uint8_t rU, uint8_t gU, uint8_t bU, 
                           uint8_t rL, uint8_t gL, uint8_t bL) {
-        // \x1b[38;2;R;G;B;48;2;r;g;bm▀
-        
         // Foreground color
-        *ptr_++ = '\x1b';
-        *ptr_++ = '[';
-        *ptr_++ = '3';
-        *ptr_++ = '8'; 
-        *ptr_++ = ';';
-        *ptr_++ = '2';
-        *ptr_++ = ';';
+        append("\x1b[38;2;");
         appendU8(rU);
         *ptr_++ = ';';
         appendU8(gU);
@@ -84,12 +67,7 @@ public:
         appendU8(bU);
         
         // Background color
-        *ptr_++ = ';';
-        *ptr_++ = '4';
-        *ptr_++ = '8'; 
-        *ptr_++ = ';';
-        *ptr_++ = '2';
-        *ptr_++ = ';';
+        append(";48;2;");
         appendU8(rL);
         *ptr_++ = ';';
         appendU8(gL);
@@ -97,8 +75,7 @@ public:
         appendU8(bL);
         
         // Character (upper half block)
-        *ptr_++ = 'm';
-        *ptr_++ = '\xE2'; *ptr_++ = '\x96'; *ptr_++ = '\x80';
+        append("m\xE2\x96\x80");
     }
 
     void flush() {
@@ -110,7 +87,7 @@ private:
     char* ptr_ = nullptr;
 };
 
-} // namespace
+}
 
 std::string base64Encode(const uint8_t* data, size_t length) {
     std::string result;
