@@ -1086,9 +1086,9 @@ const uint8_t* VulkanRenderer::render(
     fragUniforms.lightDir = normalizedLightDir_;
     fragUniforms.enableLighting = enableLighting ? 1 : 0;
     fragUniforms.cameraPos = cameraPos;
-    fragUniforms.fogStart = 0.0f;
+    fragUniforms.fogStart = 5.0f;
     fragUniforms.fogColor = glm::vec3(0.0f, 0.0f, 0.0f);
-    fragUniforms.fogEnd = 5.0f;
+    fragUniforms.fogEnd = 10.0f;
     
     vkMapMemory(device_, fragmentUniformBufferMemory_, 0, sizeof(fragUniforms), 0, &data);
     memcpy(data, &fragUniforms, sizeof(fragUniforms));
