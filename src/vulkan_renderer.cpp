@@ -265,28 +265,18 @@ std::vector<char> VulkanRenderer::readShaderFile(const std::string& filename) {
         }
     }
     
-    // Try multiple paths for shader files
-    std::vector<std::string> paths = {
-        filename,
-        "shaders/" + filename,
-        "../shaders/" + filename,
-        exePath + "shaders/" + filename,
-        exePath + "../shaders/" + filename,
-        "/usr/share/dcat/shaders/" + filename
-    };
+    std::string path = exePath + "shaders/" + filename;
+    std::ifstream file(path, std::ios::ate | std::ios::binary);
     
-    for (const auto& path : paths) {
-        std::ifstream file(path, std::ios::ate | std::ios::binary);
-        if (file.is_open()) {
-            size_t fileSize = static_cast<size_t>(file.tellg());
-            std::vector<char> buffer(fileSize);
-            file.seekg(0);
-            file.read(buffer.data(), fileSize);
-            return buffer;
-        }
+    if (file.is_open()) {
+        size_t fileSize = static_cast<size_t>(file.tellg());
+        std::vector<char> buffer(fileSize);
+        file.seekg(0);
+        file.read(buffer.data(), fileSize);
+        return buffer;
     }
     
-    std::cerr << "Failed to open shader file: " << filename << std::endl;
+    std::cerr << "Failed to open shader file: " << path << std::endl;
     return {};
 }
 
@@ -624,23 +614,12 @@ bool VulkanRenderer::createStagingBuffer() {
     return true;
 }
 
-// ... in resize ...
-
-
-
-
-// ... in render ...
-
-
-
 void VulkanRenderer::cleanup() {
     if (device_ == VK_NULL_HANDLE) return;
     
     vkDeviceWaitIdle(device_);
     
     if (sampler_ != VK_NULL_HANDLE) vkDestroySampler(device_, sampler_, nullptr);
-    
-    // ...
     
     if (stagingBuffer_ != VK_NULL_HANDLE) {
         if (mappedData_) {
@@ -650,8 +629,6 @@ void VulkanRenderer::cleanup() {
         vkDestroyBuffer(device_, stagingBuffer_, nullptr);
         vkFreeMemory(device_, stagingBufferMemory_, nullptr);
     }
-    
-    // ...
 }
 
 bool VulkanRenderer::createUniformBuffers() {

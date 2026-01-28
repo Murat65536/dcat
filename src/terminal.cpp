@@ -34,7 +34,6 @@ inline void safe_write(const char* data, size_t size) {
     }
 }
 
-// Lightweight wrapper for fast buffer writing
 class FastBuffer {
 public:
     void ensureCapacity(size_t size) {
@@ -46,10 +45,7 @@ public:
     }
 
     void append(const char* str) {
-        while (*str) *ptr_++ = *str++;
-    }
-
-    void append(const char* str, size_t len) {
+        size_t len = strlen(str);
         std::memcpy(ptr_, str, len);
         ptr_ += len;
     }
@@ -74,17 +70,30 @@ public:
         // \x1b[38;2;R;G;B;48;2;r;g;bm▀
         
         // Foreground color
-        *ptr_++ = '\x1b'; *ptr_++ = '['; *ptr_++ = '3'; *ptr_++ = '8'; 
-        *ptr_++ = ';'; *ptr_++ = '2'; *ptr_++ = ';';
-        appendU8(rU); *ptr_++ = ';';
-        appendU8(gU); *ptr_++ = ';';
+        *ptr_++ = '\x1b';
+        *ptr_++ = '[';
+        *ptr_++ = '3';
+        *ptr_++ = '8'; 
+        *ptr_++ = ';';
+        *ptr_++ = '2';
+        *ptr_++ = ';';
+        appendU8(rU);
+        *ptr_++ = ';';
+        appendU8(gU);
+        *ptr_++ = ';';
         appendU8(bU);
         
         // Background color
-        *ptr_++ = ';'; *ptr_++ = '4'; *ptr_++ = '8'; 
-        *ptr_++ = ';'; *ptr_++ = '2'; *ptr_++ = ';';
-        appendU8(rL); *ptr_++ = ';';
-        appendU8(gL); *ptr_++ = ';';
+        *ptr_++ = ';';
+        *ptr_++ = '4';
+        *ptr_++ = '8'; 
+        *ptr_++ = ';';
+        *ptr_++ = '2';
+        *ptr_++ = ';';
+        appendU8(rL);
+        *ptr_++ = ';';
+        appendU8(gL);
+        *ptr_++ = ';';
         appendU8(bL);
         
         // Character (upper half block)
@@ -133,7 +142,7 @@ void renderTerminal(const uint8_t* buffer, uint32_t width, uint32_t height) {
     
     // Header: Synchronized update start + Home cursor
     const char* header = "\x1b[?2026h\x1b[H";
-    fastBuffer.append(header, 11); // strlen("\x1b[?2026h\x1b[H") is 11
+    fastBuffer.append(header);
 
     // Copy to local buffer to avoid slow reads from uncached (Vulkan mapped) memory
     // static to avoid reallocation
@@ -167,7 +176,7 @@ void renderTerminal(const uint8_t* buffer, uint32_t width, uint32_t height) {
     
     // Footer: Clear formatting + Synchronized update end
     const char* footer = "\x1b[0m\x1b[?2026l";
-    fastBuffer.append(footer, 12); // strlen("\x1b[0m\x1b[?2026l") is 12
+    fastBuffer.append(footer);
     
     fastBuffer.flush();
 }
