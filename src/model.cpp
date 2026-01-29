@@ -39,7 +39,7 @@ CameraSetup calculateCameraSetup(const std::vector<Vertex>& vertices) {
     return { position, center, diagonal };
 }
 
-bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices) {
+bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, bool& outHasUVs) {
     Assimp::Importer importer;
     
     const aiScene* scene = importer.ReadFile(path,
@@ -59,6 +59,7 @@ bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vect
     }
 
     const aiMesh* mesh = scene->mMeshes[0];
+    outHasUVs = mesh->HasTextureCoords(0);
     
     vertices.reserve(mesh->mNumVertices);
     

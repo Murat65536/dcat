@@ -10,6 +10,7 @@ layout(set = 0, binding = 3) uniform FragmentUniforms {
     float fogStart;
     vec3 fogColor;
     float fogEnd;
+    uint useTriplanarMapping;
 } fragUniforms;
 
 layout(location = 0) in vec2 fragTexCoord;
@@ -20,8 +21,28 @@ layout(location = 4) in vec3 fragWorldPos;
 
 layout(location = 0) out vec4 outColor;
 
+vec3 getTriplanarColor(vec3 worldPos, vec3 normal) {
+    vec3 blendWeights = abs(normal);
+    // Tighten the blending to reduce blurring
+    blendWeights = pow(blendWeights, vec3(4.0));
+    blendWeights = blendWeights / (blendWeights.x + blendWeights.y + blendWeights.z);
+    
+    vec3 colorX = texture(diffuseTexture, worldPos.zy).rgb;
+    vec3 colorY = texture(diffuseTexture, worldPos.xz).rgb;
+    vec3 colorZ = texture(diffuseTexture, worldPos.xy).rgb;
+    
+    return colorX * blendWeights.x + colorY * blendWeights.y + colorZ * blendWeights.z;
+}
+
 void main() {
-    vec4 diffuseColor = texture(diffuseTexture, fragTexCoord);
+    vec4 diffuseColor;
+    
+    if (fragUniforms.useTriplanarMapping != 0u) {
+        vec3 triplanar = getTriplanarColor(fragWorldPos, normalize(fragWorldNormal));
+        diffuseColor = vec4(triplanar, 1.0);
+    } else {
+        diffuseColor = texture(diffuseTexture, fragTexCoord);
+    }
     
     if (fragUniforms.enableLighting == 0u) {
         outColor = vec4(diffuseColor.rgb, 1.0);

@@ -22,6 +22,7 @@ struct FragmentUniforms {
     float fogStart;
     glm::vec3 fogColor;
     float fogEnd;
+    uint32_t useTriplanarMapping;
 };
 
 class VulkanRenderer {
@@ -47,7 +48,8 @@ public:
         const Texture& diffuseTexture,
         const Texture& normalTexture,
         bool enableLighting,
-        const glm::vec3& cameraPos
+        const glm::vec3& cameraPos,
+        bool useTriplanarMapping = false
     );
 
     size_t getFrameSize() const { return width_ * height_ * 4; }

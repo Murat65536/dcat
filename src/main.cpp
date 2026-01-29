@@ -139,7 +139,8 @@ int main(int argc, char* argv[]) {
     // Load model
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    if (!loadModel(args.modelPath, vertices, indices)) {
+    bool hasUVs = false;
+    if (!loadModel(args.modelPath, vertices, indices, hasUVs)) {
         std::cerr << "Failed to load model: " << args.modelPath << std::endl;
         disableFocusTracking();
         return 1;
@@ -337,7 +338,8 @@ int main(int argc, char* argv[]) {
         const uint8_t* framebuffer = renderer.render(
             vertices, indices, mvp, model,
             diffuseTexture, normalTexture, !args.noLighting,
-            camera.position
+            camera.position,
+            !hasUVs
         );
         
         // Output to terminal

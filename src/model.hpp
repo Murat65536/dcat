@@ -19,4 +19,4 @@ struct CameraSetup {
 };
 
 CameraSetup calculateCameraSetup(const std::vector<Vertex>& vertices);
-bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices);
+bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, bool& outHasUVs);

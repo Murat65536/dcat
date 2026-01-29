@@ -1090,7 +1090,8 @@ const uint8_t* VulkanRenderer::render(
     const Texture& diffuseTexture,
     const Texture& normalTexture,
     bool enableLighting,
-    const glm::vec3& cameraPos
+    const glm::vec3& cameraPos,
+    bool useTriplanarMapping
 ) {
     vkWaitForFences(device_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
 
@@ -1171,6 +1172,7 @@ const uint8_t* VulkanRenderer::render(
     fragUniforms.fogStart = 5.0f;
     fragUniforms.fogColor = glm::vec3(0.0f, 0.0f, 0.0f);
     fragUniforms.fogEnd = 10.0f;
+    fragUniforms.useTriplanarMapping = useTriplanarMapping ? 1 : 0;
     memcpy(fragmentUniformBuffersMapped_[currentFrame_], &fragUniforms, sizeof(FragmentUniforms));
 
     // Reset fence
