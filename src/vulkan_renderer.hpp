@@ -53,6 +53,9 @@ public:
     size_t getFrameSize() const { return width_ * height_ * 4; }
     
 private:
+    static const int MAX_FRAMES_IN_FLIGHT = 2;
+    uint32_t currentFrame_ = 0;
+
     uint32_t width_;
     uint32_t height_;
     glm::vec3 normalizedLightDir_;
@@ -72,6 +75,10 @@ private:
     VkPipeline wireframePipeline_ = VK_NULL_HANDLE;
     bool wireframeMode_ = false;
     
+    // Command Buffers and Sync Objects
+    std::vector<VkCommandBuffer> commandBuffers_;
+    std::vector<VkFence> inFlightFences_;
+
     // Render targets
     VkImage colorImage_ = VK_NULL_HANDLE;
     VkDeviceMemory colorImageMemory_ = VK_NULL_HANDLE;
@@ -83,16 +90,22 @@ private:
     
     VkFramebuffer framebuffer_ = VK_NULL_HANDLE;
     
-    // Staging buffer for readback
-    VkBuffer stagingBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory stagingBufferMemory_ = VK_NULL_HANDLE;
-    void* mappedData_ = nullptr;
+    // Staging buffers for readback (per frame)
+    std::vector<VkBuffer> stagingBuffers_;
+    std::vector<VkDeviceMemory> stagingBufferMemories_;
+    std::vector<void*> mappedDatas_;
     
-    // Uniform buffers
-    VkBuffer uniformBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory uniformBufferMemory_ = VK_NULL_HANDLE;
-    VkBuffer fragmentUniformBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory fragmentUniformBufferMemory_ = VK_NULL_HANDLE;
+    // Uniform buffers (per frame)
+    std::vector<VkBuffer> uniformBuffers_;
+    std::vector<VkDeviceMemory> uniformBufferMemories_;
+    std::vector<void*> uniformBuffersMapped_;
+
+    std::vector<VkBuffer> fragmentUniformBuffers_;
+    std::vector<VkDeviceMemory> fragmentUniformBufferMemories_;
+    std::vector<void*> fragmentUniformBuffersMapped_;
+
+    // Per-frame Descriptor Sets
+    std::vector<VkDescriptorSet> descriptorSets_;
     
     // Textures
     VkImage diffuseImage_ = VK_NULL_HANDLE;
@@ -108,7 +121,6 @@ private:
     uint32_t cachedNormalHeight_ = 0;
     
     VkSampler sampler_ = VK_NULL_HANDLE;
-    VkDescriptorSet descriptorSet_ = VK_NULL_HANDLE;
     
     // Cached vertex/index buffers
     VkBuffer vertexBuffer_ = VK_NULL_HANDLE;
@@ -124,6 +136,8 @@ private:
     bool selectPhysicalDevice();
     bool createLogicalDevice();
     bool createCommandPool();
+    bool createCommandBuffers();
+    bool createSyncObjects();
     bool createDescriptorPool();
     bool createDescriptorSetLayout();
     bool createPipelineLayout();
@@ -131,8 +145,9 @@ private:
     bool createGraphicsPipeline();
     bool createRenderTargets();
     bool createFramebuffer();
-    bool createStagingBuffer();
+    bool createStagingBuffers();
     bool createUniformBuffers();
+    bool createDescriptorSets();
     bool createSampler();
     
     void cleanupRenderTargets();
