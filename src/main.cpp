@@ -28,6 +28,7 @@ struct Args {
     int width = -1;
     int height = -1;
     float cameraDistance = -1.0f;
+    int targetFps = 60;
     bool useSixel = false;
     bool useKitty = false;
     bool noLighting = false;
@@ -57,6 +58,7 @@ std::vector<Option> defineOptions(Args& args) {
         {"-W", "--width", "WIDTH", "renderer width (defaults to terminal width)", [&](const char* v) { args.width = std::stoi(v); }},
         {"-H", "--height", "HEIGHT", "renderer height (defaults to terminal height)", [&](const char* v) { args.height = std::stoi(v); }},
         {"", "--camera-distance", "DIST", "camera distance from origin", [&](const char* v) { args.cameraDistance = std::stof(v); }},
+        {"-f", "--fps", "FPS", "target frames per second (default: 60)", [&](const char* v) { args.targetFps = std::stoi(v); }},
         {"-S", "--sixel", "", "enable Sixel graphics mode", [&](const char*) { args.useSixel = true; }},
         {"-K", "--kitty", "", "enable Kitty graphics protocol mode", [&](const char*) { args.useKitty = true; }},
         {"", "--no-lighting", "", "disable lighting calculations", [&](const char*) { args.noLighting = true; }},
@@ -211,8 +213,7 @@ int main(int argc, char* argv[]) {
     constexpr float MODEL_ROTATION_SPEED = 0.6f;
     constexpr float MOVE_SPEED_BASE = 0.5f;
     constexpr float ROTATION_SENSITIVITY = 2.0f;
-    constexpr int TARGET_FPS = 60;
-    constexpr auto TARGET_FRAME_TIME = std::chrono::microseconds(1000000 / TARGET_FPS);
+    const auto TARGET_FRAME_TIME = std::chrono::microseconds(1000000 / args.targetFps);
     
     // Normalize movement speed based on target size
     float moveSpeed = MOVE_SPEED_BASE * TARGET_SIZE;
