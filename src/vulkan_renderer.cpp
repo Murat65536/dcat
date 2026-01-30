@@ -880,9 +880,15 @@ void VulkanRenderer::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t 
 }
 
 void VulkanRenderer::updateDiffuseTexture(const Texture& texture) {
-    if (cachedDiffuseWidth_ == texture.width && cachedDiffuseHeight_ == texture.height && diffuseImage_ != VK_NULL_HANDLE) {
+    if (cachedDiffuseWidth_ == texture.width && 
+        cachedDiffuseHeight_ == texture.height && 
+        cachedDiffuseDataPtr_ == texture.data.data() && 
+        diffuseImage_ != VK_NULL_HANDLE) {
         // Just update the data
-    } else {
+        return;
+    }
+
+    if (cachedDiffuseWidth_ != texture.width || cachedDiffuseHeight_ != texture.height || diffuseImage_ == VK_NULL_HANDLE) {
         // Recreate texture
         if (diffuseImageView_ != VK_NULL_HANDLE) {
             vkDestroyImageView(device_, diffuseImageView_, nullptr);
@@ -930,12 +936,20 @@ void VulkanRenderer::updateDiffuseTexture(const Texture& texture) {
 
     vkDestroyBuffer(device_, stagingBuf, nullptr);
     vkFreeMemory(device_, stagingBufMem, nullptr);
+    
+    cachedDiffuseDataPtr_ = texture.data.data();
 }
 
 void VulkanRenderer::updateNormalTexture(const Texture& texture) {
-    if (cachedNormalWidth_ == texture.width && cachedNormalHeight_ == texture.height && normalImage_ != VK_NULL_HANDLE) {
+    if (cachedNormalWidth_ == texture.width && 
+        cachedNormalHeight_ == texture.height && 
+        cachedNormalDataPtr_ == texture.data.data() &&
+        normalImage_ != VK_NULL_HANDLE) {
         // Just update the data
-    } else {
+        return;
+    }
+
+    if (cachedNormalWidth_ != texture.width || cachedNormalHeight_ != texture.height || normalImage_ == VK_NULL_HANDLE) {
         // Recreate texture
         if (normalImageView_ != VK_NULL_HANDLE) {
             vkDestroyImageView(device_, normalImageView_, nullptr);
@@ -983,10 +997,18 @@ void VulkanRenderer::updateNormalTexture(const Texture& texture) {
 
     vkDestroyBuffer(device_, stagingBuf, nullptr);
     vkFreeMemory(device_, stagingBufMem, nullptr);
+    
+    cachedNormalDataPtr_ = texture.data.data();
 }
 
 void VulkanRenderer::updateVertexBuffer(const std::vector<Vertex>& vertices) {
     VkDeviceSize bufferSize = sizeof(Vertex) * vertices.size();
+    
+    if (cachedVertexCount_ == vertices.size() && 
+        cachedVertexDataPtr_ == vertices.data() &&
+        vertexBuffer_ != VK_NULL_HANDLE) {
+        return;
+    }
     
     if (cachedVertexCount_ != vertices.size()) {
         if (vertexBuffer_ != VK_NULL_HANDLE) {
@@ -1003,10 +1025,18 @@ void VulkanRenderer::updateVertexBuffer(const std::vector<Vertex>& vertices) {
     vkMapMemory(device_, vertexBufferMemory_, 0, bufferSize, 0, &data);
     memcpy(data, vertices.data(), bufferSize);
     vkUnmapMemory(device_, vertexBufferMemory_);
+    
+    cachedVertexDataPtr_ = vertices.data();
 }
 
 void VulkanRenderer::updateIndexBuffer(const std::vector<uint32_t>& indices) {
     VkDeviceSize bufferSize = sizeof(uint32_t) * indices.size();
+    
+    if (cachedIndexCount_ == indices.size() && 
+        cachedIndexDataPtr_ == indices.data() &&
+        indexBuffer_ != VK_NULL_HANDLE) {
+        return;
+    }
     
     if (cachedIndexCount_ != indices.size()) {
         if (indexBuffer_ != VK_NULL_HANDLE) {
@@ -1023,6 +1053,8 @@ void VulkanRenderer::updateIndexBuffer(const std::vector<uint32_t>& indices) {
     vkMapMemory(device_, indexBufferMemory_, 0, bufferSize, 0, &data);
     memcpy(data, indices.data(), bufferSize);
     vkUnmapMemory(device_, indexBufferMemory_);
+    
+    cachedIndexDataPtr_ = indices.data();
 }
 
 void VulkanRenderer::setLightDirection(const glm::vec3& direction) {

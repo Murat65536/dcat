@@ -132,6 +132,12 @@ private:
     VkBuffer indexBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory indexBufferMemory_ = VK_NULL_HANDLE;
     size_t cachedIndexCount_ = 0;
+
+    // Cached pointers for data
+    const void* cachedVertexDataPtr_ = nullptr;
+    const void* cachedIndexDataPtr_ = nullptr;
+    const void* cachedDiffuseDataPtr_ = nullptr;
+    const void* cachedNormalDataPtr_ = nullptr;
     
     // Helper functions
     bool createInstance();
