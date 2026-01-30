@@ -252,6 +252,8 @@ bool VulkanRenderer::createRenderPass() {
 }
 
 std::vector<char> VulkanRenderer::readShaderFile(const std::string& filename) {
+    std::vector<std::string> searchPaths;
+    
     // Get executable directory
     std::string exePath;
     char buf[4096];
@@ -264,19 +266,40 @@ std::vector<char> VulkanRenderer::readShaderFile(const std::string& filename) {
             exePath = exePath.substr(0, lastSlash + 1);
         }
     }
-    
-    std::string path = exePath + "shaders/" + filename;
-    std::ifstream file(path, std::ios::ate | std::ios::binary);
-    
-    if (file.is_open()) {
-        size_t fileSize = static_cast<size_t>(file.tellg());
-        std::vector<char> buffer(fileSize);
-        file.seekg(0);
-        file.read(buffer.data(), fileSize);
-        return buffer;
+
+    // Add search paths
+    // Install location relative to binary (e.g. /usr/bin/../share/dcat/shaders/)
+    if (!exePath.empty()) {
+        searchPaths.push_back(exePath + "../share/dcat/shaders/");
+    }
+    // Standard system locations
+    searchPaths.push_back("/usr/local/share/dcat/shaders/");
+    searchPaths.push_back("/usr/share/dcat/shaders/");
+    // Current working directory (for development)
+    searchPaths.push_back("./shaders/");
+    // Executable directory (for local builds)
+    if (!exePath.empty()) {
+        searchPaths.push_back(exePath + "shaders/");
+    }
+
+    for (const auto& basePath : searchPaths) {
+        std::string path = basePath + filename;
+        std::ifstream file(path, std::ios::ate | std::ios::binary);
+        
+        if (file.is_open()) {
+            size_t fileSize = static_cast<size_t>(file.tellg());
+            std::vector<char> buffer(fileSize);
+            file.seekg(0);
+            file.read(buffer.data(), fileSize);
+            return buffer;
+        }
     }
     
-    std::cerr << "Failed to open shader file: " << path << std::endl;
+    std::cerr << "Failed to find shader file: " << filename << std::endl;
+    std::cerr << "Searched in:" << std::endl;
+    for (const auto& path : searchPaths) {
+        std::cerr << "  " << path << std::endl;
+    }
     return {};
 }
 
