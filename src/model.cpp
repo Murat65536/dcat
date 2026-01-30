@@ -5,6 +5,8 @@
 #include <limits>
 #include <cmath>
 #include <iostream>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 CameraSetup calculateCameraSetup(const std::vector<Vertex>& vertices) {
     if (vertices.empty()) {
@@ -39,13 +41,87 @@ CameraSetup calculateCameraSetup(const std::vector<Vertex>& vertices) {
     return { position, center, diagonal };
 }
 
+static glm::mat4 aiMatrix4x4ToGlm(const aiMatrix4x4& from) {
+    glm::mat4 to;
+    to[0][0] = from.a1; to[1][0] = from.a2; to[2][0] = from.a3; to[3][0] = from.a4;
+    to[0][1] = from.b1; to[1][1] = from.b2; to[2][1] = from.b3; to[3][1] = from.b4;
+    to[0][2] = from.c1; to[1][2] = from.c2; to[2][2] = from.c3; to[3][2] = from.c4;
+    to[0][3] = from.d1; to[1][3] = from.d2; to[2][3] = from.d3; to[3][3] = from.d4;
+    return to;
+}
+
+static void processNode(aiNode* node, const aiScene* scene, const glm::mat4& parentTransform,
+                        std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, bool& outHasUVs) {
+    glm::mat4 nodeTransform = parentTransform * aiMatrix4x4ToGlm(node->mTransformation);
+
+    for (unsigned int i = 0; i < node->mNumMeshes; i++) {
+        aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
+        uint32_t baseIndex = static_cast<uint32_t>(vertices.size());
+
+        if (mesh->HasTextureCoords(0)) {
+            outHasUVs = true;
+        }
+
+        // Process vertices
+        for (unsigned int j = 0; j < mesh->mNumVertices; j++) {
+            Vertex vertex{};
+            
+            // Apply transformation
+            glm::vec4 pos = nodeTransform * glm::vec4(mesh->mVertices[j].x, mesh->mVertices[j].y, mesh->mVertices[j].z, 1.0f);
+            vertex.position = glm::vec3(pos);
+            
+            if (mesh->HasTextureCoords(0)) {
+                vertex.texcoord = glm::vec2(
+                    mesh->mTextureCoords[0][j].x,
+                    1.0f - mesh->mTextureCoords[0][j].y
+                );
+            } else {
+                vertex.texcoord = glm::vec2(0.0f, 0.0f);
+            }
+            
+            // Transform normal, tangent, bitangent (using normal matrix)
+            glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(nodeTransform)));
+            
+            if (mesh->HasNormals()) {
+                vertex.normal = glm::normalize(normalMatrix * glm::vec3(mesh->mNormals[j].x, mesh->mNormals[j].y, mesh->mNormals[j].z));
+            } else {
+                vertex.normal = glm::vec3(0.0f, 1.0f, 0.0f);
+            }
+            
+            if (mesh->HasTangentsAndBitangents()) {
+                vertex.tangent = glm::normalize(normalMatrix * glm::vec3(mesh->mTangents[j].x, mesh->mTangents[j].y, mesh->mTangents[j].z));
+                vertex.bitangent = glm::normalize(normalMatrix * glm::vec3(mesh->mBitangents[j].x, mesh->mBitangents[j].y, mesh->mBitangents[j].z));
+            } else {
+                vertex.tangent = glm::vec3(1.0f, 0.0f, 0.0f);
+                vertex.bitangent = glm::vec3(0.0f, 0.0f, 1.0f);
+            }
+            
+            vertices.push_back(vertex);
+        }
+
+        // Process indices
+        for (unsigned int j = 0; j < mesh->mNumFaces; j++) {
+            aiFace face = mesh->mFaces[j];
+            for (unsigned int k = 0; k < face.mNumIndices; k++) {
+                indices.push_back(baseIndex + face.mIndices[k]);
+            }
+        }
+    }
+
+    for (unsigned int i = 0; i < node->mNumChildren; i++) {
+        processNode(node->mChildren[i], scene, nodeTransform, vertices, indices, outHasUVs);
+    }
+}
+
 bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, bool& outHasUVs) {
     Assimp::Importer importer;
     
     const aiScene* scene = importer.ReadFile(path,
         aiProcess_Triangulate |
         aiProcess_GenNormals |
-        aiProcess_CalcTangentSpace
+        aiProcess_CalcTangentSpace |
+        aiProcess_JoinIdenticalVertices |
+        aiProcess_SortByPType
     );
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
@@ -53,69 +129,12 @@ bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vect
         return false;
     }
 
-    if (scene->mNumMeshes == 0) {
-        std::cerr << "No meshes found in model file" << std::endl;
-        return false;
-    }
+    outHasUVs = false;
+    vertices.clear();
+    indices.clear();
 
-    const aiMesh* mesh = scene->mMeshes[0];
-    outHasUVs = mesh->HasTextureCoords(0);
+    processNode(scene->mRootNode, scene, glm::mat4(1.0f), vertices, indices, outHasUVs);
     
-    vertices.reserve(mesh->mNumVertices);
-    
-    for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
-        Vertex vertex{};
-        
-        vertex.position = glm::vec3(
-            mesh->mVertices[i].x,
-            mesh->mVertices[i].y,
-            mesh->mVertices[i].z
-        );
-        
-        if (mesh->HasTextureCoords(0)) {
-            vertex.texcoord = glm::vec2(
-                mesh->mTextureCoords[0][i].x,
-                1.0f - mesh->mTextureCoords[0][i].y
-            );
-        } else {
-            vertex.texcoord = glm::vec2(0.0f, 0.0f);
-        }
-        
-        if (mesh->HasNormals()) {
-            vertex.normal = glm::vec3(
-                mesh->mNormals[i].x,
-                mesh->mNormals[i].y,
-                mesh->mNormals[i].z
-            );
-        } else {
-            vertex.normal = glm::vec3(0.0f, 1.0f, 0.0f);
-        }
-        
-        if (mesh->HasTangentsAndBitangents()) {
-            vertex.tangent = glm::vec3(
-                mesh->mTangents[i].x,
-                mesh->mTangents[i].y,
-                mesh->mTangents[i].z
-            );
-            vertex.bitangent = glm::vec3(
-                mesh->mBitangents[i].x,
-                mesh->mBitangents[i].y,
-                mesh->mBitangents[i].z
-            );
-        } else {
-            vertex.tangent = glm::vec3(1.0f, 0.0f, 0.0f);
-            vertex.bitangent = glm::vec3(0.0f, 0.0f, 1.0f);
-        }
-        
-        vertices.push_back(vertex);
-    }
-    
-    for (unsigned int i = 0; i < mesh->mNumFaces; i++) {
-        const aiFace& face = mesh->mFaces[i];
-        for (unsigned int j = 0; j < face.mNumIndices; j++) {
-            indices.push_back(face.mIndices[j]);
-        }
-    }
-    
-    return true;
+    return !vertices.empty();
 }
+
