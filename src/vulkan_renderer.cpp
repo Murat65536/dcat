@@ -1310,16 +1310,20 @@ const uint8_t* VulkanRenderer::render(
 
     vkQueueSubmit(graphicsQueue_, 1, &submitInfo, inFlightFences_[currentFrame_]);
 
-    uint32_t resultFrame = (currentFrame_ + 1) % MAX_FRAMES_IN_FLIGHT;
-    currentFrame_ = (currentFrame_ + 1) % MAX_FRAMES_IN_FLIGHT;
+    // Wait for the frame to finish so we can read it back immediately
+    vkWaitForFences(device_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
 
     VkMappedMemoryRange range{};
     range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-    range.memory = stagingBufferMemories_[resultFrame];
+    range.memory = stagingBufferMemories_[currentFrame_];
     range.offset = 0;
     range.size = VK_WHOLE_SIZE;
     vkInvalidateMappedMemoryRanges(device_, 1, &range);
     
-    return static_cast<const uint8_t*>(mappedDatas_[resultFrame]);
+    const uint8_t* resultData = static_cast<const uint8_t*>(mappedDatas_[currentFrame_]);
+    
+    currentFrame_ = (currentFrame_ + 1) % MAX_FRAMES_IN_FLIGHT;
+    
+    return resultData;
 }
 
