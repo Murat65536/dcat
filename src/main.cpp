@@ -176,15 +176,27 @@ int main(int argc, char* argv[]) {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
     bool hasUVs = false;
-    if (!loadModel(args.modelPath, vertices, indices, hasUVs)) {
+    MaterialInfo materialInfo;
+    if (!loadModel(args.modelPath, vertices, indices, hasUVs, materialInfo)) {
         std::cerr << "Failed to load model: " << args.modelPath << std::endl;
         disableFocusTracking();
         return 1;
     }
     
+    // Resolve textures
+    std::string finalDiffusePath = args.texturePath;
+    if (finalDiffusePath.empty() && !materialInfo.diffusePath.empty()) {
+        finalDiffusePath = materialInfo.diffusePath;
+    }
+
+    std::string finalNormalPath = args.normalMapPath;
+    if (finalNormalPath.empty() && !materialInfo.normalPath.empty()) {
+        finalNormalPath = materialInfo.normalPath;
+    }
+
     // Load textures
-    Texture diffuseTexture = args.texturePath.empty() ? Texture() : Texture::fromFile(args.texturePath);
-    Texture normalTexture = args.normalMapPath.empty() ? Texture::createFlatNormalMap() : Texture::fromFile(args.normalMapPath);
+    Texture diffuseTexture = finalDiffusePath.empty() ? Texture() : Texture::fromFile(finalDiffusePath);
+    Texture normalTexture = finalNormalPath.empty() ? Texture::createFlatNormalMap() : Texture::fromFile(finalNormalPath);
     
     // Calculate camera setup
     CameraSetup cameraSetup = calculateCameraSetup(vertices);

@@ -18,5 +18,10 @@ struct CameraSetup {
     float modelScale;
 };
 
+struct MaterialInfo {
+    std::string diffusePath;
+    std::string normalPath;
+};
+
 CameraSetup calculateCameraSetup(const std::vector<Vertex>& vertices);
-bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, bool& outHasUVs);
+bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, bool& outHasUVs, MaterialInfo& outMaterial);

@@ -113,7 +113,23 @@ static void processNode(aiNode* node, const aiScene* scene, const glm::mat4& par
     }
 }
 
-bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, bool& outHasUVs) {
+static std::string resolveTexturePath(const std::string& modelPath, const std::string& texturePath) {
+    if (texturePath.empty()) return "";
+    
+    // Check if absolute path (simple check)
+    if (texturePath[0] == '/') return texturePath;
+    
+    // Get directory from model path
+    std::string dir;
+    size_t lastSlash = modelPath.rfind('/');
+    if (lastSlash != std::string::npos) {
+        dir = modelPath.substr(0, lastSlash + 1);
+    }
+    
+    return dir + texturePath;
+}
+
+bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, bool& outHasUVs, MaterialInfo& outMaterial) {
     Assimp::Importer importer;
     
     const aiScene* scene = importer.ReadFile(path,
@@ -132,8 +148,41 @@ bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vect
     outHasUVs = false;
     vertices.clear();
     indices.clear();
+    outMaterial = MaterialInfo{};
 
+    // Process geometry
     processNode(scene->mRootNode, scene, glm::mat4(1.0f), vertices, indices, outHasUVs);
+    
+    // Process materials - look for the first material with textures
+    for (unsigned int i = 0; i < scene->mNumMaterials; i++) {
+        aiMaterial* material = scene->mMaterials[i];
+        aiString str;
+
+        // Try to find diffuse texture
+        if (outMaterial.diffusePath.empty()) {
+            if (material->GetTexture(aiTextureType_DIFFUSE, 0, &str) == AI_SUCCESS) {
+                outMaterial.diffusePath = resolveTexturePath(path, str.C_Str());
+            } else if (material->GetTexture(aiTextureType_BASE_COLOR, 0, &str) == AI_SUCCESS) { // PBR
+                outMaterial.diffusePath = resolveTexturePath(path, str.C_Str());
+            }
+        }
+
+        // Try to find normal map
+        if (outMaterial.normalPath.empty()) {
+            if (material->GetTexture(aiTextureType_NORMALS, 0, &str) == AI_SUCCESS) {
+                outMaterial.normalPath = resolveTexturePath(path, str.C_Str());
+            } else if (material->GetTexture(aiTextureType_HEIGHT, 0, &str) == AI_SUCCESS) { // OBJ often uses HEIGHT for bump/normal
+                outMaterial.normalPath = resolveTexturePath(path, str.C_Str());
+            } else if (material->GetTexture(aiTextureType_NORMAL_CAMERA, 0, &str) == AI_SUCCESS) {
+                outMaterial.normalPath = resolveTexturePath(path, str.C_Str());
+            }
+        }
+        
+        // If we found both, stop searching (simplification for single-material renderer)
+        if (!outMaterial.diffusePath.empty() && !outMaterial.normalPath.empty()) {
+            break;
+        }
+    }
     
     return !vertices.empty();
 }
