@@ -668,6 +668,9 @@ bool VulkanRenderer::createDescriptorSets() {
         std::cerr << "Failed to allocate descriptor sets" << std::endl;
         return false;
     }
+
+    descriptorSetsDirty_.resize(MAX_FRAMES_IN_FLIGHT, true);
+
     return true;
 }
 
@@ -909,6 +912,8 @@ void VulkanRenderer::updateDiffuseTexture(const Texture& texture) {
         
         cachedDiffuseWidth_ = texture.width;
         cachedDiffuseHeight_ = texture.height;
+        
+        std::fill(descriptorSetsDirty_.begin(), descriptorSetsDirty_.end(), true);
     }
 
     // Convert RGB to RGBA
@@ -968,6 +973,8 @@ void VulkanRenderer::updateNormalTexture(const Texture& texture) {
         
         cachedNormalWidth_ = texture.width;
         cachedNormalHeight_ = texture.height;
+
+        std::fill(descriptorSetsDirty_.begin(), descriptorSetsDirty_.end(), true);
     }
 
     // Convert RGB to RGBA
@@ -1121,62 +1128,66 @@ const uint8_t* VulkanRenderer::render(
     }
 
     // Update descriptor sets for current frame
-    VkDescriptorBufferInfo uniformBufferInfo{};
-    uniformBufferInfo.buffer = uniformBuffers_[currentFrame_];
-    uniformBufferInfo.offset = 0;
-    uniformBufferInfo.range = sizeof(Uniforms);
+    if (descriptorSetsDirty_[currentFrame_]) {
+        VkDescriptorBufferInfo uniformBufferInfo{};
+        uniformBufferInfo.buffer = uniformBuffers_[currentFrame_];
+        uniformBufferInfo.offset = 0;
+        uniformBufferInfo.range = sizeof(Uniforms);
 
-    VkDescriptorImageInfo diffuseImageInfo{};
-    diffuseImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    diffuseImageInfo.imageView = diffuseImageView_;
-    diffuseImageInfo.sampler = sampler_;
+        VkDescriptorImageInfo diffuseImageInfo{};
+        diffuseImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        diffuseImageInfo.imageView = diffuseImageView_;
+        diffuseImageInfo.sampler = sampler_;
 
-    VkDescriptorImageInfo normalImageInfo{};
-    normalImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    normalImageInfo.imageView = normalImageView_;
-    normalImageInfo.sampler = sampler_;
+        VkDescriptorImageInfo normalImageInfo{};
+        normalImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        normalImageInfo.imageView = normalImageView_;
+        normalImageInfo.sampler = sampler_;
 
-    VkDescriptorBufferInfo fragUniformBufferInfo{};
-    fragUniformBufferInfo.buffer = fragmentUniformBuffers_[currentFrame_];
-    fragUniformBufferInfo.offset = 0;
-    fragUniformBufferInfo.range = sizeof(FragmentUniforms);
+        VkDescriptorBufferInfo fragUniformBufferInfo{};
+        fragUniformBufferInfo.buffer = fragmentUniformBuffers_[currentFrame_];
+        fragUniformBufferInfo.offset = 0;
+        fragUniformBufferInfo.range = sizeof(FragmentUniforms);
 
-    std::array<VkWriteDescriptorSet, 4> descriptorWrites{};
+        std::array<VkWriteDescriptorSet, 4> descriptorWrites{};
 
-    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrites[0].dstSet = descriptorSets_[currentFrame_];
-    descriptorWrites[0].dstBinding = 0;
-    descriptorWrites[0].dstArrayElement = 0;
-    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptorWrites[0].descriptorCount = 1;
-    descriptorWrites[0].pBufferInfo = &uniformBufferInfo;
+        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[0].dstSet = descriptorSets_[currentFrame_];
+        descriptorWrites[0].dstBinding = 0;
+        descriptorWrites[0].dstArrayElement = 0;
+        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[0].descriptorCount = 1;
+        descriptorWrites[0].pBufferInfo = &uniformBufferInfo;
 
-    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrites[1].dstSet = descriptorSets_[currentFrame_];
-    descriptorWrites[1].dstBinding = 1;
-    descriptorWrites[1].dstArrayElement = 0;
-    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    descriptorWrites[1].descriptorCount = 1;
-    descriptorWrites[1].pImageInfo = &diffuseImageInfo;
+        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[1].dstSet = descriptorSets_[currentFrame_];
+        descriptorWrites[1].dstBinding = 1;
+        descriptorWrites[1].dstArrayElement = 0;
+        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrites[1].descriptorCount = 1;
+        descriptorWrites[1].pImageInfo = &diffuseImageInfo;
 
-    descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrites[2].dstSet = descriptorSets_[currentFrame_];
-    descriptorWrites[2].dstBinding = 2;
-    descriptorWrites[2].dstArrayElement = 0;
-    descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    descriptorWrites[2].descriptorCount = 1;
-    descriptorWrites[2].pImageInfo = &normalImageInfo;
+        descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[2].dstSet = descriptorSets_[currentFrame_];
+        descriptorWrites[2].dstBinding = 2;
+        descriptorWrites[2].dstArrayElement = 0;
+        descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrites[2].descriptorCount = 1;
+        descriptorWrites[2].pImageInfo = &normalImageInfo;
 
-    descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrites[3].dstSet = descriptorSets_[currentFrame_];
-    descriptorWrites[3].dstBinding = 3;
-    descriptorWrites[3].dstArrayElement = 0;
-    descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptorWrites[3].descriptorCount = 1;
-    descriptorWrites[3].pBufferInfo = &fragUniformBufferInfo;
+        descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[3].dstSet = descriptorSets_[currentFrame_];
+        descriptorWrites[3].dstBinding = 3;
+        descriptorWrites[3].dstArrayElement = 0;
+        descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[3].descriptorCount = 1;
+        descriptorWrites[3].pBufferInfo = &fragUniformBufferInfo;
 
-    vkUpdateDescriptorSets(device_, static_cast<uint32_t>(descriptorWrites.size()),
-                           descriptorWrites.data(), 0, nullptr);
+        vkUpdateDescriptorSets(device_, static_cast<uint32_t>(descriptorWrites.size()),
+                               descriptorWrites.data(), 0, nullptr);
+        
+        descriptorSetsDirty_[currentFrame_] = false;
+    }
 
     // Update uniforms
     Uniforms uniforms{};

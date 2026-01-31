@@ -109,6 +109,7 @@ private:
 
     // Per-frame Descriptor Sets
     std::vector<VkDescriptorSet> descriptorSets_;
+    std::vector<bool> descriptorSetsDirty_;
     
     // Textures
     VkImage diffuseImage_ = VK_NULL_HANDLE;
@@ -181,7 +182,6 @@ private:
     void updateNormalTexture(const Texture& texture);
     void updateVertexBuffer(const std::vector<Vertex>& vertices);
     void updateIndexBuffer(const std::vector<uint32_t>& indices);
-    void updateDescriptorSet();
     
     std::vector<char> readShaderFile(const std::string& filename);
     VkShaderModule createShaderModule(const std::vector<char>& code);
