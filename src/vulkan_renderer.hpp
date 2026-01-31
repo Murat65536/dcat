@@ -24,6 +24,7 @@ struct FragmentUniforms {
     glm::vec3 fogColor;
     float fogEnd;
     uint32_t useTriplanarMapping;
+    uint32_t alphaMode;
 };
 
 class VulkanRenderer {
@@ -49,7 +50,8 @@ public:
         const Texture& normalTexture,
         bool enableLighting,
         const glm::vec3& cameraPos,
-        bool useTriplanarMapping = false
+        bool useTriplanarMapping = false,
+        AlphaMode alphaMode = AlphaMode::Opaque
     );
     
     // Wait for all pending frames to complete

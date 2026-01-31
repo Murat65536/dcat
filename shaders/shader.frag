@@ -11,6 +11,8 @@ layout(set = 0, binding = 3) uniform FragmentUniforms {
     vec3 fogColor;
     float fogEnd;
     uint useTriplanarMapping;
+    uint alphaMode;    // 0: OPAQUE, 1: MASK, 2: BLEND
+    float alphaCutoff;
 } fragUniforms;
 
 layout(location = 0) in vec2 fragTexCoord;
@@ -43,10 +45,17 @@ void main() {
         diffuseColor = texture(diffuseTexture, fragTexCoord);
     }
     
-    if (diffuseColor.a < 0.1) {
-        discard;
+    // Alpha handling
+    if (fragUniforms.alphaMode == 0u) { // OPAQUE
+        diffuseColor.a = 1.0;
+    } else if (fragUniforms.alphaMode == 1u) { // MASK
+        if (diffuseColor.a < fragUniforms.alphaCutoff) {
+            discard;
+        }
+        diffuseColor.a = 1.0; // Usually mask implies opaque surface where visible
     }
-    
+    // BLEND (2) - keep original alpha, no discard
+
     if (fragUniforms.enableLighting == 0u) {
         outColor = diffuseColor;
         return;

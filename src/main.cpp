@@ -383,7 +383,8 @@ int main(int argc, char* argv[]) {
             mesh, mvp, model,
             diffuseTexture, normalTexture, !args.noLighting,
             camera.position,
-            !hasUVs
+            !hasUVs,
+            materialInfo.alphaMode
         );
         
         // Output to terminal

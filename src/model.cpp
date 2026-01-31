@@ -2,6 +2,7 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <assimp/GltfMaterial.h>
 #include <limits>
 #include <cmath>
 #include <iostream>
@@ -176,6 +177,19 @@ bool loadModel(const std::string& path, Mesh& mesh, bool& outHasUVs, MaterialInf
                 outMaterial.normalPath = resolveTexturePath(path, str.C_Str());
             } else if (material->GetTexture(aiTextureType_NORMAL_CAMERA, 0, &str) == AI_SUCCESS) {
                 outMaterial.normalPath = resolveTexturePath(path, str.C_Str());
+            }
+        }
+
+        // Try to find alpha mode
+        aiString alphaModeStr;
+        if (material->Get(AI_MATKEY_GLTF_ALPHAMODE, alphaModeStr) == AI_SUCCESS) {
+            std::string mode = alphaModeStr.C_Str();
+            if (mode == "MASK") {
+                outMaterial.alphaMode = AlphaMode::Mask;
+            } else if (mode == "BLEND") {
+                outMaterial.alphaMode = AlphaMode::Blend;
+            } else {
+                outMaterial.alphaMode = AlphaMode::Opaque;
             }
         }
         

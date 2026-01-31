@@ -24,9 +24,16 @@ struct CameraSetup {
     float modelScale;
 };
 
+enum class AlphaMode {
+    Opaque,
+    Mask,
+    Blend
+};
+
 struct MaterialInfo {
     std::string diffusePath;
     std::string normalPath;
+    AlphaMode alphaMode = AlphaMode::Opaque;
 };
 
 CameraSetup calculateCameraSetup(const std::vector<Vertex>& vertices);

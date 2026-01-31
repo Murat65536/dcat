@@ -1160,7 +1160,8 @@ const uint8_t* VulkanRenderer::render(
     const Texture& normalTexture,
     bool enableLighting,
     const glm::vec3& cameraPos,
-    bool useTriplanarMapping
+    bool useTriplanarMapping,
+    AlphaMode alphaMode
 ) {
     vkWaitForFences(device_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
 
@@ -1254,6 +1255,21 @@ const uint8_t* VulkanRenderer::render(
     fragUniforms.fogColor = glm::vec3(0.0f, 0.0f, 0.0f);
     fragUniforms.fogEnd = 10.0f;
     fragUniforms.useTriplanarMapping = useTriplanarMapping ? 1 : 0;
+
+    // Handle Alpha Mode
+    switch (alphaMode) {
+        case AlphaMode::Mask:
+            fragUniforms.alphaMode = 1;
+            break;
+        case AlphaMode::Blend:
+            fragUniforms.alphaMode = 2;
+            break;
+        case AlphaMode::Opaque:
+        default:
+            fragUniforms.alphaMode = 0;
+            break;
+    }
+
     memcpy(fragmentUniformBuffersMapped_[currentFrame_], &fragUniforms, sizeof(FragmentUniforms));
     VkCommandBuffer commandBuffer = commandBuffers_[currentFrame_];
     vkResetCommandBuffer(commandBuffer, 0);
