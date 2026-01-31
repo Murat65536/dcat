@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <vk_mem_alloc.h>
 #include <glm/glm.hpp>
 #include <vector>
 #include <string>
@@ -64,6 +65,7 @@ private:
     VkInstance instance_ = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
     VkDevice device_ = VK_NULL_HANDLE;
+    VmaAllocator allocator_ = VK_NULL_HANDLE;
     VkQueue graphicsQueue_ = VK_NULL_HANDLE;
     uint32_t graphicsQueueFamily_ = 0;
     
@@ -82,27 +84,27 @@ private:
 
     // Render targets
     VkImage colorImage_ = VK_NULL_HANDLE;
-    VkDeviceMemory colorImageMemory_ = VK_NULL_HANDLE;
+    VmaAllocation colorImageAllocation_ = VK_NULL_HANDLE;
     VkImageView colorImageView_ = VK_NULL_HANDLE;
     
     VkImage depthImage_ = VK_NULL_HANDLE;
-    VkDeviceMemory depthImageMemory_ = VK_NULL_HANDLE;
+    VmaAllocation depthImageAllocation_ = VK_NULL_HANDLE;
     VkImageView depthImageView_ = VK_NULL_HANDLE;
     
     VkFramebuffer framebuffer_ = VK_NULL_HANDLE;
     
     // Staging buffers for readback (per frame)
     std::vector<VkBuffer> stagingBuffers_;
-    std::vector<VkDeviceMemory> stagingBufferMemories_;
+    std::vector<VmaAllocation> stagingBufferAllocations_;
     std::vector<void*> mappedDatas_;
     
     // Uniform buffers (per frame)
     std::vector<VkBuffer> uniformBuffers_;
-    std::vector<VkDeviceMemory> uniformBufferMemories_;
+    std::vector<VmaAllocation> uniformBufferAllocations_;
     std::vector<void*> uniformBuffersMapped_;
 
     std::vector<VkBuffer> fragmentUniformBuffers_;
-    std::vector<VkDeviceMemory> fragmentUniformBufferMemories_;
+    std::vector<VmaAllocation> fragmentUniformBufferAllocations_;
     std::vector<void*> fragmentUniformBuffersMapped_;
 
     // Per-frame Descriptor Sets
@@ -110,13 +112,13 @@ private:
     
     // Textures
     VkImage diffuseImage_ = VK_NULL_HANDLE;
-    VkDeviceMemory diffuseImageMemory_ = VK_NULL_HANDLE;
+    VmaAllocation diffuseImageAllocation_ = VK_NULL_HANDLE;
     VkImageView diffuseImageView_ = VK_NULL_HANDLE;
     uint32_t cachedDiffuseWidth_ = 0;
     uint32_t cachedDiffuseHeight_ = 0;
     
     VkImage normalImage_ = VK_NULL_HANDLE;
-    VkDeviceMemory normalImageMemory_ = VK_NULL_HANDLE;
+    VmaAllocation normalImageAllocation_ = VK_NULL_HANDLE;
     VkImageView normalImageView_ = VK_NULL_HANDLE;
     uint32_t cachedNormalWidth_ = 0;
     uint32_t cachedNormalHeight_ = 0;
@@ -125,11 +127,11 @@ private:
     
     // Cached vertex/index buffers
     VkBuffer vertexBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory vertexBufferMemory_ = VK_NULL_HANDLE;
+    VmaAllocation vertexBufferAllocation_ = VK_NULL_HANDLE;
     size_t cachedVertexCount_ = 0;
     
     VkBuffer indexBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory indexBufferMemory_ = VK_NULL_HANDLE;
+    VmaAllocation indexBufferAllocation_ = VK_NULL_HANDLE;
     size_t cachedIndexCount_ = 0;
 
     // Cached generation
@@ -141,6 +143,7 @@ private:
     bool createInstance();
     bool selectPhysicalDevice();
     bool createLogicalDevice();
+    bool createAllocator();
     bool createCommandPool();
     bool createCommandBuffers();
     bool createSyncObjects();
@@ -159,16 +162,15 @@ private:
     void cleanupRenderTargets();
     void cleanup();
     
-    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
     VkCommandBuffer beginSingleTimeCommands();
     void endSingleTimeCommands(VkCommandBuffer commandBuffer);
     
     void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, 
-                      VkMemoryPropertyFlags properties, VkBuffer& buffer, 
-                      VkDeviceMemory& bufferMemory);
+                      VmaMemoryUsage memoryUsage, VkBuffer& buffer, 
+                      VmaAllocation& allocation);
     void createImage(uint32_t width, uint32_t height, VkFormat format,
-                     VkImageUsageFlags usage, VkMemoryPropertyFlags properties,
-                     VkImage& image, VkDeviceMemory& imageMemory);
+                     VkImageUsageFlags usage, VmaMemoryUsage memoryUsage,
+                     VkImage& image, VmaAllocation& allocation);
     VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
     
     void transitionImageLayout(VkImage image, VkFormat format,

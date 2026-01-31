@@ -19,7 +19,13 @@ FetchContent_Declare(
     GIT_TAG master
     GIT_SHALLOW TRUE
 )
-FetchContent_MakeAvailable(stb)
+FetchContent_Declare(
+    VulkanMemoryAllocator
+    GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+    GIT_TAG master
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(stb VulkanMemoryAllocator)
 
 # stb doesn't have a CMakeLists.txt, so we define the target manually if it wasn't created
 if(NOT TARGET stb)
@@ -51,6 +57,7 @@ target_link_libraries(dcat PRIVATE
     ${SIXEL_LIBRARIES}
     stb
     rt
+    VulkanMemoryAllocator
 )
 
 # Compile shaders

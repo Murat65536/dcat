@@ -1,3 +1,4 @@
+#define VMA_IMPLEMENTATION
 #include "vulkan_renderer.hpp"
 #include "model.hpp"
 #include "texture.hpp"
@@ -19,7 +20,7 @@ VulkanRenderer::~VulkanRenderer() {
 }
 
 bool VulkanRenderer::initialize() {
-    if (createInstance() && selectPhysicalDevice() && createLogicalDevice() && createCommandPool() &&
+    if (createInstance() && selectPhysicalDevice() && createLogicalDevice() && createAllocator() && createCommandPool() &&
         createDescriptorPool() && createDescriptorSetLayout() && createPipelineLayout() && createRenderPass() &&
         createGraphicsPipeline() && createRenderTargets() && createFramebuffer() && createStagingBuffers() &&
         createUniformBuffers() && createSampler() && createCommandBuffers() && createSyncObjects() && createDescriptorSets()) {
@@ -110,6 +111,20 @@ bool VulkanRenderer::createLogicalDevice() {
     }
 
     vkGetDeviceQueue(device_, graphicsQueueFamily_, 0, &graphicsQueue_);
+    return true;
+}
+
+bool VulkanRenderer::createAllocator() {
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.physicalDevice = physicalDevice_;
+    allocatorInfo.device = device_;
+    allocatorInfo.instance = instance_;
+    allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_4;
+    
+    if (vmaCreateAllocator(&allocatorInfo, &allocator_) != VK_SUCCESS) {
+        std::cerr << "Failed to create VMA allocator" << std::endl;
+        return false;
+    }
     return true;
 }
 
@@ -501,31 +516,23 @@ bool VulkanRenderer::createGraphicsPipeline() {
 }
 
 void VulkanRenderer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
-                                   VkMemoryPropertyFlags properties, VkBuffer& buffer,
-                                   VkDeviceMemory& bufferMemory) {
+                                   VmaMemoryUsage memoryUsage, VkBuffer& buffer,
+                                   VmaAllocation& allocation) {
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = size;
     bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    vkCreateBuffer(device_, &bufferInfo, nullptr, &buffer);
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = memoryUsage;
 
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device_, buffer, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
-
-    vkAllocateMemory(device_, &allocInfo, nullptr, &bufferMemory);
-    vkBindBufferMemory(device_, buffer, bufferMemory, 0);
+    vmaCreateBuffer(allocator_, &bufferInfo, &allocInfo, &buffer, &allocation, nullptr);
 }
 
 void VulkanRenderer::createImage(uint32_t width, uint32_t height, VkFormat format,
-                                  VkImageUsageFlags usage, VkMemoryPropertyFlags properties,
-                                  VkImage& image, VkDeviceMemory& imageMemory) {
+                                  VkImageUsageFlags usage, VmaMemoryUsage memoryUsage,
+                                  VkImage& image, VmaAllocation& allocation) {
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -541,18 +548,10 @@ void VulkanRenderer::createImage(uint32_t width, uint32_t height, VkFormat forma
     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    vkCreateImage(device_, &imageInfo, nullptr, &image);
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = memoryUsage;
 
-    VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(device_, image, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
-
-    vkAllocateMemory(device_, &allocInfo, nullptr, &imageMemory);
-    vkBindImageMemory(device_, image, imageMemory, 0);
+    vmaCreateImage(allocator_, &imageInfo, &allocInfo, &image, &allocation, nullptr);
 }
 
 VkImageView VulkanRenderer::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
@@ -572,30 +571,17 @@ VkImageView VulkanRenderer::createImageView(VkImage image, VkFormat format, VkIm
     return imageView;
 }
 
-uint32_t VulkanRenderer::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &memProperties);
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-        if ((typeFilter & (1 << i)) &&
-            (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return i;
-        }
-    }
-    return UINT32_MAX;
-}
-
 bool VulkanRenderer::createRenderTargets() {
     // Color image
     createImage(width_, height_, VK_FORMAT_R8G8B8A8_SRGB,
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colorImage_, colorImageMemory_);
+                VMA_MEMORY_USAGE_GPU_ONLY, colorImage_, colorImageAllocation_);
     colorImageView_ = createImageView(colorImage_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 
     // Depth image
     createImage(width_, height_, VK_FORMAT_D32_SFLOAT,
                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage_, depthImageMemory_);
+                VMA_MEMORY_USAGE_GPU_ONLY, depthImage_, depthImageAllocation_);
     depthImageView_ = createImageView(depthImage_, VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT);
 
     return true;
@@ -622,53 +608,16 @@ bool VulkanRenderer::createFramebuffer() {
 
 bool VulkanRenderer::createStagingBuffers() {
     stagingBuffers_.resize(MAX_FRAMES_IN_FLIGHT);
-    stagingBufferMemories_.resize(MAX_FRAMES_IN_FLIGHT);
+    stagingBufferAllocations_.resize(MAX_FRAMES_IN_FLIGHT);
     mappedDatas_.resize(MAX_FRAMES_IN_FLIGHT);
     
     VkDeviceSize bufferSize = width_ * height_ * 4;  // RGBA
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = bufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                     VMA_MEMORY_USAGE_GPU_TO_CPU, stagingBuffers_[i], stagingBufferAllocations_[i]);
 
-        if (vkCreateBuffer(device_, &bufferInfo, nullptr, &stagingBuffers_[i]) != VK_SUCCESS) {
-            return false;
-        }
-
-        VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(device_, stagingBuffers_[i], &memRequirements);
-
-        // Try to find CACHED memory first (Host Visible + Cached)
-        // We do NOT require COHERENT here if we invalidate manually.
-        VkMemoryPropertyFlags preferredProps = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
-        uint32_t memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, preferredProps);
-        
-        if (memoryTypeIndex == UINT32_MAX) {
-            // Fallback to COHERENT | VISIBLE (Uncached)
-            preferredProps = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-            memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, preferredProps);
-            
-            if (memoryTypeIndex == UINT32_MAX) {
-                std::cerr << "Failed to find suitable memory for staging buffer" << std::endl;
-                return false;
-            }
-        }
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = memoryTypeIndex;
-
-        if (vkAllocateMemory(device_, &allocInfo, nullptr, &stagingBufferMemories_[i]) != VK_SUCCESS) {
-            return false;
-        }
-
-        vkBindBufferMemory(device_, stagingBuffers_[i], stagingBufferMemories_[i], 0);
-        
-        if (vkMapMemory(device_, stagingBufferMemories_[i], 0, bufferSize, 0, &mappedDatas_[i]) != VK_SUCCESS) {
+        if (vmaMapMemory(allocator_, stagingBufferAllocations_[i], &mappedDatas_[i]) != VK_SUCCESS) {
             std::cerr << "Failed to map staging buffer memory" << std::endl;
             return false;
         }
@@ -731,55 +680,90 @@ void VulkanRenderer::cleanup() {
     
     for (size_t i = 0; i < stagingBuffers_.size(); i++) {
         if (stagingBuffers_[i] != VK_NULL_HANDLE) {
-            vkDestroyBuffer(device_, stagingBuffers_[i], nullptr);
-            vkFreeMemory(device_, stagingBufferMemories_[i], nullptr);
+            vmaUnmapMemory(allocator_, stagingBufferAllocations_[i]);
+            vmaDestroyBuffer(allocator_, stagingBuffers_[i], stagingBufferAllocations_[i]);
         }
     }
     
     for (size_t i = 0; i < uniformBuffers_.size(); i++) {
         if (uniformBuffers_[i] != VK_NULL_HANDLE) {
-            vkUnmapMemory(device_, uniformBufferMemories_[i]);
-            vkDestroyBuffer(device_, uniformBuffers_[i], nullptr);
-            vkFreeMemory(device_, uniformBufferMemories_[i], nullptr);
+            vmaUnmapMemory(allocator_, uniformBufferAllocations_[i]);
+            vmaDestroyBuffer(allocator_, uniformBuffers_[i], uniformBufferAllocations_[i]);
         }
     }
     
     for (size_t i = 0; i < fragmentUniformBuffers_.size(); i++) {
         if (fragmentUniformBuffers_[i] != VK_NULL_HANDLE) {
-            vkUnmapMemory(device_, fragmentUniformBufferMemories_[i]);
-            vkDestroyBuffer(device_, fragmentUniformBuffers_[i], nullptr);
-            vkFreeMemory(device_, fragmentUniformBufferMemories_[i], nullptr);
+            vmaUnmapMemory(allocator_, fragmentUniformBufferAllocations_[i]);
+            vmaDestroyBuffer(allocator_, fragmentUniformBuffers_[i], fragmentUniformBufferAllocations_[i]);
         }
     }
+
+    if (vertexBuffer_ != VK_NULL_HANDLE) {
+        vmaUnmapMemory(allocator_, vertexBufferAllocation_);
+        vmaDestroyBuffer(allocator_, vertexBuffer_, vertexBufferAllocation_);
+    }
+    if (indexBuffer_ != VK_NULL_HANDLE) {
+        vmaUnmapMemory(allocator_, indexBufferAllocation_);
+        vmaDestroyBuffer(allocator_, indexBuffer_, indexBufferAllocation_);
+    }
+
+    if (diffuseImage_ != VK_NULL_HANDLE) {
+        vkDestroyImageView(device_, diffuseImageView_, nullptr);
+        vmaDestroyImage(allocator_, diffuseImage_, diffuseImageAllocation_);
+    }
+    if (normalImage_ != VK_NULL_HANDLE) {
+        vkDestroyImageView(device_, normalImageView_, nullptr);
+        vmaDestroyImage(allocator_, normalImage_, normalImageAllocation_);
+    }
+
+    cleanupRenderTargets();
 
     for (size_t i = 0; i < inFlightFences_.size(); i++) {
         if (inFlightFences_[i] != VK_NULL_HANDLE) {
             vkDestroyFence(device_, inFlightFences_[i], nullptr);
         }
     }
+
+    vkDestroyPipeline(device_, graphicsPipeline_, nullptr);
+    vkDestroyPipeline(device_, wireframePipeline_, nullptr);
+    vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
+    vkDestroyRenderPass(device_, renderPass_, nullptr);
+
+    vkDestroyDescriptorPool(device_, descriptorPool_, nullptr);
+    vkDestroyDescriptorSetLayout(device_, descriptorSetLayout_, nullptr);
+
+    vkDestroyCommandPool(device_, commandPool_, nullptr);
+    
+    if (allocator_ != VK_NULL_HANDLE) {
+        vmaDestroyAllocator(allocator_);
+    }
+
+    vkDestroyDevice(device_, nullptr);
+    vkDestroyInstance(instance_, nullptr);
 }
 
 bool VulkanRenderer::createUniformBuffers() {
     uniformBuffers_.resize(MAX_FRAMES_IN_FLIGHT);
-    uniformBufferMemories_.resize(MAX_FRAMES_IN_FLIGHT);
+    uniformBufferAllocations_.resize(MAX_FRAMES_IN_FLIGHT);
     uniformBuffersMapped_.resize(MAX_FRAMES_IN_FLIGHT);
 
     fragmentUniformBuffers_.resize(MAX_FRAMES_IN_FLIGHT);
-    fragmentUniformBufferMemories_.resize(MAX_FRAMES_IN_FLIGHT);
+    fragmentUniformBufferAllocations_.resize(MAX_FRAMES_IN_FLIGHT);
     fragmentUniformBuffersMapped_.resize(MAX_FRAMES_IN_FLIGHT);
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         createBuffer(sizeof(Uniforms), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     uniformBuffers_[i], uniformBufferMemories_[i]);
+                     VMA_MEMORY_USAGE_CPU_TO_GPU,
+                     uniformBuffers_[i], uniformBufferAllocations_[i]);
         
-        vkMapMemory(device_, uniformBufferMemories_[i], 0, sizeof(Uniforms), 0, &uniformBuffersMapped_[i]);
+        vmaMapMemory(allocator_, uniformBufferAllocations_[i], &uniformBuffersMapped_[i]);
 
         createBuffer(sizeof(FragmentUniforms), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     fragmentUniformBuffers_[i], fragmentUniformBufferMemories_[i]);
+                     VMA_MEMORY_USAGE_CPU_TO_GPU,
+                     fragmentUniformBuffers_[i], fragmentUniformBufferAllocations_[i]);
         
-        vkMapMemory(device_, fragmentUniformBufferMemories_[i], 0, sizeof(FragmentUniforms), 0, &fragmentUniformBuffersMapped_[i]);
+        vmaMapMemory(allocator_, fragmentUniformBufferAllocations_[i], &fragmentUniformBuffersMapped_[i]);
     }
     return true;
 }
@@ -915,13 +899,12 @@ void VulkanRenderer::updateDiffuseTexture(const Texture& texture) {
             vkDestroyImageView(device_, diffuseImageView_, nullptr);
         }
         if (diffuseImage_ != VK_NULL_HANDLE) {
-            vkDestroyImage(device_, diffuseImage_, nullptr);
-            vkFreeMemory(device_, diffuseImageMemory_, nullptr);
+            vmaDestroyImage(allocator_, diffuseImage_, diffuseImageAllocation_);
         }
 
         createImage(texture.width, texture.height, VK_FORMAT_R8G8B8A8_SRGB,
                     VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, diffuseImage_, diffuseImageMemory_);
+                    VMA_MEMORY_USAGE_GPU_ONLY, diffuseImage_, diffuseImageAllocation_);
         diffuseImageView_ = createImageView(diffuseImage_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
         
         cachedDiffuseWidth_ = texture.width;
@@ -939,15 +922,15 @@ void VulkanRenderer::updateDiffuseTexture(const Texture& texture) {
 
     VkDeviceSize imageSize = rgbaData.size();
     VkBuffer stagingBuf;
-    VkDeviceMemory stagingBufMem;
+    VmaAllocation stagingBufAlloc;
     createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 stagingBuf, stagingBufMem);
+                 VMA_MEMORY_USAGE_CPU_TO_GPU,
+                 stagingBuf, stagingBufAlloc);
 
     void* data;
-    vkMapMemory(device_, stagingBufMem, 0, imageSize, 0, &data);
+    vmaMapMemory(allocator_, stagingBufAlloc, &data);
     memcpy(data, rgbaData.data(), imageSize);
-    vkUnmapMemory(device_, stagingBufMem);
+    vmaUnmapMemory(allocator_, stagingBufAlloc);
 
     transitionImageLayout(diffuseImage_, VK_FORMAT_R8G8B8A8_SRGB,
                           VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -955,8 +938,7 @@ void VulkanRenderer::updateDiffuseTexture(const Texture& texture) {
     transitionImageLayout(diffuseImage_, VK_FORMAT_R8G8B8A8_SRGB,
                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-    vkDestroyBuffer(device_, stagingBuf, nullptr);
-    vkFreeMemory(device_, stagingBufMem, nullptr);
+    vmaDestroyBuffer(allocator_, stagingBuf, stagingBufAlloc);
     
     cachedDiffuseDataPtr_ = texture.data.data();
 }
@@ -976,13 +958,12 @@ void VulkanRenderer::updateNormalTexture(const Texture& texture) {
             vkDestroyImageView(device_, normalImageView_, nullptr);
         }
         if (normalImage_ != VK_NULL_HANDLE) {
-            vkDestroyImage(device_, normalImage_, nullptr);
-            vkFreeMemory(device_, normalImageMemory_, nullptr);
+            vmaDestroyImage(allocator_, normalImage_, normalImageAllocation_);
         }
 
         createImage(texture.width, texture.height, VK_FORMAT_R8G8B8A8_SRGB,
                     VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, normalImage_, normalImageMemory_);
+                    VMA_MEMORY_USAGE_GPU_ONLY, normalImage_, normalImageAllocation_);
         normalImageView_ = createImageView(normalImage_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
         
         cachedNormalWidth_ = texture.width;
@@ -1000,15 +981,15 @@ void VulkanRenderer::updateNormalTexture(const Texture& texture) {
 
     VkDeviceSize imageSize = rgbaData.size();
     VkBuffer stagingBuf;
-    VkDeviceMemory stagingBufMem;
+    VmaAllocation stagingBufAlloc;
     createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 stagingBuf, stagingBufMem);
+                 VMA_MEMORY_USAGE_CPU_TO_GPU,
+                 stagingBuf, stagingBufAlloc);
 
     void* data;
-    vkMapMemory(device_, stagingBufMem, 0, imageSize, 0, &data);
+    vmaMapMemory(allocator_, stagingBufAlloc, &data);
     memcpy(data, rgbaData.data(), imageSize);
-    vkUnmapMemory(device_, stagingBufMem);
+    vmaUnmapMemory(allocator_, stagingBufAlloc);
 
     transitionImageLayout(normalImage_, VK_FORMAT_R8G8B8A8_SRGB,
                           VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -1016,8 +997,7 @@ void VulkanRenderer::updateNormalTexture(const Texture& texture) {
     transitionImageLayout(normalImage_, VK_FORMAT_R8G8B8A8_SRGB,
                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-    vkDestroyBuffer(device_, stagingBuf, nullptr);
-    vkFreeMemory(device_, stagingBufMem, nullptr);
+    vmaDestroyBuffer(allocator_, stagingBuf, stagingBufAlloc);
     
     cachedNormalDataPtr_ = texture.data.data();
 }
@@ -1028,19 +1008,19 @@ void VulkanRenderer::updateVertexBuffer(const std::vector<Vertex>& vertices) {
     
     if (cachedVertexCount_ != vertices.size() || vertexBuffer_ == VK_NULL_HANDLE) {
         if (vertexBuffer_ != VK_NULL_HANDLE) {
-            vkDestroyBuffer(device_, vertexBuffer_, nullptr);
-            vkFreeMemory(device_, vertexBufferMemory_, nullptr);
+            vmaUnmapMemory(allocator_, vertexBufferAllocation_);
+            vmaDestroyBuffer(allocator_, vertexBuffer_, vertexBufferAllocation_);
         }
         createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     vertexBuffer_, vertexBufferMemory_);
+                     VMA_MEMORY_USAGE_CPU_TO_GPU,
+                     vertexBuffer_, vertexBufferAllocation_);
         cachedVertexCount_ = vertices.size();
     }
 
     void* data;
-    vkMapMemory(device_, vertexBufferMemory_, 0, bufferSize, 0, &data);
+    vmaMapMemory(allocator_, vertexBufferAllocation_, &data);
     memcpy(data, vertices.data(), bufferSize);
-    vkUnmapMemory(device_, vertexBufferMemory_);
+    vmaUnmapMemory(allocator_, vertexBufferAllocation_);
 }
 
 void VulkanRenderer::updateIndexBuffer(const std::vector<uint32_t>& indices) {
@@ -1049,19 +1029,19 @@ void VulkanRenderer::updateIndexBuffer(const std::vector<uint32_t>& indices) {
     
     if (cachedIndexCount_ != indices.size() || indexBuffer_ == VK_NULL_HANDLE) {
         if (indexBuffer_ != VK_NULL_HANDLE) {
-            vkDestroyBuffer(device_, indexBuffer_, nullptr);
-            vkFreeMemory(device_, indexBufferMemory_, nullptr);
+            vmaUnmapMemory(allocator_, indexBufferAllocation_);
+            vmaDestroyBuffer(allocator_, indexBuffer_, indexBufferAllocation_);
         }
         createBuffer(bufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     indexBuffer_, indexBufferMemory_);
+                     VMA_MEMORY_USAGE_CPU_TO_GPU,
+                     indexBuffer_, indexBufferAllocation_);
         cachedIndexCount_ = indices.size();
     }
 
     void* data;
-    vkMapMemory(device_, indexBufferMemory_, 0, bufferSize, 0, &data);
+    vmaMapMemory(allocator_, indexBufferAllocation_, &data);
     memcpy(data, indices.data(), bufferSize);
-    vkUnmapMemory(device_, indexBufferMemory_);
+    vmaUnmapMemory(allocator_, indexBufferAllocation_);
 }
 
 void VulkanRenderer::setLightDirection(const glm::vec3& direction) {
@@ -1086,11 +1066,10 @@ void VulkanRenderer::resize(uint32_t width, uint32_t height) {
     for (size_t i = 0; i < stagingBuffers_.size(); i++) {
         if (stagingBuffers_[i] != VK_NULL_HANDLE) {
             if (mappedDatas_[i]) {
-                vkUnmapMemory(device_, stagingBufferMemories_[i]);
+                vmaUnmapMemory(allocator_, stagingBufferAllocations_[i]);
                 mappedDatas_[i] = nullptr;
             }
-            vkDestroyBuffer(device_, stagingBuffers_[i], nullptr);
-            vkFreeMemory(device_, stagingBufferMemories_[i], nullptr);
+            vmaDestroyBuffer(allocator_, stagingBuffers_[i], stagingBufferAllocations_[i]);
         }
     }
     createStagingBuffers();
@@ -1106,8 +1085,7 @@ void VulkanRenderer::cleanupRenderTargets() {
         colorImageView_ = VK_NULL_HANDLE;
     }
     if (colorImage_ != VK_NULL_HANDLE) {
-        vkDestroyImage(device_, colorImage_, nullptr);
-        vkFreeMemory(device_, colorImageMemory_, nullptr);
+        vmaDestroyImage(allocator_, colorImage_, colorImageAllocation_);
         colorImage_ = VK_NULL_HANDLE;
     }
     if (depthImageView_ != VK_NULL_HANDLE) {
@@ -1115,8 +1093,7 @@ void VulkanRenderer::cleanupRenderTargets() {
         depthImageView_ = VK_NULL_HANDLE;
     }
     if (depthImage_ != VK_NULL_HANDLE) {
-        vkDestroyImage(device_, depthImage_, nullptr);
-        vkFreeMemory(device_, depthImageMemory_, nullptr);
+        vmaDestroyImage(allocator_, depthImage_, depthImageAllocation_);
         depthImage_ = VK_NULL_HANDLE;
     }
 }
@@ -1330,10 +1307,9 @@ const uint8_t* VulkanRenderer::render(
 
     VkMappedMemoryRange range{};
     range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-    range.memory = stagingBufferMemories_[currentFrame_];
-    range.offset = 0;
-    range.size = VK_WHOLE_SIZE;
-    vkInvalidateMappedMemoryRanges(device_, 1, &range);
+    range.memory = VK_NULL_HANDLE;
+    
+    vmaInvalidateAllocation(allocator_, stagingBufferAllocations_[currentFrame_], 0, VK_WHOLE_SIZE);
     
     const uint8_t* resultData = static_cast<const uint8_t*>(mappedDatas_[currentFrame_]);
     
@@ -1341,4 +1317,3 @@ const uint8_t* VulkanRenderer::render(
     
     return resultData;
 }
-
