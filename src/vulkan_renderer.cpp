@@ -467,7 +467,13 @@ bool VulkanRenderer::createGraphicsPipeline() {
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                                           VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    colorBlendAttachment.blendEnable = VK_FALSE;
+    colorBlendAttachment.blendEnable = VK_TRUE;
+    colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+    colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
 
     VkPipelineColorBlendStateCreateInfo colorBlending{};
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -939,16 +945,8 @@ void VulkanRenderer::updateDiffuseTexture(const Texture& texture) {
         std::fill(descriptorSetsDirty_.begin(), descriptorSetsDirty_.end(), true);
     }
 
-    // Convert RGB to RGBA
-    std::vector<uint8_t> rgbaData(texture.width * texture.height * 4);
-    for (size_t i = 0; i < texture.width * texture.height; i++) {
-        rgbaData[i * 4 + 0] = texture.data[i * 3 + 0];
-        rgbaData[i * 4 + 1] = texture.data[i * 3 + 1];
-        rgbaData[i * 4 + 2] = texture.data[i * 3 + 2];
-        rgbaData[i * 4 + 3] = 255;
-    }
-
-    VkDeviceSize imageSize = rgbaData.size();
+    // Texture is already RGBA
+    VkDeviceSize imageSize = texture.data.size();
     VkBuffer stagingBuf;
     VmaAllocation stagingBufAlloc;
     createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -957,7 +955,7 @@ void VulkanRenderer::updateDiffuseTexture(const Texture& texture) {
 
     void* data;
     vmaMapMemory(allocator_, stagingBufAlloc, &data);
-    memcpy(data, rgbaData.data(), imageSize);
+    memcpy(data, texture.data.data(), imageSize);
     vmaUnmapMemory(allocator_, stagingBufAlloc);
 
     transitionImageLayout(diffuseImage_, VK_FORMAT_R8G8B8A8_SRGB,
@@ -999,16 +997,8 @@ void VulkanRenderer::updateNormalTexture(const Texture& texture) {
         std::fill(descriptorSetsDirty_.begin(), descriptorSetsDirty_.end(), true);
     }
 
-    // Convert RGB to RGBA
-    std::vector<uint8_t> rgbaData(texture.width * texture.height * 4);
-    for (size_t i = 0; i < texture.width * texture.height; i++) {
-        rgbaData[i * 4 + 0] = texture.data[i * 3 + 0];
-        rgbaData[i * 4 + 1] = texture.data[i * 3 + 1];
-        rgbaData[i * 4 + 2] = texture.data[i * 3 + 2];
-        rgbaData[i * 4 + 3] = 255;
-    }
-
-    VkDeviceSize imageSize = rgbaData.size();
+    // Texture is already RGBA
+    VkDeviceSize imageSize = texture.data.size();
     VkBuffer stagingBuf;
     VmaAllocation stagingBufAlloc;
     createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -1017,7 +1007,7 @@ void VulkanRenderer::updateNormalTexture(const Texture& texture) {
 
     void* data;
     vmaMapMemory(allocator_, stagingBufAlloc, &data);
-    memcpy(data, rgbaData.data(), imageSize);
+    memcpy(data, texture.data.data(), imageSize);
     vmaUnmapMemory(allocator_, stagingBufAlloc);
 
     transitionImageLayout(normalImage_, VK_FORMAT_R8G8B8A8_SRGB,

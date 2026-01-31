@@ -21,15 +21,15 @@ layout(location = 4) in vec3 fragWorldPos;
 
 layout(location = 0) out vec4 outColor;
 
-vec3 getTriplanarColor(vec3 worldPos, vec3 normal) {
+vec4 getTriplanarColor(vec3 worldPos, vec3 normal) {
     vec3 blendWeights = abs(normal);
     // Tighten the blending to reduce blurring
     blendWeights = pow(blendWeights, vec3(4.0));
     blendWeights = blendWeights / (blendWeights.x + blendWeights.y + blendWeights.z);
     
-    vec3 colorX = texture(diffuseTexture, worldPos.zy).rgb;
-    vec3 colorY = texture(diffuseTexture, worldPos.xz).rgb;
-    vec3 colorZ = texture(diffuseTexture, worldPos.xy).rgb;
+    vec4 colorX = texture(diffuseTexture, worldPos.zy);
+    vec4 colorY = texture(diffuseTexture, worldPos.xz);
+    vec4 colorZ = texture(diffuseTexture, worldPos.xy);
     
     return colorX * blendWeights.x + colorY * blendWeights.y + colorZ * blendWeights.z;
 }
@@ -38,14 +38,17 @@ void main() {
     vec4 diffuseColor;
     
     if (fragUniforms.useTriplanarMapping != 0u) {
-        vec3 triplanar = getTriplanarColor(fragWorldPos, normalize(fragWorldNormal));
-        diffuseColor = vec4(triplanar, 1.0);
+        diffuseColor = getTriplanarColor(fragWorldPos, normalize(fragWorldNormal));
     } else {
         diffuseColor = texture(diffuseTexture, fragTexCoord);
     }
     
+    if (diffuseColor.a < 0.1) {
+        discard;
+    }
+    
     if (fragUniforms.enableLighting == 0u) {
-        outColor = vec4(diffuseColor.rgb, 1.0);
+        outColor = diffuseColor;
         return;
     }
     
@@ -77,5 +80,5 @@ void main() {
     float fogFactor = clamp((dist - fragUniforms.fogStart) / (fragUniforms.fogEnd - fragUniforms.fogStart), 0.0, 1.0);
     finalColor = mix(finalColor, fragUniforms.fogColor, fogFactor);
 
-    outColor = vec4(finalColor, 1.0);
+    outColor = vec4(finalColor, diffuseColor.a);
 }
