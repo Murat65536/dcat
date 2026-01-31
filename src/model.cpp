@@ -129,7 +129,7 @@ static std::string resolveTexturePath(const std::string& modelPath, const std::s
     return dir + texturePath;
 }
 
-bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, bool& outHasUVs, MaterialInfo& outMaterial) {
+bool loadModel(const std::string& path, Mesh& mesh, bool& outHasUVs, MaterialInfo& outMaterial) {
     Assimp::Importer importer;
     
     const aiScene* scene = importer.ReadFile(path,
@@ -146,12 +146,13 @@ bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vect
     }
 
     outHasUVs = false;
-    vertices.clear();
-    indices.clear();
+    mesh.vertices.clear();
+    mesh.indices.clear();
+    mesh.generation++; // Mark as modified
     outMaterial = MaterialInfo{};
 
     // Process geometry
-    processNode(scene->mRootNode, scene, glm::mat4(1.0f), vertices, indices, outHasUVs);
+    processNode(scene->mRootNode, scene, glm::mat4(1.0f), mesh.vertices, mesh.indices, outHasUVs);
     
     // Process materials - look for the first material with textures
     for (unsigned int i = 0; i < scene->mNumMaterials; i++) {
@@ -184,6 +185,6 @@ bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vect
         }
     }
     
-    return !vertices.empty();
+    return !mesh.vertices.empty();
 }
 

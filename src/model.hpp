@@ -12,6 +12,12 @@ struct Vertex {
     glm::vec3 bitangent;
 };
 
+struct Mesh {
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+    uint64_t generation = 0; // Incremented when data changes
+};
+
 struct CameraSetup {
     glm::vec3 position;
     glm::vec3 target;
@@ -24,4 +30,4 @@ struct MaterialInfo {
 };
 
 CameraSetup calculateCameraSetup(const std::vector<Vertex>& vertices);
-bool loadModel(const std::string& path, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, bool& outHasUVs, MaterialInfo& outMaterial);
+bool loadModel(const std::string& path, Mesh& mesh, bool& outHasUVs, MaterialInfo& outMaterial);

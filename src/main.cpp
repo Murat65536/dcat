@@ -173,11 +173,10 @@ int main(int argc, char* argv[]) {
     }
     
     // Load model
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
+    Mesh mesh;
     bool hasUVs = false;
     MaterialInfo materialInfo;
-    if (!loadModel(args.modelPath, vertices, indices, hasUVs, materialInfo)) {
+    if (!loadModel(args.modelPath, mesh, hasUVs, materialInfo)) {
         std::cerr << "Failed to load model: " << args.modelPath << std::endl;
         disableFocusTracking();
         return 1;
@@ -199,7 +198,7 @@ int main(int argc, char* argv[]) {
     Texture normalTexture = finalNormalPath.empty() ? Texture::createFlatNormalMap() : Texture::fromFile(finalNormalPath);
     
     // Calculate camera setup
-    CameraSetup cameraSetup = calculateCameraSetup(vertices);
+    CameraSetup cameraSetup = calculateCameraSetup(mesh.vertices);
     
     // Scale and center the model to a fixed size
     const float TARGET_SIZE = 4.0f;
@@ -383,7 +382,7 @@ int main(int argc, char* argv[]) {
         
         // Render
         const uint8_t* framebuffer = renderer.render(
-            vertices, indices, mvp, model,
+            mesh, mvp, model,
             diffuseTexture, normalTexture, !args.noLighting,
             camera.position,
             !hasUVs

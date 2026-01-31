@@ -6,8 +6,8 @@
 #include <string>
 #include <optional>
 #include <array>
+#include "model.hpp"
 
-struct Vertex;
 struct Texture;
 
 struct Uniforms {
@@ -41,8 +41,7 @@ public:
     // Renders the scene and returns a pointer to the pixel data (RGBA)
     // The pointer is valid until the next render call or resize
     const uint8_t* render(
-        const std::vector<Vertex>& vertices,
-        const std::vector<uint32_t>& indices,
+        const Mesh& mesh,
         const glm::mat4& mvp,
         const glm::mat4& model,
         const Texture& diffuseTexture,
@@ -133,9 +132,8 @@ private:
     VkDeviceMemory indexBufferMemory_ = VK_NULL_HANDLE;
     size_t cachedIndexCount_ = 0;
 
-    // Cached pointers for data
-    const void* cachedVertexDataPtr_ = nullptr;
-    const void* cachedIndexDataPtr_ = nullptr;
+    // Cached generation
+    uint64_t cachedMeshGeneration_ = 0;
     const void* cachedDiffuseDataPtr_ = nullptr;
     const void* cachedNormalDataPtr_ = nullptr;
     
