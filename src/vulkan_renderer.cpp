@@ -24,6 +24,15 @@ bool VulkanRenderer::initialize() {
         createDescriptorPool() && createDescriptorSetLayout() && createPipelineLayout() && createRenderPass() &&
         createGraphicsPipeline() && createRenderTargets() && createFramebuffer() && createStagingBuffers() &&
         createUniformBuffers() && createSampler() && createCommandBuffers() && createSyncObjects() && createDescriptorSets()) {
+        
+        // Initialize readback buffers
+        readbackBuffers_.resize(MAX_FRAMES_IN_FLIGHT);
+        frameReady_.resize(MAX_FRAMES_IN_FLIGHT, false);
+        size_t frameSize = getFrameSize();
+        for (auto& buffer : readbackBuffers_) {
+            buffer.resize(frameSize);
+        }
+        
         return true;
     }
     else {
@@ -690,24 +699,20 @@ void VulkanRenderer::cleanup() {
     
     for (size_t i = 0; i < uniformBuffers_.size(); i++) {
         if (uniformBuffers_[i] != VK_NULL_HANDLE) {
-            vmaUnmapMemory(allocator_, uniformBufferAllocations_[i]);
             vmaDestroyBuffer(allocator_, uniformBuffers_[i], uniformBufferAllocations_[i]);
         }
     }
     
     for (size_t i = 0; i < fragmentUniformBuffers_.size(); i++) {
         if (fragmentUniformBuffers_[i] != VK_NULL_HANDLE) {
-            vmaUnmapMemory(allocator_, fragmentUniformBufferAllocations_[i]);
             vmaDestroyBuffer(allocator_, fragmentUniformBuffers_[i], fragmentUniformBufferAllocations_[i]);
         }
     }
 
     if (vertexBuffer_ != VK_NULL_HANDLE) {
-        vmaUnmapMemory(allocator_, vertexBufferAllocation_);
         vmaDestroyBuffer(allocator_, vertexBuffer_, vertexBufferAllocation_);
     }
     if (indexBuffer_ != VK_NULL_HANDLE) {
-        vmaUnmapMemory(allocator_, indexBufferAllocation_);
         vmaDestroyBuffer(allocator_, indexBuffer_, indexBufferAllocation_);
     }
 
@@ -755,18 +760,37 @@ bool VulkanRenderer::createUniformBuffers() {
     fragmentUniformBufferAllocations_.resize(MAX_FRAMES_IN_FLIGHT);
     fragmentUniformBuffersMapped_.resize(MAX_FRAMES_IN_FLIGHT);
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        createBuffer(sizeof(Uniforms), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                     VMA_MEMORY_USAGE_CPU_TO_GPU,
-                     uniformBuffers_[i], uniformBufferAllocations_[i]);
-        
-        vmaMapMemory(allocator_, uniformBufferAllocations_[i], &uniformBuffersMapped_[i]);
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        createBuffer(sizeof(FragmentUniforms), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                     VMA_MEMORY_USAGE_CPU_TO_GPU,
-                     fragmentUniformBuffers_[i], fragmentUniformBufferAllocations_[i]);
-        
-        vmaMapMemory(allocator_, fragmentUniformBufferAllocations_[i], &fragmentUniformBuffersMapped_[i]);
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                     VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        // Vertex uniform buffer
+        bufferInfo.size = sizeof(Uniforms);
+        VmaAllocationInfo outAllocInfo;
+        if (vmaCreateBuffer(allocator_, &bufferInfo, &allocInfo,
+                           &uniformBuffers_[i], &uniformBufferAllocations_[i],
+                           &outAllocInfo) != VK_SUCCESS) {
+            std::cerr << "Failed to create uniform buffer" << std::endl;
+            return false;
+        }
+        uniformBuffersMapped_[i] = outAllocInfo.pMappedData;
+
+        // Fragment uniform buffer
+        bufferInfo.size = sizeof(FragmentUniforms);
+        if (vmaCreateBuffer(allocator_, &bufferInfo, &allocInfo,
+                           &fragmentUniformBuffers_[i], &fragmentUniformBufferAllocations_[i],
+                           &outAllocInfo) != VK_SUCCESS) {
+            std::cerr << "Failed to create fragment uniform buffer" << std::endl;
+            return false;
+        }
+        fragmentUniformBuffersMapped_[i] = outAllocInfo.pMappedData;
     }
     return true;
 }
@@ -892,7 +916,6 @@ void VulkanRenderer::updateDiffuseTexture(const Texture& texture) {
         cachedDiffuseHeight_ == texture.height && 
         cachedDiffuseDataPtr_ == texture.data.data() && 
         diffuseImage_ != VK_NULL_HANDLE) {
-        // Just update the data
         return;
     }
 
@@ -953,7 +976,6 @@ void VulkanRenderer::updateNormalTexture(const Texture& texture) {
         cachedNormalHeight_ == texture.height && 
         cachedNormalDataPtr_ == texture.data.data() &&
         normalImage_ != VK_NULL_HANDLE) {
-        // Just update the data
         return;
     }
 
@@ -1015,19 +1037,32 @@ void VulkanRenderer::updateVertexBuffer(const std::vector<Vertex>& vertices) {
     
     if (cachedVertexCount_ != vertices.size() || vertexBuffer_ == VK_NULL_HANDLE) {
         if (vertexBuffer_ != VK_NULL_HANDLE) {
-            vmaUnmapMemory(allocator_, vertexBufferAllocation_);
             vmaDestroyBuffer(allocator_, vertexBuffer_, vertexBufferAllocation_);
         }
-        createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                     VMA_MEMORY_USAGE_CPU_TO_GPU,
-                     vertexBuffer_, vertexBufferAllocation_);
-        cachedVertexCount_ = vertices.size();
-    }
+        
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = bufferSize;
+        bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    void* data;
-    vmaMapMemory(allocator_, vertexBufferAllocation_, &data);
-    memcpy(data, vertices.data(), bufferSize);
-    vmaUnmapMemory(allocator_, vertexBufferAllocation_);
+        VmaAllocationCreateInfo allocInfo = {};
+        allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+        allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                         VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+        VmaAllocationInfo outAllocInfo;
+        vmaCreateBuffer(allocator_, &bufferInfo, &allocInfo,
+                       &vertexBuffer_, &vertexBufferAllocation_, &outAllocInfo);
+        
+        memcpy(outAllocInfo.pMappedData, vertices.data(), bufferSize);
+        cachedVertexCount_ = vertices.size();
+    } else {
+        // Just update the data using persistent mapping
+        VmaAllocationInfo allocInfo;
+        vmaGetAllocationInfo(allocator_, vertexBufferAllocation_, &allocInfo);
+        memcpy(allocInfo.pMappedData, vertices.data(), bufferSize);
+    }
 }
 
 void VulkanRenderer::updateIndexBuffer(const std::vector<uint32_t>& indices) {
@@ -1036,19 +1071,32 @@ void VulkanRenderer::updateIndexBuffer(const std::vector<uint32_t>& indices) {
     
     if (cachedIndexCount_ != indices.size() || indexBuffer_ == VK_NULL_HANDLE) {
         if (indexBuffer_ != VK_NULL_HANDLE) {
-            vmaUnmapMemory(allocator_, indexBufferAllocation_);
             vmaDestroyBuffer(allocator_, indexBuffer_, indexBufferAllocation_);
         }
-        createBuffer(bufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                     VMA_MEMORY_USAGE_CPU_TO_GPU,
-                     indexBuffer_, indexBufferAllocation_);
-        cachedIndexCount_ = indices.size();
-    }
+        
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = bufferSize;
+        bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    void* data;
-    vmaMapMemory(allocator_, indexBufferAllocation_, &data);
-    memcpy(data, indices.data(), bufferSize);
-    vmaUnmapMemory(allocator_, indexBufferAllocation_);
+        VmaAllocationCreateInfo allocInfo = {};
+        allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+        allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                         VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+        VmaAllocationInfo outAllocInfo;
+        vmaCreateBuffer(allocator_, &bufferInfo, &allocInfo,
+                       &indexBuffer_, &indexBufferAllocation_, &outAllocInfo);
+        
+        memcpy(outAllocInfo.pMappedData, indices.data(), bufferSize);
+        cachedIndexCount_ = indices.size();
+    } else {
+        // Just update the data using persistent mapping
+        VmaAllocationInfo allocInfo;
+        vmaGetAllocationInfo(allocator_, indexBufferAllocation_, &allocInfo);
+        memcpy(allocInfo.pMappedData, indices.data(), bufferSize);
+    }
 }
 
 void VulkanRenderer::setLightDirection(const glm::vec3& direction) {
@@ -1080,6 +1128,15 @@ void VulkanRenderer::resize(uint32_t width, uint32_t height) {
         }
     }
     createStagingBuffers();
+    
+    // Resize readback buffers
+    size_t frameSize = getFrameSize();
+    for (auto& buffer : readbackBuffers_) {
+        buffer.resize(frameSize);
+    }
+    
+    // Mark all frames as not ready
+    std::fill(frameReady_.begin(), frameReady_.end(), false);
 }
 
 void VulkanRenderer::cleanupRenderTargets() {
@@ -1117,7 +1174,13 @@ const uint8_t* VulkanRenderer::render(
 ) {
     vkWaitForFences(device_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
 
-    // Update resources
+    if (frameReady_[currentFrame_]) {
+        vmaInvalidateAllocation(allocator_, stagingBufferAllocations_[currentFrame_], 0, VK_WHOLE_SIZE);
+        memcpy(readbackBuffers_[currentFrame_].data(), mappedDatas_[currentFrame_], getFrameSize());
+    }
+
+    vkResetFences(device_, 1, &inFlightFences_[currentFrame_]);
+
     updateDiffuseTexture(diffuseTexture);
     updateNormalTexture(normalTexture);
     
@@ -1127,7 +1190,6 @@ const uint8_t* VulkanRenderer::render(
         cachedMeshGeneration_ = mesh.generation;
     }
 
-    // Update descriptor sets for current frame
     if (descriptorSetsDirty_[currentFrame_]) {
         VkDescriptorBufferInfo uniformBufferInfo{};
         uniformBufferInfo.buffer = uniformBuffers_[currentFrame_];
@@ -1189,7 +1251,6 @@ const uint8_t* VulkanRenderer::render(
         descriptorSetsDirty_[currentFrame_] = false;
     }
 
-    // Update uniforms
     Uniforms uniforms{};
     uniforms.mvp = mvp;
     uniforms.model = model;
@@ -1204,17 +1265,11 @@ const uint8_t* VulkanRenderer::render(
     fragUniforms.fogEnd = 10.0f;
     fragUniforms.useTriplanarMapping = useTriplanarMapping ? 1 : 0;
     memcpy(fragmentUniformBuffersMapped_[currentFrame_], &fragUniforms, sizeof(FragmentUniforms));
-
-    // Reset fence
-    vkResetFences(device_, 1, &inFlightFences_[currentFrame_]);
-
-    // Record command buffer
     VkCommandBuffer commandBuffer = commandBuffers_[currentFrame_];
     vkResetCommandBuffer(commandBuffer, 0);
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = 0; // Optional
 
     vkBeginCommandBuffer(commandBuffer, &beginInfo);
 
@@ -1234,7 +1289,8 @@ const uint8_t* VulkanRenderer::render(
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, wireframeMode_ ? wireframePipeline_ : graphicsPipeline_);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                      wireframeMode_ ? wireframePipeline_ : graphicsPipeline_);
 
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -1262,7 +1318,7 @@ const uint8_t* VulkanRenderer::render(
 
     vkCmdEndRenderPass(commandBuffer);
 
-    // Add pipeline barrier to ensure render pass finished writing
+    // Pipeline barrier to prepare for transfer
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -1288,7 +1344,7 @@ const uint8_t* VulkanRenderer::render(
         1, &barrier
     );
 
-    // Copy color image to staging buffer
+    // Copy to staging buffer
     VkBufferImageCopy region{};
     region.bufferOffset = 0;
     region.bufferRowLength = 0;
@@ -1305,7 +1361,6 @@ const uint8_t* VulkanRenderer::render(
 
     vkEndCommandBuffer(commandBuffer);
 
-    // Submit
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
@@ -1313,18 +1368,21 @@ const uint8_t* VulkanRenderer::render(
 
     vkQueueSubmit(graphicsQueue_, 1, &submitInfo, inFlightFences_[currentFrame_]);
 
-    // Wait for the frame to finish so we can read it back immediately
-    vkWaitForFences(device_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
-
-    VkMappedMemoryRange range{};
-    range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-    range.memory = VK_NULL_HANDLE;
-    
-    vmaInvalidateAllocation(allocator_, stagingBufferAllocations_[currentFrame_], 0, VK_WHOLE_SIZE);
-    
-    const uint8_t* resultData = static_cast<const uint8_t*>(mappedDatas_[currentFrame_]);
+    frameReady_[currentFrame_] = true;
     
     currentFrame_ = (currentFrame_ + 1) % MAX_FRAMES_IN_FLIGHT;
     
-    return resultData;
+    int prevFrame = (currentFrame_ - 1 + MAX_FRAMES_IN_FLIGHT) % MAX_FRAMES_IN_FLIGHT;
+    
+    if (!frameReady_[prevFrame]) {
+        return nullptr;
+    }
+    
+    return readbackBuffers_[prevFrame].data();
+}
+
+void VulkanRenderer::waitIdle() {
+    if (device_ != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(device_);
+    }
 }

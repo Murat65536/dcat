@@ -294,6 +294,8 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
+            
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     });
     
@@ -380,7 +382,7 @@ int main(int argc, char* argv[]) {
         // Use fixed light direction instead of camera-relative
         renderer.setLightDirection(glm::vec3(0.0f, -1.0f, -0.5f));  // Light coming from above and slightly behind
         
-        // Render
+        // Render frame and get latest completed framebuffer
         const uint8_t* framebuffer = renderer.render(
             mesh, mvp, model,
             diffuseTexture, normalTexture, !args.noLighting,
@@ -389,16 +391,18 @@ int main(int argc, char* argv[]) {
         );
         
         // Output to terminal
-        if (args.useKitty) {
-            renderKittyShm(framebuffer, currentWidth, currentHeight);
-        } else if (args.useSixel) {
-            renderSixel(framebuffer, currentWidth, currentHeight);
-        } else {
-            renderTerminal(framebuffer, currentWidth, currentHeight);
-        }
-        
-        if (args.showStatusBar) {
-            drawStatusBar(deltaTime > 0 ? 1.0f / deltaTime : 0.0f, moveSpeed, camera.position);
+        if (framebuffer != nullptr) {
+            if (args.useKitty) {
+                renderKittyShm(framebuffer, currentWidth, currentHeight);
+            } else if (args.useSixel) {
+                renderSixel(framebuffer, currentWidth, currentHeight);
+            } else {
+                renderTerminal(framebuffer, currentWidth, currentHeight);
+            }
+            
+            if (args.showStatusBar) {
+                drawStatusBar(deltaTime > 0 ? 1.0f / deltaTime : 0.0f, moveSpeed, camera.position);
+            }
         }
         
         // Frame rate limiting
@@ -408,6 +412,8 @@ int main(int argc, char* argv[]) {
             std::this_thread::sleep_for(TARGET_FRAME_TIME - frameDuration);
         }
     }
+
+    renderer.waitIdle();
     
     // Cleanup
     inputThread.join();

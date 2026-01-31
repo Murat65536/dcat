@@ -39,8 +39,8 @@ public:
     void setLightDirection(const glm::vec3& direction);
     void setWireframeMode(bool enabled);
     
-    // Renders the scene and returns a pointer to the pixel data (RGBA)
-    // The pointer is valid until the next render call or resize
+    // Renders the scene asynchronously and returns the most recent completed frame
+    // Returns nullptr if no frames have completed yet
     const uint8_t* render(
         const Mesh& mesh,
         const glm::mat4& mvp,
@@ -51,6 +51,9 @@ public:
         const glm::vec3& cameraPos,
         bool useTriplanarMapping = false
     );
+    
+    // Wait for all pending frames to complete
+    void waitIdle();
 
     size_t getFrameSize() const { return width_ * height_ * 4; }
     
@@ -97,6 +100,10 @@ private:
     std::vector<VkBuffer> stagingBuffers_;
     std::vector<VmaAllocation> stagingBufferAllocations_;
     std::vector<void*> mappedDatas_;
+    
+    // CPU-side readback buffers for async access
+    std::vector<std::vector<uint8_t>> readbackBuffers_;
+    std::vector<bool> frameReady_;
     
     // Uniform buffers (per frame)
     std::vector<VkBuffer> uniformBuffers_;
