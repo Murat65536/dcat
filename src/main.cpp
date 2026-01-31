@@ -10,6 +10,7 @@
 #include <vector>
 #include <functional>
 #include <iomanip>
+#include <string_view>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -38,11 +39,26 @@ struct Args {
 };
 
 struct Option {
-    std::string shortFlag;
-    std::string longFlag;
-    std::string valueName;
-    std::string description;
-    std::function<void(const char*)> callback;
+    std::string_view shortFlag;
+    std::string_view longFlag;
+    std::string_view valueName;
+    std::string_view description;
+    void (*callback)(Args&, const char*);
+};
+
+constexpr Option OPTIONS[] = {
+    {"-t", "--texture", "PATH", "path to the texture file (defaults to gray)", [](Args& args, const char* v) { args.texturePath = v; }},
+    {"-n", "--normal-map", "PATH", "path to normal image file", [](Args& args, const char* v) { args.normalMapPath = v; }},
+    {"-W", "--width", "WIDTH", "renderer width (defaults to terminal width)", [](Args& args, const char* v) { args.width = std::stoi(v); }},
+    {"-H", "--height", "HEIGHT", "renderer height (defaults to terminal height)", [](Args& args, const char* v) { args.height = std::stoi(v); }},
+    {"", "--camera-distance", "DIST", "camera distance from origin", [](Args& args, const char* v) { args.cameraDistance = std::stof(v); }},
+    {"-f", "--fps", "FPS", "target frames per second (default: 60)", [](Args& args, const char* v) { args.targetFps = std::stoi(v); }},
+    {"-S", "--sixel", "", "enable Sixel graphics mode", [](Args& args, const char*) { args.useSixel = true; }},
+    {"-K", "--kitty", "", "enable Kitty graphics protocol mode", [](Args& args, const char*) { args.useKitty = true; }},
+    {"", "--no-lighting", "", "disable lighting calculations", [](Args& args, const char*) { args.noLighting = true; }},
+    {"", "--fps-controls", "", "enable first-person camera controls", [](Args& args, const char*) { args.fpsControls = true; }},
+    {"-s", "--status-bar", "", "show status bar", [](Args& args, const char*) { args.showStatusBar = true; }},
+    {"-h", "--help", "", "display this help and exit", [](Args& args, const char*) { args.showHelp = true; }}
 };
 
 static std::atomic<bool> g_running{true};
@@ -51,28 +67,11 @@ void signalHandler(int) {
     g_running.store(false);
 }
 
-std::vector<Option> defineOptions(Args& args) {
-    return {
-        {"-t", "--texture", "PATH", "path to the texture file (defaults to gray)", [&](const char* v) { args.texturePath = v; }},
-        {"-n", "--normal-map", "PATH", "path to normal image file", [&](const char* v) { args.normalMapPath = v; }},
-        {"-W", "--width", "WIDTH", "renderer width (defaults to terminal width)", [&](const char* v) { args.width = std::stoi(v); }},
-        {"-H", "--height", "HEIGHT", "renderer height (defaults to terminal height)", [&](const char* v) { args.height = std::stoi(v); }},
-        {"", "--camera-distance", "DIST", "camera distance from origin", [&](const char* v) { args.cameraDistance = std::stof(v); }},
-        {"-f", "--fps", "FPS", "target frames per second (default: 60)", [&](const char* v) { args.targetFps = std::stoi(v); }},
-        {"-S", "--sixel", "", "enable Sixel graphics mode", [&](const char*) { args.useSixel = true; }},
-        {"-K", "--kitty", "", "enable Kitty graphics protocol mode", [&](const char*) { args.useKitty = true; }},
-        {"", "--no-lighting", "", "disable lighting calculations", [&](const char*) { args.noLighting = true; }},
-        {"", "--fps-controls", "", "enable first-person camera controls", [&](const char*) { args.fpsControls = true; }},
-        {"-s", "--status-bar", "", "show status bar", [&](const char*) { args.showStatusBar = true; }},
-        {"-h", "--help", "", "display this help and exit", [&](const char*) { args.showHelp = true; }}
-    };
-}
-
-void printUsage(const char* programName, const std::vector<Option>& options) {
-    std::cout << "Usage: " << programName << " [OPTION]... [MODEL]\n\n";
+void printUsage() {
+    std::cout << "Usage: dcat [OPTION]... [MODEL]\n\n";
 
     size_t maxLen = 0;
-    for (const auto& opt : options) {
+    for (const auto& opt : OPTIONS) {
         size_t len = 0;
         if (!opt.shortFlag.empty()) len += opt.shortFlag.length() + 2; // "-s, "
         else len += 4; // "    "
@@ -81,17 +80,17 @@ void printUsage(const char* programName, const std::vector<Option>& options) {
         if (len > maxLen) maxLen = len;
     }
 
-    for (const auto& opt : options) {
+    for (const auto& opt : OPTIONS) {
         std::cout << "  ";
         std::string flagPart;
         if (!opt.shortFlag.empty()) {
-            flagPart += opt.shortFlag + ", ";
+            flagPart += std::string(opt.shortFlag) + ", ";
         } else {
             flagPart += "    ";
         }
         flagPart += opt.longFlag;
         if (!opt.valueName.empty()) {
-            flagPart += " " + opt.valueName;
+            flagPart += " " + std::string(opt.valueName);
         }
 
         std::cout << std::left << std::setw(maxLen + 2) << flagPart << opt.description << "\n";
@@ -101,32 +100,31 @@ void printUsage(const char* programName, const std::vector<Option>& options) {
 
 Args parseArgs(int argc, char* argv[]) {
     Args args;
-    auto options = defineOptions(args);
     
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         bool matched = false;
 
         if (arg[0] == '-') {
-            for (const auto& opt : options) {
+            for (const auto& opt : OPTIONS) {
                 if (arg == opt.shortFlag || arg == opt.longFlag) {
                     matched = true;
                     if (!opt.valueName.empty()) {
                         if (i + 1 < argc) {
-                            opt.callback(argv[++i]);
+                            opt.callback(args, argv[++i]);
                         } else {
                             std::cerr << "Error: " << arg << " requires a value.\n";
                             exit(1);
                         }
                     } else {
-                        opt.callback(nullptr);
+                        opt.callback(args, nullptr);
                     }
                     break;
                 }
             }
             if (!matched) {
                 std::cerr << "Unknown option: " << arg << "\n";
-                printUsage(argv[0], options);
+                printUsage();
                 exit(1);
             }
         } else {
@@ -135,7 +133,7 @@ Args parseArgs(int argc, char* argv[]) {
     }
 
     if (args.showHelp) {
-        printUsage(argv[0], options);
+        printUsage();
         exit(0);
     }
     
@@ -147,9 +145,7 @@ int main(int argc, char* argv[]) {
     
     if (args.modelPath.empty()) {
         if (!args.showHelp) { // If help wasn't asked for but no model provided
-             // Create a temp args just to get options for printing usage
-            Args tempArgs;
-            printUsage(argv[0], defineOptions(tempArgs));
+            printUsage();
             return 1;
         }
     }
