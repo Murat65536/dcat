@@ -189,7 +189,7 @@ private:
     
     void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, 
                       VmaMemoryUsage memoryUsage, VkBuffer& buffer, 
-                      VmaAllocation& allocation);
+                      VmaAllocation& allocation, VmaAllocationInfo* outAllocInfo = nullptr);
     void createImage(uint32_t width, uint32_t height, VkFormat format,
                      VkImageUsageFlags usage, VmaMemoryUsage memoryUsage,
                      VkImage& image, VmaAllocation& allocation);

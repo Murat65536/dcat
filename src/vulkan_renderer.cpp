@@ -599,7 +599,7 @@ bool VulkanRenderer::createGraphicsPipeline() {
 
 void VulkanRenderer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
                                    VmaMemoryUsage memoryUsage, VkBuffer& buffer,
-                                   VmaAllocation& allocation) {
+                                   VmaAllocation& allocation, VmaAllocationInfo* outAllocInfo) {
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = size;
@@ -609,7 +609,12 @@ void VulkanRenderer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
     VmaAllocationCreateInfo allocInfo = {};
     allocInfo.usage = memoryUsage;
 
-    vmaCreateBuffer(allocator_, &bufferInfo, &allocInfo, &buffer, &allocation, nullptr);
+    if (memoryUsage == VMA_MEMORY_USAGE_GPU_TO_CPU || memoryUsage == VMA_MEMORY_USAGE_CPU_TO_GPU) {
+        allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                         VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    }
+
+    vmaCreateBuffer(allocator_, &bufferInfo, &allocInfo, &buffer, &allocation, outAllocInfo);
 }
 
 void VulkanRenderer::createImage(uint32_t width, uint32_t height, VkFormat format,
@@ -649,7 +654,9 @@ VkImageView VulkanRenderer::createImageView(VkImage image, VkFormat format, VkIm
     viewInfo.subresourceRange.layerCount = 1;
 
     VkImageView imageView;
-    vkCreateImageView(device_, &viewInfo, nullptr, &imageView);
+    if (vkCreateImageView(device_, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create image view");
+    }
     return imageView;
 }
 
@@ -696,11 +703,14 @@ bool VulkanRenderer::createStagingBuffers() {
     VkDeviceSize bufferSize = width_ * height_ * 4;  // RGBA
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VmaAllocationInfo allocInfo;
         createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                     VMA_MEMORY_USAGE_GPU_TO_CPU, stagingBuffers_[i], stagingBufferAllocations_[i]);
-
-        if (vmaMapMemory(allocator_, stagingBufferAllocations_[i], &mappedDatas_[i]) != VK_SUCCESS) {
-            std::cerr << "Failed to map staging buffer memory" << std::endl;
+                     VMA_MEMORY_USAGE_GPU_TO_CPU, stagingBuffers_[i], 
+                     stagingBufferAllocations_[i], &allocInfo);
+        mappedDatas_[i] = allocInfo.pMappedData;
+        
+        if (!mappedDatas_[i]) {
+            std::cerr << "Failed to get persistent mapped pointer for staging buffer" << std::endl;
             return false;
         }
     }
@@ -765,7 +775,6 @@ void VulkanRenderer::cleanup() {
     
     for (size_t i = 0; i < stagingBuffers_.size(); i++) {
         if (stagingBuffers_[i] != VK_NULL_HANDLE) {
-            vmaUnmapMemory(allocator_, stagingBufferAllocations_[i]);
             vmaDestroyBuffer(allocator_, stagingBuffers_[i], stagingBufferAllocations_[i]);
         }
     }
@@ -1018,14 +1027,12 @@ void VulkanRenderer::updateDiffuseTexture(const Texture& texture) {
     VkDeviceSize imageSize = texture.data.size();
     VkBuffer stagingBuf;
     VmaAllocation stagingBufAlloc;
+    VmaAllocationInfo stagingAllocInfo;
     createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                  VMA_MEMORY_USAGE_CPU_TO_GPU,
-                 stagingBuf, stagingBufAlloc);
+                 stagingBuf, stagingBufAlloc, &stagingAllocInfo);
 
-    void* data;
-    vmaMapMemory(allocator_, stagingBufAlloc, &data);
-    memcpy(data, texture.data.data(), imageSize);
-    vmaUnmapMemory(allocator_, stagingBufAlloc);
+    memcpy(stagingAllocInfo.pMappedData, texture.data.data(), imageSize);
 
     transitionImageLayout(diffuseImage_,
                           VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -1070,14 +1077,12 @@ void VulkanRenderer::updateNormalTexture(const Texture& texture) {
     VkDeviceSize imageSize = texture.data.size();
     VkBuffer stagingBuf;
     VmaAllocation stagingBufAlloc;
+    VmaAllocationInfo stagingAllocInfo;
     createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                  VMA_MEMORY_USAGE_CPU_TO_GPU,
-                 stagingBuf, stagingBufAlloc);
+                 stagingBuf, stagingBufAlloc, &stagingAllocInfo);
 
-    void* data;
-    vmaMapMemory(allocator_, stagingBufAlloc, &data);
-    memcpy(data, texture.data.data(), imageSize);
-    vmaUnmapMemory(allocator_, stagingBufAlloc);
+    memcpy(stagingAllocInfo.pMappedData, texture.data.data(), imageSize);
 
     transitionImageLayout(normalImage_,
                           VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -1179,10 +1184,7 @@ void VulkanRenderer::resize(uint32_t width, uint32_t height) {
     // Recreate staging buffers
     for (size_t i = 0; i < stagingBuffers_.size(); i++) {
         if (stagingBuffers_[i] != VK_NULL_HANDLE) {
-            if (mappedDatas_[i]) {
-                vmaUnmapMemory(allocator_, stagingBufferAllocations_[i]);
-                mappedDatas_[i] = nullptr;
-            }
+            mappedDatas_[i] = nullptr;
             vmaDestroyBuffer(allocator_, stagingBuffers_[i], stagingBufferAllocations_[i]);
         }
     }
