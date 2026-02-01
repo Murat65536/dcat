@@ -276,6 +276,18 @@ bool VulkanRenderer::createRenderPass() {
 }
 
 std::vector<char> VulkanRenderer::readShaderFile(const std::string& filename) {
+    if (!shaderDirectory_.empty()) {
+        std::string path = shaderDirectory_ + filename;
+        std::ifstream file(path, std::ios::ate | std::ios::binary);
+        if (file.is_open()) {
+            size_t fileSize = static_cast<size_t>(file.tellg());
+            std::vector<char> buffer(fileSize);
+            file.seekg(0);
+            file.read(buffer.data(), fileSize);
+            return buffer;
+        }
+    }
+    
     std::vector<std::string> searchPaths;
     
     // Get executable directory
@@ -316,6 +328,9 @@ std::vector<char> VulkanRenderer::readShaderFile(const std::string& filename) {
             std::vector<char> buffer(fileSize);
             file.seekg(0);
             file.read(buffer.data(), fileSize);
+            
+            // Cache the directory for future loads
+            shaderDirectory_ = basePath;
             
             return buffer;
         }

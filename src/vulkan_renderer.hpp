@@ -155,6 +155,8 @@ private:
     uint64_t cachedMeshGeneration_ = 0;
     const void* cachedDiffuseDataPtr_ = nullptr;
     const void* cachedNormalDataPtr_ = nullptr;
+
+    std::string shaderDirectory_;
     
     // Helper functions
     bool createInstance();
