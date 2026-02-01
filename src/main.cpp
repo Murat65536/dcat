@@ -284,10 +284,13 @@ int main(int argc, char* argv[]) {
 
                         if (!args.fpsControls) {
                             constexpr static float ROTATION_AMOUNT = M_PI / 8;
+                            constexpr static float ZOOM_AMOUNT = 0.25f;
                             if (buffer[i] == 'a' || buffer[i] == 'A') camera.orbit(ROTATION_AMOUNT, 0.0f);
                             if (buffer[i] == 'd' || buffer[i] == 'D') camera.orbit(-ROTATION_AMOUNT, 0.0f);
                             if (buffer[i] == 'w' || buffer[i] == 'W') camera.orbit(0.0f, -ROTATION_AMOUNT);
                             if (buffer[i] == 's' || buffer[i] == 'S') camera.orbit(0.0f, ROTATION_AMOUNT);
+                            if (buffer[i] == 'e' || buffer[i] == 'E') camera.zoom(ZOOM_AMOUNT);
+                            if (buffer[i] == 'r' || buffer[i] == 'R') camera.zoom(-ZOOM_AMOUNT);
                         }
 
                         // Animation controls (only if model has animations)

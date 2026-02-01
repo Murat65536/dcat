@@ -102,6 +102,19 @@ void Camera::orbit(float yawDelta, float pitchDelta) {
     position = target - direction * dist;
 }
 
+void Camera::zoom(float delta) {
+    float dist = glm::distance(position, target);
+    dist -= delta; // towards means less distance
+    if (dist < 0.1f) dist = 0.1f;
+
+    glm::vec3 direction(
+        std::cos(yaw) * std::cos(pitch),
+        std::sin(pitch),
+        std::sin(yaw) * std::cos(pitch)
+    );
+    position = target - direction * dist;
+}
+
 glm::vec3 Camera::forwardDirection() const {
     return glm::vec3(
         std::cos(yaw) * std::cos(pitch),

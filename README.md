@@ -17,3 +17,4 @@ A terminal-based 3D model viewer
   - `b` - Speed up
 - When FPS controls are disabled
   - `w/a/s/d` - Rotate the camera around the model
+  - `e/r` - Zoom in and out
