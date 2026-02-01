@@ -4,7 +4,7 @@ A terminal-based 3D model viewer
 ## Controls
 - `q` - Quit the viewer
 - `m` - Toggle wireframe
-- **Animation controls** (for animated models):
+- Animation controls:
   - `p` - Play/Pause animation
   - `1` - Previous animation
   - `2` - Next animation

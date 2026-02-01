@@ -14,6 +14,8 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
 
 #include "camera.hpp"
 #include "model.hpp"
@@ -194,9 +196,72 @@ int main(int argc, char* argv[]) {
         finalNormalPath = materialInfo.normalPath;
     }
 
-    // Load textures
-    Texture diffuseTexture = finalDiffusePath.empty() ? Texture() : Texture::fromFile(finalDiffusePath);
-    Texture normalTexture = finalNormalPath.empty() ? Texture::createFlatNormalMap() : Texture::fromFile(finalNormalPath);
+    // Load textures (handle embedded textures)
+    Texture diffuseTexture, normalTexture;
+    
+    if (!finalDiffusePath.empty() && finalDiffusePath[0] == '*') {
+        // Embedded texture
+        Assimp::Importer importer;
+        const aiScene* scene = importer.ReadFile(args.modelPath, 0);
+        if (scene && scene->mNumTextures > 0) {
+            int texIndex = std::stoi(finalDiffusePath.substr(1));
+            if (texIndex >= 0 && texIndex < static_cast<int>(scene->mNumTextures)) {
+                const aiTexture* embeddedTex = scene->mTextures[texIndex];
+                if (embeddedTex->mHeight == 0) {
+                    // Compressed texture (PNG, JPEG, etc.)
+                    diffuseTexture = Texture::fromMemory(
+                        reinterpret_cast<const unsigned char*>(embeddedTex->pcData),
+                        embeddedTex->mWidth
+                    );
+                } else {
+                    // Uncompressed ARGB8888
+                    diffuseTexture.width = embeddedTex->mWidth;
+                    diffuseTexture.height = embeddedTex->mHeight;
+                    diffuseTexture.data.resize(embeddedTex->mWidth * embeddedTex->mHeight * 4);
+                    for (unsigned int i = 0; i < embeddedTex->mWidth * embeddedTex->mHeight; i++) {
+                        diffuseTexture.data[i * 4 + 0] = embeddedTex->pcData[i].r;
+                        diffuseTexture.data[i * 4 + 1] = embeddedTex->pcData[i].g;
+                        diffuseTexture.data[i * 4 + 2] = embeddedTex->pcData[i].b;
+                        diffuseTexture.data[i * 4 + 3] = embeddedTex->pcData[i].a;
+                    }
+                }
+            }
+        }
+    } else if (!finalDiffusePath.empty()) {
+        diffuseTexture = Texture::fromFile(finalDiffusePath);
+    }
+    
+    if (!finalNormalPath.empty() && finalNormalPath[0] == '*') {
+        // Embedded texture
+        Assimp::Importer importer;
+        const aiScene* scene = importer.ReadFile(args.modelPath, 0);
+        if (scene && scene->mNumTextures > 0) {
+            int texIndex = std::stoi(finalNormalPath.substr(1));
+            if (texIndex >= 0 && texIndex < static_cast<int>(scene->mNumTextures)) {
+                const aiTexture* embeddedTex = scene->mTextures[texIndex];
+                if (embeddedTex->mHeight == 0) {
+                    normalTexture = Texture::fromMemory(
+                        reinterpret_cast<const unsigned char*>(embeddedTex->pcData),
+                        embeddedTex->mWidth
+                    );
+                } else {
+                    normalTexture.width = embeddedTex->mWidth;
+                    normalTexture.height = embeddedTex->mHeight;
+                    normalTexture.data.resize(embeddedTex->mWidth * embeddedTex->mHeight * 4);
+                    for (unsigned int i = 0; i < embeddedTex->mWidth * embeddedTex->mHeight; i++) {
+                        normalTexture.data[i * 4 + 0] = embeddedTex->pcData[i].r;
+                        normalTexture.data[i * 4 + 1] = embeddedTex->pcData[i].g;
+                        normalTexture.data[i * 4 + 2] = embeddedTex->pcData[i].b;
+                        normalTexture.data[i * 4 + 3] = embeddedTex->pcData[i].a;
+                    }
+                }
+            }
+        }
+    } else if (!finalNormalPath.empty()) {
+        normalTexture = Texture::fromFile(finalNormalPath);
+    } else {
+        normalTexture = Texture::createFlatNormalMap();
+    }
     
     // Calculate camera setup
     CameraSetup cameraSetup = calculateCameraSetup(mesh.vertices);

@@ -16,4 +16,5 @@ struct Texture {
     
     static Texture createFlatNormalMap();
     static Texture fromFile(const std::string& path);
+    static Texture fromMemory(const unsigned char* data, size_t size);
 };

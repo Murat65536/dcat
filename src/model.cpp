@@ -339,20 +339,78 @@ static void loadAnimations(const aiScene* scene, std::vector<Animation>& animati
     }
 }
 
-static std::string resolveTexturePath(const std::string& modelPath, const std::string& texturePath) {
+static std::string resolveTexturePath(const std::string& modelPath, const std::string& texturePath, const aiScene* scene) {
     if (texturePath.empty()) return "";
     
-    // Check if absolute path (simple check)
-    if (texturePath[0] == '/') return texturePath;
+    // Check if this is an embedded texture reference (starts with *)
+    if (texturePath[0] == '*') {
+        return texturePath;
+    }
     
-    // Get directory from model path
+    // Try to match against embedded texture filenames
+    if (scene && scene->mNumTextures > 0) {
+        for (unsigned int i = 0; i < scene->mNumTextures; i++) {
+            const aiTexture* tex = scene->mTextures[i];
+            if (tex->mFilename.length > 0) {
+                std::string embeddedFilename = tex->mFilename.C_Str();
+                // Check if the paths match (comparing full paths or just filenames)
+                if (embeddedFilename == texturePath) {
+                    return "*" + std::to_string(i);
+                }
+                // Also try comparing just the filenames
+                size_t lastSlash1 = embeddedFilename.rfind('\\');
+                size_t lastSlash2 = embeddedFilename.rfind('/');
+                size_t slashPos = std::max(lastSlash1, lastSlash2);
+                if (slashPos != std::string::npos) {
+                    embeddedFilename = embeddedFilename.substr(slashPos + 1);
+                }
+                
+                std::string requestedFilename = texturePath;
+                lastSlash1 = requestedFilename.rfind('\\');
+                lastSlash2 = requestedFilename.rfind('/');
+                slashPos = std::max(lastSlash1, lastSlash2);
+                if (slashPos != std::string::npos) {
+                    requestedFilename = requestedFilename.substr(slashPos + 1);
+                }
+                
+                if (embeddedFilename == requestedFilename) {
+                    return "*" + std::to_string(i);
+                }
+            }
+        }
+    }
+    
+    std::string cleanPath = texturePath;
+    
+    // Handle Windows absolute paths (C:\...) - extract just the filename
+    if (cleanPath.length() >= 3 && cleanPath[1] == ':' && (cleanPath[2] == '\\' || cleanPath[2] == '/')) {
+        size_t lastBackslash = cleanPath.rfind('\\');
+        size_t lastForwardSlash = cleanPath.rfind('/');
+        size_t lastSlash = std::string::npos;
+        if (lastBackslash != std::string::npos && lastForwardSlash != std::string::npos) {
+            lastSlash = std::max(lastBackslash, lastForwardSlash);
+        } else if (lastBackslash != std::string::npos) {
+            lastSlash = lastBackslash;
+        } else if (lastForwardSlash != std::string::npos) {
+            lastSlash = lastForwardSlash;
+        }
+        
+        if (lastSlash != std::string::npos) {
+            cleanPath = cleanPath.substr(lastSlash + 1);
+        }
+    }
+    
+    // If absolute Unix path, return as-is
+    if (cleanPath[0] == '/') return cleanPath;
+    
+    // Make relative to model directory
     std::string dir;
     size_t lastSlash = modelPath.rfind('/');
     if (lastSlash != std::string::npos) {
         dir = modelPath.substr(0, lastSlash + 1);
     }
     
-    return dir + texturePath;
+    return dir + cleanPath;
 }
 
 bool loadModel(const std::string& path, Mesh& mesh, bool& outHasUVs, MaterialInfo& outMaterial) {
@@ -431,20 +489,20 @@ bool loadModel(const std::string& path, Mesh& mesh, bool& outHasUVs, MaterialInf
 
         if (outMaterial.diffusePath.empty()) {
             if (material->GetTexture(aiTextureType_DIFFUSE, 0, &str) == AI_SUCCESS) {
-                outMaterial.diffusePath = resolveTexturePath(path, str.C_Str());
+                outMaterial.diffusePath = resolveTexturePath(path, str.C_Str(), scene);
             } else if (material->GetTexture(aiTextureType_BASE_COLOR, 0, &str) == AI_SUCCESS) { // PBR
-                outMaterial.diffusePath = resolveTexturePath(path, str.C_Str());
+                outMaterial.diffusePath = resolveTexturePath(path, str.C_Str(), scene);
             }
         }
 
         // Try to find normal map
         if (outMaterial.normalPath.empty()) {
             if (material->GetTexture(aiTextureType_NORMALS, 0, &str) == AI_SUCCESS) {
-                outMaterial.normalPath = resolveTexturePath(path, str.C_Str());
+                outMaterial.normalPath = resolveTexturePath(path, str.C_Str(), scene);
             } else if (material->GetTexture(aiTextureType_HEIGHT, 0, &str) == AI_SUCCESS) { // OBJ often uses HEIGHT for bump/normal
-                outMaterial.normalPath = resolveTexturePath(path, str.C_Str());
+                outMaterial.normalPath = resolveTexturePath(path, str.C_Str(), scene);
             } else if (material->GetTexture(aiTextureType_NORMAL_CAMERA, 0, &str) == AI_SUCCESS) {
-                outMaterial.normalPath = resolveTexturePath(path, str.C_Str());
+                outMaterial.normalPath = resolveTexturePath(path, str.C_Str(), scene);
             }
         }
 

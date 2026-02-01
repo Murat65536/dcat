@@ -34,3 +34,21 @@ Texture Texture::fromFile(const std::string& path) {
     stbi_image_free(data);
     return tex;
 }
+
+Texture Texture::fromMemory(const unsigned char* buffer, size_t size) {
+    int width, height, channels;
+    unsigned char* data = stbi_load_from_memory(buffer, static_cast<int>(size), &width, &height, &channels, 4);
+    
+    if (!data) {
+        std::cerr << "Warning: Failed to load texture from memory, using gray" << std::endl;
+        return Texture();
+    }
+    
+    Texture tex;
+    tex.width = static_cast<uint32_t>(width);
+    tex.height = static_cast<uint32_t>(height);
+    tex.data.assign(data, data + width * height * 4);
+    
+    stbi_image_free(data);
+    return tex;
+}
