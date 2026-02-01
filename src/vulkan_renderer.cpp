@@ -1181,9 +1181,13 @@ const uint8_t* VulkanRenderer::render(
 ) {
     vkWaitForFences(device_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
 
-    if (frameReady_[currentFrame_]) {
+    int prevFrame = (currentFrame_ - 1 + MAX_FRAMES_IN_FLIGHT) % MAX_FRAMES_IN_FLIGHT;
+    const uint8_t* result = nullptr;
+
+    if (frameReady_[prevFrame]) {
         vmaInvalidateAllocation(allocator_, stagingBufferAllocations_[currentFrame_], 0, VK_WHOLE_SIZE);
         memcpy(readbackBuffers_[currentFrame_].data(), mappedDatas_[currentFrame_], getFrameSize());
+        result = readbackBuffers_[prevFrame].data();
     }
 
     vkResetFences(device_, 1, &inFlightFences_[currentFrame_]);
@@ -1408,18 +1412,9 @@ const uint8_t* VulkanRenderer::render(
     submitInfo.pCommandBuffers = &commandBuffer;
 
     vkQueueSubmit(graphicsQueue_, 1, &submitInfo, inFlightFences_[currentFrame_]);
-
     frameReady_[currentFrame_] = true;
-    
     currentFrame_ = (currentFrame_ + 1) % MAX_FRAMES_IN_FLIGHT;
-    
-    int prevFrame = (currentFrame_ - 1 + MAX_FRAMES_IN_FLIGHT) % MAX_FRAMES_IN_FLIGHT;
-    
-    if (!frameReady_[prevFrame]) {
-        return nullptr;
-    }
-    
-    return readbackBuffers_[prevFrame].data();
+    return result;
 }
 
 void VulkanRenderer::waitIdle() {
