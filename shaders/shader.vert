@@ -1,8 +1,13 @@
 #version 450
 
-layout(set = 0, binding = 0) uniform Uniforms {
+// Push constants for frequently updated per-draw data
+layout(push_constant) uniform PushConstants {
     mat4 mvp;
     mat4 model;
+} pushConstants;
+
+// Uniform buffer for bone animation data (less frequently updated)
+layout(set = 0, binding = 0) uniform Uniforms {
     mat4 boneMatrices[200];
     uint hasAnimation;
 } uniforms;
@@ -48,10 +53,10 @@ void main() {
         localBitangent = inBitangent;
     }
 
-    gl_Position = uniforms.mvp * localPosition;
+    gl_Position = pushConstants.mvp * localPosition;
     fragTexCoord = inTexCoord;
-    fragWorldNormal = (uniforms.model * vec4(localNormal, 0.0)).xyz;
-    fragWorldTangent = (uniforms.model * vec4(localTangent, 0.0)).xyz;
-    fragWorldBitangent = (uniforms.model * vec4(localBitangent, 0.0)).xyz;
-    fragWorldPos = (uniforms.model * localPosition).xyz;
+    fragWorldNormal = (pushConstants.model * vec4(localNormal, 0.0)).xyz;
+    fragWorldTangent = (pushConstants.model * vec4(localTangent, 0.0)).xyz;
+    fragWorldBitangent = (pushConstants.model * vec4(localBitangent, 0.0)).xyz;
+    fragWorldPos = (pushConstants.model * localPosition).xyz;
 }

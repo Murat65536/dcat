@@ -12,9 +12,12 @@
 
 struct Texture;
 
-struct Uniforms {
+struct PushConstants {
     glm::mat4 mvp;
     glm::mat4 model;
+};
+
+struct Uniforms {
     glm::mat4 boneMatrices[MAX_BONES];
     uint32_t hasAnimation;
     uint32_t padding[3];

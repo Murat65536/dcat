@@ -241,10 +241,18 @@ bool VulkanRenderer::createDescriptorSetLayout() {
 }
 
 bool VulkanRenderer::createPipelineLayout() {
+    // Push constant range for MVP and model matrices
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(PushConstants);
+    
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = 1;
     pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout_;
+    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
     if (vkCreatePipelineLayout(device_, &pipelineLayoutInfo, nullptr, &pipelineLayout_) != VK_SUCCESS) {
         std::cerr << "Failed to create pipeline layout" << std::endl;
@@ -578,6 +586,7 @@ bool VulkanRenderer::createGraphicsPipeline() {
     rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
     if (vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &wireframePipeline_) != VK_SUCCESS) {
         std::cerr << "Failed to create graphics pipeline (wireframe)" << std::endl;
+        vkDestroyPipeline(device_, graphicsPipeline_, nullptr);
         vkDestroyShaderModule(device_, fragShaderModule, nullptr);
         vkDestroyShaderModule(device_, vertShaderModule, nullptr);
         return false;
@@ -1308,9 +1317,13 @@ const uint8_t* VulkanRenderer::render(
         descriptorSetsDirty_[currentFrame_] = false;
     }
 
+    // Prepare push constants for MVP and model matrices
+    PushConstants pushConstants{};
+    pushConstants.mvp = mvp;
+    pushConstants.model = model;
+
+    // Prepare uniform buffer for bone matrices
     Uniforms uniforms{};
-    uniforms.mvp = mvp;
-    uniforms.model = model;
     uniforms.hasAnimation = (boneMatrices != nullptr) ? 1 : 0;
 
     // Copy bone matrices if available
@@ -1399,6 +1412,10 @@ const uint8_t* VulkanRenderer::render(
 
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             pipelineLayout_, 0, 1, &descriptorSets_[currentFrame_], 0, nullptr);
+
+    // Push constants for MVP and model matrices (updated every frame)
+    vkCmdPushConstants(commandBuffer, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT,
+                       0, sizeof(PushConstants), &pushConstants);
 
     VkBuffer vertexBuffers[] = {vertexBuffer_};
     VkDeviceSize offsets[] = {0};
