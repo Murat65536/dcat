@@ -262,7 +262,6 @@ int main(int argc, char* argv[]) {
     }
     
     // Constants
-    constexpr float MODEL_ROTATION_SPEED = 0.6f;
     constexpr float MOVE_SPEED_BASE = 0.5f;
     constexpr float ROTATION_SENSITIVITY = 2.0f;
     const auto TARGET_FRAME_TIME = std::chrono::microseconds(1000000 / args.targetFps);

@@ -134,7 +134,7 @@ static void computeBoneTransform(const Skeleton& skeleton, const Animation& anim
 
     auto it = skeleton.boneMap.find(node.name);
     if (it != skeleton.boneMap.end()) {
-        int boneIdx = it->second;
+        uint32_t boneIdx = it->second;
         if (boneIdx < MAX_BONES) {
             boneMatrices[boneIdx] = skeleton.globalInverseTransform *
                                    globalTransform *

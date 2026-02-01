@@ -192,7 +192,7 @@ private:
                      VkImage& image, VmaAllocation& allocation);
     VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
     
-    void transitionImageLayout(VkImage image, VkFormat format,
+    void transitionImageLayout(VkImage image,
                                VkImageLayout oldLayout, VkImageLayout newLayout);
     void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
     

@@ -53,6 +53,35 @@ bool VulkanRenderer::createInstance() {
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
 
+#ifndef NDEBUG
+    // Enable validation layers in debug builds
+    const std::vector<const char*> validationLayers = {
+        "VK_LAYER_KHRONOS_validation"
+    };
+
+    // Check if validation layers are available
+    uint32_t layerCount;
+    vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+    std::vector<VkLayerProperties> availableLayers(layerCount);
+    vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+
+    bool validationAvailable = false;
+    for (const auto& layerProperties : availableLayers) {
+        if (strcmp("VK_LAYER_KHRONOS_validation", layerProperties.layerName) == 0) {
+            validationAvailable = true;
+            break;
+        }
+    }
+
+    if (validationAvailable) {
+        createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+        createInfo.ppEnabledLayerNames = validationLayers.data();
+        std::cerr << "Debug: Vulkan validation layers enabled" << std::endl;
+    } else {
+        std::cerr << "Debug: Vulkan validation layers requested but not available" << std::endl;
+    }
+#endif
+
     if (vkCreateInstance(&createInfo, nullptr, &instance_) != VK_SUCCESS) {
         std::cerr << "Failed to create Vulkan instance" << std::endl;
         return false;
@@ -877,13 +906,15 @@ void VulkanRenderer::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffer;
 
-    vkQueueSubmit(graphicsQueue_, 1, &submitInfo, VK_NULL_HANDLE);
+    if (vkQueueSubmit(graphicsQueue_, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to submit command buffer");
+    }
     vkQueueWaitIdle(graphicsQueue_);
 
     vkFreeCommandBuffers(device_, commandPool_, 1, &commandBuffer);
 }
 
-void VulkanRenderer::transitionImageLayout(VkImage image, VkFormat format,
+void VulkanRenderer::transitionImageLayout(VkImage image,
                                             VkImageLayout oldLayout, VkImageLayout newLayout) {
     VkCommandBuffer commandBuffer = beginSingleTimeCommands();
 
@@ -987,10 +1018,10 @@ void VulkanRenderer::updateDiffuseTexture(const Texture& texture) {
     memcpy(data, texture.data.data(), imageSize);
     vmaUnmapMemory(allocator_, stagingBufAlloc);
 
-    transitionImageLayout(diffuseImage_, VK_FORMAT_R8G8B8A8_SRGB,
+    transitionImageLayout(diffuseImage_,
                           VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     copyBufferToImage(stagingBuf, diffuseImage_, texture.width, texture.height);
-    transitionImageLayout(diffuseImage_, VK_FORMAT_R8G8B8A8_SRGB,
+    transitionImageLayout(diffuseImage_,
                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     vmaDestroyBuffer(allocator_, stagingBuf, stagingBufAlloc);
@@ -1039,10 +1070,10 @@ void VulkanRenderer::updateNormalTexture(const Texture& texture) {
     memcpy(data, texture.data.data(), imageSize);
     vmaUnmapMemory(allocator_, stagingBufAlloc);
 
-    transitionImageLayout(normalImage_, VK_FORMAT_R8G8B8A8_SRGB,
+    transitionImageLayout(normalImage_,
                           VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     copyBufferToImage(stagingBuf, normalImage_, texture.width, texture.height);
-    transitionImageLayout(normalImage_, VK_FORMAT_R8G8B8A8_SRGB,
+    transitionImageLayout(normalImage_,
                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     vmaDestroyBuffer(allocator_, stagingBuf, stagingBufAlloc);
@@ -1398,7 +1429,9 @@ const uint8_t* VulkanRenderer::render(
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffer;
 
-    vkQueueSubmit(graphicsQueue_, 1, &submitInfo, inFlightFences_[currentFrame_]);
+    if (vkQueueSubmit(graphicsQueue_, 1, &submitInfo, inFlightFences_[currentFrame_]) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to submit draw command buffer");
+    }
     frameReady_[currentFrame_] = true;
     currentFrame_ = (currentFrame_ + 1) % MAX_FRAMES_IN_FLIGHT;
     return result;
