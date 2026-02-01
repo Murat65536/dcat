@@ -335,6 +335,24 @@ static void loadAnimations(const aiScene* scene, std::vector<Animation>& animati
             animation.boneAnimations.push_back(boneAnim);
         }
 
+        float actualDuration = 0.0f;
+        for (const auto& boneAnim : animation.boneAnimations) {
+            if (!boneAnim.positionKeys.empty()) {
+                actualDuration = std::max(actualDuration, boneAnim.positionKeys.back().time);
+            }
+            if (!boneAnim.rotationKeys.empty()) {
+                actualDuration = std::max(actualDuration, boneAnim.rotationKeys.back().time);
+            }
+            if (!boneAnim.scaleKeys.empty()) {
+                actualDuration = std::max(actualDuration, boneAnim.scaleKeys.back().time);
+            }
+        }
+        
+        // Use actual duration if it's shorter than reported duration
+        if (actualDuration > 0.0f && actualDuration < animation.duration) {
+            animation.duration = actualDuration;
+        }
+
         animations.push_back(animation);
     }
 }
