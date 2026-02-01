@@ -291,19 +291,20 @@ std::vector<char> VulkanRenderer::readShaderFile(const std::string& filename) {
         }
     }
 
-    // Add search paths
-    // Install location relative to binary (e.g. /usr/bin/../share/dcat/shaders/)
-    if (!exePath.empty()) {
-        searchPaths.push_back(exePath + "../share/dcat/shaders/");
+    const char* shaderPathEnv = std::getenv("DCAT_SHADER_PATH");
+    if (shaderPathEnv) {
+        searchPaths.push_back(std::string(shaderPathEnv) + "/");
     }
-    // Standard system locations
-    searchPaths.push_back("/usr/local/share/dcat/shaders/");
-    searchPaths.push_back("/usr/share/dcat/shaders/");
-    // Current working directory (for development)
-    searchPaths.push_back("./shaders/");
-    // Executable directory (for local builds)
+
     if (!exePath.empty()) {
         searchPaths.push_back(exePath + "shaders/");
+    }
+    searchPaths.push_back("./shaders/");
+    
+    searchPaths.push_back("/usr/local/share/dcat/shaders/");
+    searchPaths.push_back("/usr/share/dcat/shaders/");
+    if (!exePath.empty()) {
+        searchPaths.push_back(exePath + "../share/dcat/shaders/");
     }
 
     for (const auto& basePath : searchPaths) {
@@ -315,6 +316,7 @@ std::vector<char> VulkanRenderer::readShaderFile(const std::string& filename) {
             std::vector<char> buffer(fileSize);
             file.seekg(0);
             file.read(buffer.data(), fileSize);
+            
             return buffer;
         }
     }
@@ -378,37 +380,49 @@ bool VulkanRenderer::createGraphicsPipeline() {
     bindingDescription.stride = sizeof(Vertex);
     bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-    std::array<VkVertexInputAttributeDescription, 5> attributeDescriptions{};
-    
+    std::array<VkVertexInputAttributeDescription, 7> attributeDescriptions{};
+
     // Position
     attributeDescriptions[0].binding = 0;
     attributeDescriptions[0].location = 0;
     attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[0].offset = offsetof(Vertex, position);
-    
+
     // Texcoord
     attributeDescriptions[1].binding = 0;
     attributeDescriptions[1].location = 1;
     attributeDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
     attributeDescriptions[1].offset = offsetof(Vertex, texcoord);
-    
+
     // Normal
     attributeDescriptions[2].binding = 0;
     attributeDescriptions[2].location = 2;
     attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[2].offset = offsetof(Vertex, normal);
-    
+
     // Tangent
     attributeDescriptions[3].binding = 0;
     attributeDescriptions[3].location = 3;
     attributeDescriptions[3].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[3].offset = offsetof(Vertex, tangent);
-    
+
     // Bitangent
     attributeDescriptions[4].binding = 0;
     attributeDescriptions[4].location = 4;
     attributeDescriptions[4].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[4].offset = offsetof(Vertex, bitangent);
+
+    // Bone IDs
+    attributeDescriptions[5].binding = 0;
+    attributeDescriptions[5].location = 5;
+    attributeDescriptions[5].format = VK_FORMAT_R32G32B32A32_SINT;
+    attributeDescriptions[5].offset = offsetof(Vertex, boneIDs);
+
+    // Bone Weights
+    attributeDescriptions[6].binding = 0;
+    attributeDescriptions[6].location = 6;
+    attributeDescriptions[6].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attributeDescriptions[6].offset = offsetof(Vertex, boneWeights);
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -1161,7 +1175,9 @@ const uint8_t* VulkanRenderer::render(
     bool enableLighting,
     const glm::vec3& cameraPos,
     bool useTriplanarMapping,
-    AlphaMode alphaMode
+    AlphaMode alphaMode,
+    const glm::mat4* boneMatrices,
+    uint32_t boneCount
 ) {
     vkWaitForFences(device_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
 
@@ -1245,6 +1261,25 @@ const uint8_t* VulkanRenderer::render(
     Uniforms uniforms{};
     uniforms.mvp = mvp;
     uniforms.model = model;
+    uniforms.hasAnimation = (boneMatrices != nullptr) ? 1 : 0;
+
+    // Copy bone matrices if available
+    if (boneMatrices && boneCount > 0) {
+        uint32_t numBonesToCopy = std::min(boneCount, static_cast<uint32_t>(MAX_BONES));
+        for (uint32_t i = 0; i < numBonesToCopy; i++) {
+            uniforms.boneMatrices[i] = boneMatrices[i];
+        }
+        // Initialize remaining bones to identity
+        for (uint32_t i = numBonesToCopy; i < MAX_BONES; i++) {
+            uniforms.boneMatrices[i] = glm::mat4(1.0f);
+        }
+    } else {
+        // Initialize all bones to identity for static models
+        for (uint32_t i = 0; i < MAX_BONES; i++) {
+            uniforms.boneMatrices[i] = glm::mat4(1.0f);
+        }
+    }
+
     memcpy(uniformBuffersMapped_[currentFrame_], &uniforms, sizeof(Uniforms));
 
     FragmentUniforms fragUniforms{};

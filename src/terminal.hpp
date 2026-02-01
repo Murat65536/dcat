@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <string>
 #include <glm/glm.hpp>
 
 constexpr uint32_t DEFAULT_TERM_WIDTH = 80;
@@ -16,7 +17,7 @@ std::pair<uint32_t, uint32_t> calculateRenderDimensions(
 std::pair<uint32_t, uint32_t> getTerminalSize();
 std::pair<uint32_t, uint32_t> getTerminalSizePixels();
 
-void drawStatusBar(float fps, float speed, const glm::vec3& pos);
+void drawStatusBar(float fps, float speed, const glm::vec3& pos, const std::string& animationName = "");
 
 void enableRawMode();
 void disableRawMode();

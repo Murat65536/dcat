@@ -27,5 +27,6 @@ public:
     void moveUp(float distance);
     void moveDown(float distance);
     void rotate(float yawDelta, float pitchDelta);
+    void orbit(float yawDelta, float pitchDelta);
     glm::vec3 forwardDirection() const;
 };

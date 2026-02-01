@@ -38,6 +38,7 @@ add_executable(dcat
     src/main.cpp
     src/camera.cpp
     src/model.cpp
+    src/animation.cpp
     src/texture.cpp
     src/vulkan_renderer.cpp
     src/terminal.cpp

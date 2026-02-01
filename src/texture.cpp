@@ -12,7 +12,7 @@ Texture Texture::createFlatNormalMap() {
     tex.data.resize(4);
     tex.data[0] = 127;  // R
     tex.data[1] = 127;  // G
-    tex.data[2] = 255;  // B
+    tex.data[2] = 127;  // B
     tex.data[3] = 255;  // A
     return tex;
 }

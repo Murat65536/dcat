@@ -255,15 +255,20 @@ std::pair<uint32_t, uint32_t> getTerminalSizePixels() {
     return { DEFAULT_TERM_WIDTH, DEFAULT_TERM_HEIGHT };
 }
 
-void drawStatusBar(float fps, float speed, const glm::vec3& pos) {
+void drawStatusBar(float fps, float speed, const glm::vec3& pos, const std::string& animationName) {
     auto [cols, rows] = getTerminalSize();
     if (rows == 0) return;
 
-    char buffer[256];
+    char buffer[512];
+    std::string animPart = "";
+    if (!animationName.empty()) {
+        animPart = " | ANIM: " + animationName;
+    }
+
     // Start sync update (\x1b[?2026h), Move to bottom row, clear line, print status, home cursor, End sync update (\x1b[?2026l)
     int len = snprintf(buffer, sizeof(buffer), 
-        "\x1b[?2026h\x1b[%d;1H\x1b[2K\x1b[7m FPS: %.1f | SPEED: %.2f | POS: %.2f, %.2f, %.2f \x1b[0m\x1b[H\x1b[?2026l", 
-        rows, fps, speed, pos.x, pos.y, pos.z);
+        "\x1b[?2026h\x1b[%d;1H\x1b[2K\x1b[7m FPS: %.1f | SPEED: %.2f | POS: %.2f, %.2f, %.2f%s \x1b[0m\x1b[H\x1b[?2026l", 
+        rows, fps, speed, pos.x, pos.y, pos.z, animPart.c_str());
     if (len > 0) {
         safe_write(buffer, static_cast<size_t>(len));
     }

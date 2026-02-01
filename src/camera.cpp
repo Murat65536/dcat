@@ -80,10 +80,26 @@ void Camera::rotate(float yawDelta, float pitchDelta) {
     yaw += yawDelta;
     pitch += pitchDelta;
     
-    constexpr float maxPitch = 3.14159265f / 2.0f - 0.01f;
+    constexpr float maxPitch = M_PI / 2.0f - 0.01f;
     pitch = std::clamp(pitch, -maxPitch, maxPitch);
     
     updateDirection();
+}
+
+void Camera::orbit(float yawDelta, float pitchDelta) {
+    yaw += yawDelta;
+    pitch += pitchDelta;
+
+    constexpr float maxPitch = M_PI / 2.0f - 0.01f;
+    pitch = std::clamp(pitch, -maxPitch, maxPitch);
+
+    float dist = glm::distance(position, target);
+    glm::vec3 direction(
+        std::cos(yaw) * std::cos(pitch),
+        std::sin(pitch),
+        std::sin(yaw) * std::cos(pitch)
+    );
+    position = target - direction * dist;
 }
 
 glm::vec3 Camera::forwardDirection() const {

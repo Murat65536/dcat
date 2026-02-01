@@ -7,6 +7,7 @@
 #include <string>
 #include <optional>
 #include <array>
+#include <atomic>
 #include "model.hpp"
 
 struct Texture;
@@ -14,6 +15,9 @@ struct Texture;
 struct Uniforms {
     glm::mat4 mvp;
     glm::mat4 model;
+    glm::mat4 boneMatrices[MAX_BONES];
+    uint32_t hasAnimation;
+    uint32_t padding[3];
 };
 
 struct FragmentUniforms {
@@ -39,6 +43,7 @@ public:
     void resize(uint32_t width, uint32_t height);
     void setLightDirection(const glm::vec3& direction);
     void setWireframeMode(bool enabled);
+    bool getWireframeMode() const { return wireframeMode_.load(); }
     
     // Renders the scene asynchronously and returns the most recent completed frame
     // Returns nullptr if no frames have completed yet
@@ -51,7 +56,9 @@ public:
         bool enableLighting,
         const glm::vec3& cameraPos,
         bool useTriplanarMapping = false,
-        AlphaMode alphaMode = AlphaMode::Opaque
+        AlphaMode alphaMode = AlphaMode::Opaque,
+        const glm::mat4* boneMatrices = nullptr,
+        uint32_t boneCount = 0
     );
     
     // Wait for all pending frames to complete
@@ -81,7 +88,7 @@ private:
     VkRenderPass renderPass_ = VK_NULL_HANDLE;
     VkPipeline graphicsPipeline_ = VK_NULL_HANDLE;
     VkPipeline wireframePipeline_ = VK_NULL_HANDLE;
-    bool wireframeMode_ = false;
+    std::atomic<bool> wireframeMode_{false};
     
     // Command Buffers and Sync Objects
     std::vector<VkCommandBuffer> commandBuffers_;

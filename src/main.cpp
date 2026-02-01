@@ -29,6 +29,7 @@ struct Args {
     int width = -1;
     int height = -1;
     float cameraDistance = -1.0f;
+    float modelScale = 1.0f;
     int targetFps = 60;
     bool useSixel = false;
     bool useKitty = false;
@@ -52,6 +53,7 @@ constexpr Option OPTIONS[] = {
     {"-W", "--width", "WIDTH", "renderer width (defaults to terminal width)", [](Args& args, const char* v) { args.width = std::stoi(v); }},
     {"-H", "--height", "HEIGHT", "renderer height (defaults to terminal height)", [](Args& args, const char* v) { args.height = std::stoi(v); }},
     {"", "--camera-distance", "DIST", "camera distance from origin", [](Args& args, const char* v) { args.cameraDistance = std::stof(v); }},
+    {"", "--model-scale", "SCALE", "scale multiplier for the model (e.g., 0.01 for cm to m)", [](Args& args, const char* v) { args.modelScale = std::stof(v); }},
     {"-f", "--fps", "FPS", "target frames per second (default: 60)", [](Args& args, const char* v) { args.targetFps = std::stoi(v); }},
     {"-S", "--sixel", "", "enable Sixel graphics mode", [](Args& args, const char*) { args.useSixel = true; }},
     {"-K", "--kitty", "", "enable Kitty graphics protocol mode", [](Args& args, const char*) { args.useKitty = true; }},
@@ -167,7 +169,7 @@ int main(int argc, char* argv[]) {
         disableFocusTracking();
         return 1;
     }
-    
+
     // Load model
     Mesh mesh;
     bool hasUVs = false;
@@ -177,8 +179,11 @@ int main(int argc, char* argv[]) {
         disableFocusTracking();
         return 1;
     }
-    
-    // Resolve textures
+
+    AnimationState animState;
+    std::vector<glm::mat4> boneMatrices(MAX_BONES, glm::mat4(1.0f));
+    bool hasAnimations = mesh.hasAnimations && !mesh.animations.empty();
+
     std::string finalDiffusePath = args.texturePath;
     if (finalDiffusePath.empty() && !materialInfo.diffusePath.empty()) {
         finalDiffusePath = materialInfo.diffusePath;
@@ -202,7 +207,7 @@ int main(int argc, char* argv[]) {
     glm::vec3 modelCenter = glm::vec3(0.0f);
 
     if (cameraSetup.modelScale > 0.0f) {
-        modelScaleFactor = TARGET_SIZE / cameraSetup.modelScale;
+        modelScaleFactor = (TARGET_SIZE / cameraSetup.modelScale) * args.modelScale;  // Apply user scale
         modelCenter = cameraSetup.target;
     }
 
@@ -210,7 +215,7 @@ int main(int argc, char* argv[]) {
     glm::vec3 cameraOffset = (cameraSetup.position - cameraSetup.target) * modelScaleFactor;
     glm::vec3 cameraTarget = glm::vec3(0.0f); 
     glm::vec3 cameraPosition = cameraTarget + cameraOffset;
-    
+
     if (args.cameraDistance > 0) {
         glm::vec3 direction = glm::normalize(cameraOffset);
         cameraPosition = cameraTarget + direction * args.cameraDistance;
@@ -225,18 +230,16 @@ int main(int argc, char* argv[]) {
     // Normalize movement speed based on target size
     float moveSpeed = MOVE_SPEED_BASE * TARGET_SIZE;
     
-    // Initialize input devices for FPS controls
-    bool inputDevicesReady = false;
+    // Initialize input devices
     KeyState keyState;
+    KeyState lastKeyState;
     InputManager inputManager;
+    bool inputDevicesReady = inputManager.initialize(true);
 
-    if (args.fpsControls) {
-        inputDevicesReady = inputManager.initialize(true);
-        if (!inputDevicesReady) {
-            std::cerr << "Warning: Could not initialize input devices for FPS controls.\n"
-                      << "Ensure you have permissions for /dev/input/ (add user to 'input' group).\n"
-                      << "Falling back to rotation mode.\n";
-        }
+    if (args.fpsControls && !inputDevicesReady) {
+        std::cerr << "Warning: Could not initialize input devices for FPS controls.\n"
+                  << "Ensure you have permissions for /dev/input/ (add user to 'input' group).\n"
+                  << "Falling back to rotation mode.\n";
     }
     
     // Enter alternate screen and raw mode
@@ -254,8 +257,7 @@ int main(int argc, char* argv[]) {
     auto lastFrameTime = std::chrono::high_resolution_clock::now();
     
     std::atomic<bool> isFocused{true};
-    bool lastMState = false;
-    
+
     // Input handling thread
     std::thread inputThread([&]() {
         char buffer[64];
@@ -263,24 +265,57 @@ int main(int argc, char* argv[]) {
             struct pollfd pfd;
             pfd.fd = STDIN_FILENO;
             pfd.events = POLLIN;
-            
+
             int ret = poll(&pfd, 1, 0);
 
             if (ret > 0 && (pfd.revents & POLLIN)) {
                 ssize_t n = read(STDIN_FILENO, buffer, sizeof(buffer));
-                
+
                 if (n > 0) {
-                    // Check for quit key
                     for (ssize_t i = 0; i < n; i++) {
                         if (buffer[i] == 'q' || buffer[i] == 'Q') {
                             g_running.store(false);
                             return;
                         }
+
+                        if (buffer[i] == 'm' || buffer[i] == 'M') {
+                            renderer.setWireframeMode(!renderer.getWireframeMode());
+                        }
+
+                        if (!args.fpsControls) {
+                            constexpr static float ROTATION_AMOUNT = M_PI / 8;
+                            if (buffer[i] == 'a' || buffer[i] == 'A') camera.orbit(ROTATION_AMOUNT, 0.0f);
+                            if (buffer[i] == 'd' || buffer[i] == 'D') camera.orbit(-ROTATION_AMOUNT, 0.0f);
+                            if (buffer[i] == 'w' || buffer[i] == 'W') camera.orbit(0.0f, -ROTATION_AMOUNT);
+                            if (buffer[i] == 's' || buffer[i] == 'S') camera.orbit(0.0f, ROTATION_AMOUNT);
+                        }
+
+                        // Animation controls (only if model has animations)
+                        if (hasAnimations) {
+                            if (buffer[i] == '1') {
+                                // Previous animation
+                                animState.currentAnimationIndex--;
+                                if (animState.currentAnimationIndex < 0) {
+                                    animState.currentAnimationIndex = static_cast<int>(mesh.animations.size()) - 1;
+                                }
+                                animState.currentTime = 0.0f;
+                            } else if (buffer[i] == '2') {
+                                // Next animation
+                                animState.currentAnimationIndex++;
+                                if (animState.currentAnimationIndex >= static_cast<int>(mesh.animations.size())) {
+                                    animState.currentAnimationIndex = 0;
+                                }
+                                animState.currentTime = 0.0f;
+                            } else if (buffer[i] == 'p') {
+                                // Toggle play/pause
+                                animState.playing = !animState.playing;
+                            }
+                        }
                     }
-                    
-                    // Check for focus sequences
-                    for (ssize_t i = 0; i < n - 2; i++) {
-                        if (buffer[i] == '\x1b' && buffer[i + 1] == '[') {
+
+                    // Check for sequences (arrows, focus)
+                    for (ssize_t i = 0; i < n; i++) {
+                        if (buffer[i] == '\x1b' && i + 2 < n && buffer[i + 1] == '[') {
                             if (buffer[i + 2] == 'I') {
                                 isFocused.store(true);
                             } else if (buffer[i + 2] == 'O') {
@@ -290,7 +325,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
-            
+
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     });
@@ -314,8 +349,8 @@ int main(int argc, char* argv[]) {
         
         accumulatedTime += deltaTime;
         
-        // Handle FPS controls using Linux Input Subsystem
-        if (args.fpsControls && inputDevicesReady && isFocused.load()) {
+        // Handle input if devices are ready and window is focused
+        if (inputDevicesReady && isFocused.load()) {
             inputManager.processEvents(keyState);
             
             if (keyState.q) {
@@ -323,53 +358,44 @@ int main(int argc, char* argv[]) {
                 break;
             }
 
-            if (keyState.m && !lastMState) {
-                static bool wireframe = false;
-                wireframe = !wireframe;
-                renderer.setWireframeMode(wireframe);
+            if (args.fpsControls) {
+                // Speed Control
+                if (keyState.v) moveSpeed /= (1.0f + deltaTime);
+                if (keyState.b) moveSpeed *= (1.0f + deltaTime);
+                
+                // Movement
+                float speed = moveSpeed * deltaTime;
+                if (keyState.ctrl) speed *= 0.25f;
+                
+                if (keyState.w) camera.moveForward(speed);
+                if (keyState.s) camera.moveBackward(speed);
+                if (keyState.a) camera.moveLeft(speed);
+                if (keyState.d) camera.moveRight(speed);
+                if (keyState.space) camera.moveUp(speed);
+                if (keyState.shift) camera.moveDown(speed);
+                
+                // Mouse look
+                if (keyState.mouse_dx != 0 || keyState.mouse_dy != 0) {
+                    float sensitivity = ROTATION_SENSITIVITY * 0.001f;
+                    camera.rotate(keyState.mouse_dx * sensitivity, -keyState.mouse_dy * sensitivity);
+                }
+                
+                // Keyboard look (IJKL)
+                float rotSpeed = ROTATION_SENSITIVITY * deltaTime;
+                if (keyState.i) camera.rotate(0.0f, rotSpeed);   // Look up
+                if (keyState.k) camera.rotate(0.0f, -rotSpeed);  // Look down
+                if (keyState.j) camera.rotate(-rotSpeed, 0.0f);  // Look left
+                if (keyState.l) camera.rotate(rotSpeed, 0.0f);   // Look right
             }
-            lastMState = keyState.m;
-
-            // Speed Control
-            if (keyState.v) moveSpeed /= (1.0f + deltaTime);
-            if (keyState.b) moveSpeed *= (1.0f + deltaTime);
             
-            // Movement
-            float speed = moveSpeed * deltaTime;
-            if (keyState.ctrl) speed *= 0.25f;
-            
-            if (keyState.w) camera.moveForward(speed);
-            if (keyState.s) camera.moveBackward(speed);
-            if (keyState.a) camera.moveLeft(speed);
-            if (keyState.d) camera.moveRight(speed);
-            if (keyState.space) camera.moveUp(speed);
-            if (keyState.shift) camera.moveDown(speed);
-            
-            // Mouse look
-            if (keyState.mouse_dx != 0 || keyState.mouse_dy != 0) {
-                float sensitivity = ROTATION_SENSITIVITY * 0.001f;
-                camera.rotate(keyState.mouse_dx * sensitivity, -keyState.mouse_dy * sensitivity);
-            }
-            
-            // Keyboard look (IJKL)
-            float rotSpeed = ROTATION_SENSITIVITY * deltaTime;
-            if (keyState.i) camera.rotate(0.0f, rotSpeed);   // Look up
-            if (keyState.k) camera.rotate(0.0f, -rotSpeed);  // Look down
-            if (keyState.j) camera.rotate(-rotSpeed, 0.0f);  // Look left
-            if (keyState.l) camera.rotate(rotSpeed, 0.0f);   // Look right
-            
+            view = camera.viewMatrix();
+        } else if (!args.fpsControls) {
             view = camera.viewMatrix();
         }
         
         // Calculate model matrix
         glm::mat4 model = glm::mat4(1.0f);
-        
-        if (!args.fpsControls || !inputDevicesReady) {
-            float angle = accumulatedTime * MODEL_ROTATION_SPEED * 0.7f;
-            model = glm::rotate(model, angle, glm::vec3(0.0f, 1.0f, 0.0f));
-        }
-
-        // Apply normalization (Center at origin, then Scale)
+        model = model * mesh.coordinateSystemTransform;
         model = glm::scale(model, glm::vec3(modelScaleFactor));
         model = glm::translate(model, -modelCenter);
         
@@ -377,14 +403,25 @@ int main(int argc, char* argv[]) {
 
         // Use fixed light direction instead of camera-relative
         renderer.setLightDirection(glm::vec3(0.0f, -1.0f, -0.5f));  // Light coming from above and slightly behind
-        
+
+        // Update animation
+        const glm::mat4* boneMatrixPtr = nullptr;
+        uint32_t boneCount = 0;
+
+        if (hasAnimations) {
+            updateAnimation(mesh, animState, deltaTime, boneMatrices.data());
+            boneMatrixPtr = boneMatrices.data();
+            boneCount = static_cast<uint32_t>(mesh.skeleton.bones.size());
+        }
+
         // Render frame and get latest completed framebuffer
         const uint8_t* framebuffer = renderer.render(
             mesh, mvp, model,
             diffuseTexture, normalTexture, !args.noLighting,
             camera.position,
             !hasUVs,
-            materialInfo.alphaMode
+            materialInfo.alphaMode,
+            boneMatrixPtr, boneCount
         );
         
         // Output to terminal
@@ -398,7 +435,12 @@ int main(int argc, char* argv[]) {
             }
             
             if (args.showStatusBar) {
-                drawStatusBar(deltaTime > 0 ? 1.0f / deltaTime : 0.0f, moveSpeed, camera.position);
+                std::string animName = "";
+                if (hasAnimations && animState.currentAnimationIndex >= 0 && 
+                    animState.currentAnimationIndex < static_cast<int>(mesh.animations.size())) {
+                    animName = mesh.animations[animState.currentAnimationIndex].name;
+                }
+                drawStatusBar(deltaTime > 0 ? 1.0f / deltaTime : 0.0f, moveSpeed, camera.position, animName);
             }
         }
         
