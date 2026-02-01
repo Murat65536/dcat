@@ -196,72 +196,47 @@ int main(int argc, char* argv[]) {
         finalNormalPath = materialInfo.normalPath;
     }
 
-    // Load textures (handle embedded textures)
-    Texture diffuseTexture, normalTexture;
-    
-    if (!finalDiffusePath.empty() && finalDiffusePath[0] == '*') {
-        // Embedded texture
-        Assimp::Importer importer;
-        const aiScene* scene = importer.ReadFile(args.modelPath, 0);
-        if (scene && scene->mNumTextures > 0) {
-            int texIndex = std::stoi(finalDiffusePath.substr(1));
-            if (texIndex >= 0 && texIndex < static_cast<int>(scene->mNumTextures)) {
-                const aiTexture* embeddedTex = scene->mTextures[texIndex];
-                if (embeddedTex->mHeight == 0) {
-                    // Compressed texture (PNG, JPEG, etc.)
-                    diffuseTexture = Texture::fromMemory(
-                        reinterpret_cast<const unsigned char*>(embeddedTex->pcData),
-                        embeddedTex->mWidth
-                    );
-                } else {
-                    // Uncompressed ARGB8888
-                    diffuseTexture.width = embeddedTex->mWidth;
-                    diffuseTexture.height = embeddedTex->mHeight;
-                    diffuseTexture.data.resize(embeddedTex->mWidth * embeddedTex->mHeight * 4);
-                    for (unsigned int i = 0; i < embeddedTex->mWidth * embeddedTex->mHeight; i++) {
-                        diffuseTexture.data[i * 4 + 0] = embeddedTex->pcData[i].r;
-                        diffuseTexture.data[i * 4 + 1] = embeddedTex->pcData[i].g;
-                        diffuseTexture.data[i * 4 + 2] = embeddedTex->pcData[i].b;
-                        diffuseTexture.data[i * 4 + 3] = embeddedTex->pcData[i].a;
+    // Helper function to load embedded or file-based textures
+    auto loadTexture = [&args](const std::string& texturePath) -> Texture {
+        if (texturePath.empty()) return Texture();
+        
+        if (texturePath[0] == '*') {
+            // Embedded texture
+            Assimp::Importer importer;
+            const aiScene* scene = importer.ReadFile(args.modelPath, 0);
+            if (scene && scene->mNumTextures > 0) {
+                int texIndex = std::stoi(texturePath.substr(1));
+                if (texIndex >= 0 && texIndex < static_cast<int>(scene->mNumTextures)) {
+                    const aiTexture* embeddedTex = scene->mTextures[texIndex];
+                    if (embeddedTex->mHeight == 0) {
+                        // Compressed texture (PNG, JPEG, etc.)
+                        return Texture::fromMemory(
+                            reinterpret_cast<const unsigned char*>(embeddedTex->pcData),
+                            embeddedTex->mWidth
+                        );
+                    } else {
+                        // Uncompressed ARGB8888
+                        Texture tex;
+                        tex.width = embeddedTex->mWidth;
+                        tex.height = embeddedTex->mHeight;
+                        tex.data.resize(embeddedTex->mWidth * embeddedTex->mHeight * 4);
+                        for (unsigned int i = 0; i < embeddedTex->mWidth * embeddedTex->mHeight; i++) {
+                            tex.data[i * 4 + 0] = embeddedTex->pcData[i].r;
+                            tex.data[i * 4 + 1] = embeddedTex->pcData[i].g;
+                            tex.data[i * 4 + 2] = embeddedTex->pcData[i].b;
+                            tex.data[i * 4 + 3] = embeddedTex->pcData[i].a;
+                        }
+                        return tex;
                     }
                 }
             }
         }
-    } else if (!finalDiffusePath.empty()) {
-        diffuseTexture = Texture::fromFile(finalDiffusePath);
-    }
-    
-    if (!finalNormalPath.empty() && finalNormalPath[0] == '*') {
-        // Embedded texture
-        Assimp::Importer importer;
-        const aiScene* scene = importer.ReadFile(args.modelPath, 0);
-        if (scene && scene->mNumTextures > 0) {
-            int texIndex = std::stoi(finalNormalPath.substr(1));
-            if (texIndex >= 0 && texIndex < static_cast<int>(scene->mNumTextures)) {
-                const aiTexture* embeddedTex = scene->mTextures[texIndex];
-                if (embeddedTex->mHeight == 0) {
-                    normalTexture = Texture::fromMemory(
-                        reinterpret_cast<const unsigned char*>(embeddedTex->pcData),
-                        embeddedTex->mWidth
-                    );
-                } else {
-                    normalTexture.width = embeddedTex->mWidth;
-                    normalTexture.height = embeddedTex->mHeight;
-                    normalTexture.data.resize(embeddedTex->mWidth * embeddedTex->mHeight * 4);
-                    for (unsigned int i = 0; i < embeddedTex->mWidth * embeddedTex->mHeight; i++) {
-                        normalTexture.data[i * 4 + 0] = embeddedTex->pcData[i].r;
-                        normalTexture.data[i * 4 + 1] = embeddedTex->pcData[i].g;
-                        normalTexture.data[i * 4 + 2] = embeddedTex->pcData[i].b;
-                        normalTexture.data[i * 4 + 3] = embeddedTex->pcData[i].a;
-                    }
-                }
-            }
-        }
-    } else if (!finalNormalPath.empty()) {
-        normalTexture = Texture::fromFile(finalNormalPath);
-    } else {
-        normalTexture = Texture::createFlatNormalMap();
-    }
+        return Texture::fromFile(texturePath);
+    };
+
+    // Load textures
+    Texture diffuseTexture = loadTexture(finalDiffusePath);
+    Texture normalTexture = finalNormalPath.empty() ? Texture::createFlatNormalMap() : loadTexture(finalNormalPath);
     
     // Calculate camera setup
     CameraSetup cameraSetup = calculateCameraSetup(mesh.vertices);
