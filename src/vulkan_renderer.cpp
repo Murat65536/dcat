@@ -24,6 +24,7 @@ bool VulkanRenderer::initialize() {
         createDescriptorPool() && createDescriptorSetLayout() && createPipelineLayout() && createRenderPass() &&
         createGraphicsPipeline() && createRenderTargets() && createFramebuffer() && createStagingBuffers() &&
         createUniformBuffers() && createSampler() && createCommandBuffers() && createSyncObjects() && createDescriptorSets()) {
+        createSkydomePipeline();
         
         // Initialize readback buffers
         readbackBuffers_.resize(MAX_FRAMES_IN_FLIGHT);
@@ -184,7 +185,7 @@ bool VulkanRenderer::createDescriptorPool() {
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[0].descriptorCount = 2 * MAX_FRAMES_IN_FLIGHT;
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount = 2 * MAX_FRAMES_IN_FLIGHT;
+    poolSizes[1].descriptorCount = 3 * MAX_FRAMES_IN_FLIGHT;
     poolSizes[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[2].descriptorCount = 1 * MAX_FRAMES_IN_FLIGHT;
 
@@ -192,7 +193,7 @@ bool VulkanRenderer::createDescriptorPool() {
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT;
+    poolInfo.maxSets = 2 * MAX_FRAMES_IN_FLIGHT; // Main pipeline + skydome pipeline
 
     if (vkCreateDescriptorPool(device_, &poolInfo, nullptr, &descriptorPool_) != VK_SUCCESS) {
         std::cerr << "Failed to create descriptor pool" << std::endl;
@@ -597,6 +598,216 @@ bool VulkanRenderer::createGraphicsPipeline() {
     return true;
 }
 
+bool VulkanRenderer::createSkydomePipeline() {
+    auto vertShaderCode = readShaderFile("skydome.vert.spv");
+    auto fragShaderCode = readShaderFile("skydome.frag.spv");
+    
+    if (vertShaderCode.empty() || fragShaderCode.empty()) {
+        std::cerr << "Warning: Skydome shaders not found, skydome will be disabled" << std::endl;
+        return false;
+    }
+
+    VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+    VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+    
+    if (vertShaderModule == VK_NULL_HANDLE || fragShaderModule == VK_NULL_HANDLE) {
+        return false;
+    }
+
+    // Create skydome descriptor set layout (simpler than main pipeline)
+    VkDescriptorSetLayoutBinding samplerBinding{};
+    samplerBinding.binding = 0;
+    samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerBinding.descriptorCount = 1;
+    samplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &samplerBinding;
+
+    if (vkCreateDescriptorSetLayout(device_, &layoutInfo, nullptr, &skydomeDescriptorSetLayout_) != VK_SUCCESS) {
+        std::cerr << "Failed to create skydome descriptor set layout" << std::endl;
+        vkDestroyShaderModule(device_, fragShaderModule, nullptr);
+        vkDestroyShaderModule(device_, vertShaderModule, nullptr);
+        return false;
+    }
+
+    // Create skydome pipeline layout
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(glm::mat4); // Just MVP matrix
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &skydomeDescriptorSetLayout_;
+    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+
+    if (vkCreatePipelineLayout(device_, &pipelineLayoutInfo, nullptr, &skydomePipelineLayout_) != VK_SUCCESS) {
+        std::cerr << "Failed to create skydome pipeline layout" << std::endl;
+        vkDestroyShaderModule(device_, fragShaderModule, nullptr);
+        vkDestroyShaderModule(device_, vertShaderModule, nullptr);
+        return false;
+    }
+
+    VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertShaderStageInfo.module = vertShaderModule;
+    vertShaderStageInfo.pName = "main";
+
+    VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragShaderStageInfo.module = fragShaderModule;
+    fragShaderStageInfo.pName = "main";
+
+    std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages = {
+        vertShaderStageInfo, fragShaderStageInfo
+    };
+
+    // Vertex input - only position and texcoord
+    VkVertexInputBindingDescription bindingDescription{};
+    bindingDescription.binding = 0;
+    bindingDescription.stride = sizeof(Vertex);
+    bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
+
+    // Position
+    attributeDescriptions[0].binding = 0;
+    attributeDescriptions[0].location = 0;
+    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[0].offset = offsetof(Vertex, position);
+
+    // Texcoord
+    attributeDescriptions[1].binding = 0;
+    attributeDescriptions[1].location = 1;
+    attributeDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[1].offset = offsetof(Vertex, texcoord);
+
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(width_);
+    viewport.height = static_cast<float>(height_);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = {width_, height_};
+
+    VkPipelineViewportStateCreateInfo viewportState{};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1;
+    viewportState.pViewports = &viewport;
+    viewportState.scissorCount = 1;
+    viewportState.pScissors = &scissor;
+
+    VkPipelineRasterizationStateCreateInfo rasterizer{};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.depthClampEnable = VK_FALSE;
+    rasterizer.rasterizerDiscardEnable = VK_FALSE;
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.lineWidth = 1.0f;
+    rasterizer.cullMode = VK_CULL_MODE_FRONT_BIT; // Cull front faces (we're inside the sphere)
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizer.depthBiasEnable = VK_FALSE;
+
+    VkPipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.sampleShadingEnable = VK_FALSE;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_FALSE; // Don't write depth for skydome
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.stencilTestEnable = VK_FALSE;
+
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    colorBlendAttachment.blendEnable = VK_FALSE;
+
+    VkPipelineColorBlendStateCreateInfo colorBlending{};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.logicOpEnable = VK_FALSE;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
+
+    std::array<VkDynamicState, 2> dynamicStates = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR
+    };
+
+    VkPipelineDynamicStateCreateInfo dynamicState{};
+    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+    dynamicState.pDynamicStates = dynamicStates.data();
+
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
+    pipelineInfo.pStages = shaderStages.data();
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = &depthStencil;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.layout = skydomePipelineLayout_;
+    pipelineInfo.renderPass = renderPass_;
+    pipelineInfo.subpass = 0;
+
+    if (vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &skydomePipeline_) != VK_SUCCESS) {
+        std::cerr << "Failed to create skydome pipeline" << std::endl;
+        vkDestroyShaderModule(device_, fragShaderModule, nullptr);
+        vkDestroyShaderModule(device_, vertShaderModule, nullptr);
+        return false;
+    }
+
+    vkDestroyShaderModule(device_, fragShaderModule, nullptr);
+    vkDestroyShaderModule(device_, vertShaderModule, nullptr);
+    
+    // Allocate descriptor sets for skydome
+    skydomeDescriptorSets_.resize(MAX_FRAMES_IN_FLIGHT);
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, skydomeDescriptorSetLayout_);
+    
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool_;
+    allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    allocInfo.pSetLayouts = layouts.data();
+
+    if (vkAllocateDescriptorSets(device_, &allocInfo, skydomeDescriptorSets_.data()) != VK_SUCCESS) {
+        std::cerr << "Failed to allocate skydome descriptor sets" << std::endl;
+        return false;
+    }
+    
+    return true;
+}
+
 void VulkanRenderer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
                                    VmaMemoryUsage memoryUsage, VkBuffer& buffer,
                                    VmaAllocation& allocation, VmaAllocationInfo* outAllocInfo) {
@@ -797,6 +1008,13 @@ void VulkanRenderer::cleanup() {
     if (indexBuffer_ != VK_NULL_HANDLE) {
         vmaDestroyBuffer(allocator_, indexBuffer_, indexBufferAllocation_);
     }
+    
+    if (skydomeVertexBuffer_ != VK_NULL_HANDLE) {
+        vmaDestroyBuffer(allocator_, skydomeVertexBuffer_, skydomeVertexBufferAllocation_);
+    }
+    if (skydomeIndexBuffer_ != VK_NULL_HANDLE) {
+        vmaDestroyBuffer(allocator_, skydomeIndexBuffer_, skydomeIndexBufferAllocation_);
+    }
 
     if (diffuseImage_ != VK_NULL_HANDLE) {
         vkDestroyImageView(device_, diffuseImageView_, nullptr);
@@ -805,6 +1023,11 @@ void VulkanRenderer::cleanup() {
     if (normalImage_ != VK_NULL_HANDLE) {
         vkDestroyImageView(device_, normalImageView_, nullptr);
         vmaDestroyImage(allocator_, normalImage_, normalImageAllocation_);
+    }
+    
+    if (skydomeImage_ != VK_NULL_HANDLE) {
+        vkDestroyImageView(device_, skydomeImageView_, nullptr);
+        vmaDestroyImage(allocator_, skydomeImage_, skydomeImageAllocation_);
     }
 
     cleanupRenderTargets();
@@ -818,6 +1041,17 @@ void VulkanRenderer::cleanup() {
     vkDestroyPipeline(device_, graphicsPipeline_, nullptr);
     vkDestroyPipeline(device_, wireframePipeline_, nullptr);
     vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
+    
+    if (skydomePipeline_ != VK_NULL_HANDLE) {
+        vkDestroyPipeline(device_, skydomePipeline_, nullptr);
+    }
+    if (skydomePipelineLayout_ != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(device_, skydomePipelineLayout_, nullptr);
+    }
+    if (skydomeDescriptorSetLayout_ != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(device_, skydomeDescriptorSetLayout_, nullptr);
+    }
+    
     vkDestroyRenderPass(device_, renderPass_, nullptr);
 
     vkDestroyDescriptorPool(device_, descriptorPool_, nullptr);
@@ -1234,7 +1468,9 @@ const uint8_t* VulkanRenderer::render(
     bool useTriplanarMapping,
     AlphaMode alphaMode,
     const glm::mat4* boneMatrices,
-    uint32_t boneCount
+    uint32_t boneCount,
+    const glm::mat4* view,
+    const glm::mat4* projection
 ) {
     vkWaitForFences(device_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
 
@@ -1395,9 +1631,6 @@ const uint8_t* VulkanRenderer::render(
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                      wireframeMode_ ? wireframePipeline_ : graphicsPipeline_);
-
     VkViewport viewport{};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
@@ -1411,6 +1644,38 @@ const uint8_t* VulkanRenderer::render(
     scissor.offset = {0, 0};
     scissor.extent = {width_, height_};
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+    // Render skydome first (if enabled)
+    if (skydomeMesh_ && skydomeTexture_ && skydomePipeline_ != VK_NULL_HANDLE && 
+        skydomeVertexBuffer_ != VK_NULL_HANDLE && skydomeIndexBuffer_ != VK_NULL_HANDLE &&
+        view != nullptr && projection != nullptr) {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, skydomePipeline_);
+        
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                skydomePipelineLayout_, 0, 1, &skydomeDescriptorSets_[currentFrame_], 0, nullptr);
+        
+        // Remove translation from view matrix so skydome follows camera
+        glm::mat4 skyView = *view;
+        skyView[3][0] = 0.0f;  // Remove X translation
+        skyView[3][1] = 0.0f;  // Remove Y translation
+        skyView[3][2] = 0.0f;  // Remove Z translation
+        
+        glm::mat4 skydomeMVP = *projection * skyView;
+        vkCmdPushConstants(commandBuffer, skydomePipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT,
+                           0, sizeof(glm::mat4), &skydomeMVP);
+        
+        // Use skydome mesh buffers
+        VkBuffer skydomeVertexBuffers[] = {skydomeVertexBuffer_};
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, skydomeVertexBuffers, offsets);
+        vkCmdBindIndexBuffer(commandBuffer, skydomeIndexBuffer_, 0, VK_INDEX_TYPE_UINT32);
+        
+        vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(skydomeMesh_->indices.size()), 1, 0, 0, 0);
+    }
+
+    // Render main model
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                      wireframeMode_ ? wireframePipeline_ : graphicsPipeline_);
 
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             pipelineLayout_, 0, 1, &descriptorSets_[currentFrame_], 0, nullptr);
@@ -1459,5 +1724,126 @@ const uint8_t* VulkanRenderer::render(
 void VulkanRenderer::waitIdle() {
     if (device_ != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(device_);
+    }
+}
+
+void VulkanRenderer::setSkydome(const Mesh* skydomeMesh, const Texture* skydomeTexture) {
+    skydomeMesh_ = skydomeMesh;
+    skydomeTexture_ = skydomeTexture;
+    
+    // Create skydome buffers if mesh is provided
+    if (skydomeMesh_ && !skydomeMesh_->vertices.empty() && !skydomeMesh_->indices.empty()) {
+        // Clean up old buffers
+        if (skydomeVertexBuffer_ != VK_NULL_HANDLE) {
+            vmaDestroyBuffer(allocator_, skydomeVertexBuffer_, skydomeVertexBufferAllocation_);
+        }
+        if (skydomeIndexBuffer_ != VK_NULL_HANDLE) {
+            vmaDestroyBuffer(allocator_, skydomeIndexBuffer_, skydomeIndexBufferAllocation_);
+        }
+        
+        // Create vertex buffer
+        VkDeviceSize vertexBufferSize = sizeof(Vertex) * skydomeMesh_->vertices.size();
+        VkBuffer stagingVertexBuffer;
+        VmaAllocation stagingVertexAllocation;
+        VmaAllocationInfo allocInfo;
+        
+        createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                     VMA_MEMORY_USAGE_CPU_TO_GPU, stagingVertexBuffer, stagingVertexAllocation, &allocInfo);
+        memcpy(allocInfo.pMappedData, skydomeMesh_->vertices.data(), vertexBufferSize);
+        
+        createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                     VMA_MEMORY_USAGE_GPU_ONLY, skydomeVertexBuffer_, skydomeVertexBufferAllocation_);
+        
+        VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+        VkBufferCopy copyRegion{};
+        copyRegion.size = vertexBufferSize;
+        vkCmdCopyBuffer(commandBuffer, stagingVertexBuffer, skydomeVertexBuffer_, 1, &copyRegion);
+        endSingleTimeCommands(commandBuffer);
+        
+        vmaDestroyBuffer(allocator_, stagingVertexBuffer, stagingVertexAllocation);
+        
+        // Create index buffer
+        VkDeviceSize indexBufferSize = sizeof(uint32_t) * skydomeMesh_->indices.size();
+        VkBuffer stagingIndexBuffer;
+        VmaAllocation stagingIndexAllocation;
+        
+        createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                     VMA_MEMORY_USAGE_CPU_TO_GPU, stagingIndexBuffer, stagingIndexAllocation, &allocInfo);
+        memcpy(allocInfo.pMappedData, skydomeMesh_->indices.data(), indexBufferSize);
+        
+        createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                     VMA_MEMORY_USAGE_GPU_ONLY, skydomeIndexBuffer_, skydomeIndexBufferAllocation_);
+        
+        commandBuffer = beginSingleTimeCommands();
+        copyRegion.size = indexBufferSize;
+        vkCmdCopyBuffer(commandBuffer, stagingIndexBuffer, skydomeIndexBuffer_, 1, &copyRegion);
+        endSingleTimeCommands(commandBuffer);
+        
+        vmaDestroyBuffer(allocator_, stagingIndexBuffer, stagingIndexAllocation);
+    }
+    
+    // Update texture if provided
+    if (skydomeTexture_ && skydomeTexture_->data.size() > 0) {
+        updateSkydomeTexture(*skydomeTexture_);
+    }
+}
+
+void VulkanRenderer::updateSkydomeTexture(const Texture& texture) {
+    if (texture.data.empty()) return;
+    
+    // Check if texture has changed
+    if (cachedSkydomeDataPtr_ == texture.data.data() && 
+        skydomeImage_ != VK_NULL_HANDLE) {
+        return;
+    }
+    
+    // Clean up old texture
+    if (skydomeImage_ != VK_NULL_HANDLE) {
+        vkDestroyImageView(device_, skydomeImageView_, nullptr);
+        vmaDestroyImage(allocator_, skydomeImage_, skydomeImageAllocation_);
+    }
+    
+    // Create new texture
+    createImage(texture.width, texture.height, VK_FORMAT_R8G8B8A8_UNORM,
+                VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                VMA_MEMORY_USAGE_GPU_ONLY, skydomeImage_, skydomeImageAllocation_);
+    
+    skydomeImageView_ = createImageView(skydomeImage_, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+    
+    // Upload texture data
+    VkDeviceSize imageSize = texture.width * texture.height * 4;
+    VkBuffer stagingBuffer;
+    VmaAllocation stagingAllocation;
+    VmaAllocationInfo allocInfo;
+    createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VMA_MEMORY_USAGE_CPU_TO_GPU, stagingBuffer, stagingAllocation, &allocInfo);
+    
+    memcpy(allocInfo.pMappedData, texture.data.data(), static_cast<size_t>(imageSize));
+    
+    transitionImageLayout(skydomeImage_, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    copyBufferToImage(stagingBuffer, skydomeImage_, texture.width, texture.height);
+    transitionImageLayout(skydomeImage_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    
+    vmaDestroyBuffer(allocator_, stagingBuffer, stagingAllocation);
+    
+    cachedSkydomeDataPtr_ = texture.data.data();
+    
+    // Update descriptor sets for all frames
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = skydomeImageView_;
+        imageInfo.sampler = sampler_;
+
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = skydomeDescriptorSets_[i];
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.pImageInfo = &imageInfo;
+
+        vkUpdateDescriptorSets(device_, 1, &descriptorWrite, 0, nullptr);
     }
 }

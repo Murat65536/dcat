@@ -61,8 +61,13 @@ public:
         bool useTriplanarMapping = false,
         AlphaMode alphaMode = AlphaMode::Opaque,
         const glm::mat4* boneMatrices = nullptr,
-        uint32_t boneCount = 0
+        uint32_t boneCount = 0,
+        const glm::mat4* view = nullptr,
+        const glm::mat4* projection = nullptr
     );
+    
+    // Enable/disable skydome rendering and set its texture
+    void setSkydome(const Mesh* skydomeMesh, const Texture* skydomeTexture);
     
     // Wait for all pending frames to complete
     void waitIdle();
@@ -92,6 +97,19 @@ private:
     VkPipeline graphicsPipeline_ = VK_NULL_HANDLE;
     VkPipeline wireframePipeline_ = VK_NULL_HANDLE;
     std::atomic<bool> wireframeMode_{false};
+    
+    // Skydome pipeline and resources
+    VkDescriptorSetLayout skydomeDescriptorSetLayout_ = VK_NULL_HANDLE;
+    VkPipelineLayout skydomePipelineLayout_ = VK_NULL_HANDLE;
+    VkPipeline skydomePipeline_ = VK_NULL_HANDLE;
+    std::vector<VkDescriptorSet> skydomeDescriptorSets_;
+    const Mesh* skydomeMesh_ = nullptr;
+    const Texture* skydomeTexture_ = nullptr;
+    
+    VkImage skydomeImage_ = VK_NULL_HANDLE;
+    VmaAllocation skydomeImageAllocation_ = VK_NULL_HANDLE;
+    VkImageView skydomeImageView_ = VK_NULL_HANDLE;
+    const void* cachedSkydomeDataPtr_ = nullptr;
     
     // Command Buffers and Sync Objects
     std::vector<VkCommandBuffer> commandBuffers_;
@@ -153,6 +171,12 @@ private:
     VkBuffer indexBuffer_ = VK_NULL_HANDLE;
     VmaAllocation indexBufferAllocation_ = VK_NULL_HANDLE;
     size_t cachedIndexCount_ = 0;
+    
+    // Skydome vertex/index buffers
+    VkBuffer skydomeVertexBuffer_ = VK_NULL_HANDLE;
+    VmaAllocation skydomeVertexBufferAllocation_ = VK_NULL_HANDLE;
+    VkBuffer skydomeIndexBuffer_ = VK_NULL_HANDLE;
+    VmaAllocation skydomeIndexBufferAllocation_ = VK_NULL_HANDLE;
 
     // Cached generation
     uint64_t cachedMeshGeneration_ = 0;
@@ -174,6 +198,7 @@ private:
     bool createPipelineLayout();
     bool createRenderPass();
     bool createGraphicsPipeline();
+    bool createSkydomePipeline();
     bool createRenderTargets();
     bool createFramebuffer();
     bool createStagingBuffers();
@@ -201,6 +226,7 @@ private:
     
     void updateDiffuseTexture(const Texture& texture);
     void updateNormalTexture(const Texture& texture);
+    void updateSkydomeTexture(const Texture& texture);
     void updateVertexBuffer(const std::vector<Vertex>& vertices);
     void updateIndexBuffer(const std::vector<uint32_t>& indices);
     

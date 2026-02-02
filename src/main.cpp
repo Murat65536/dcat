@@ -23,11 +23,13 @@
 #include "vulkan_renderer.hpp"
 #include "terminal.hpp"
 #include "input_device.hpp"
+#include "skydome.hpp"
 
 struct Args {
     std::string modelPath;
     std::string texturePath;
     std::string normalMapPath;
+    std::string skydomePath;
     int width = -1;
     int height = -1;
     float cameraDistance = -1.0f;
@@ -52,6 +54,7 @@ struct Option {
 constexpr Option OPTIONS[] = {
     {"-t", "--texture", "PATH", "path to the texture file (defaults to gray)", [](Args& args, const char* v) { args.texturePath = v; }},
     {"-n", "--normal-map", "PATH", "path to normal image file", [](Args& args, const char* v) { args.normalMapPath = v; }},
+    {"", "--skydome", "PATH", "path to skydome texture file", [](Args& args, const char* v) { args.skydomePath = v; }},
     {"-W", "--width", "WIDTH", "renderer width (defaults to terminal width)", [](Args& args, const char* v) { args.width = std::stoi(v); }},
     {"-H", "--height", "HEIGHT", "renderer height (defaults to terminal height)", [](Args& args, const char* v) { args.height = std::stoi(v); }},
     {"", "--camera-distance", "DIST", "camera distance from origin", [](Args& args, const char* v) { args.cameraDistance = std::stof(v); }},
@@ -237,6 +240,19 @@ int main(int argc, char* argv[]) {
     // Load textures
     Texture diffuseTexture = loadTexture(finalDiffusePath);
     Texture normalTexture = finalNormalPath.empty() ? Texture::createFlatNormalMap() : loadTexture(finalNormalPath);
+    
+    // Load skydome if specified
+    Mesh skydomeMesh;
+    Texture skydomeTexture;
+    if (!args.skydomePath.empty()) {
+        skydomeMesh = generateSkydome(100.0f, 32, 16);
+        skydomeTexture = Texture::fromFile(args.skydomePath);
+        if (skydomeTexture.data.empty()) {
+            std::cerr << "Warning: Failed to load skydome texture, skydome will be disabled" << std::endl;
+        } else {
+            renderer.setSkydome(&skydomeMesh, &skydomeTexture);
+        }
+    }
     
     // Calculate camera setup
     CameraSetup cameraSetup = calculateCameraSetup(mesh.vertices);
@@ -463,7 +479,8 @@ int main(int argc, char* argv[]) {
             camera.position,
             !hasUVs,
             materialInfo.alphaMode,
-            boneMatrixPtr, boneCount
+            boneMatrixPtr, boneCount,
+            &view, &projection
         );
         
         // Output to terminal

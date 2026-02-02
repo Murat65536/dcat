@@ -49,6 +49,7 @@ add_executable(dcat
     src/vulkan_renderer.cpp
     src/terminal.cpp
     src/input_device.cpp
+    src/skydome.cpp
 )
 
 target_include_directories(dcat PRIVATE
@@ -129,6 +130,8 @@ file(MAKE_DIRECTORY ${SHADER_BINARY_DIR})
 set(SHADERS
     ${SHADER_SOURCE_DIR}/shader.vert
     ${SHADER_SOURCE_DIR}/shader.frag
+    ${SHADER_SOURCE_DIR}/skydome.vert
+    ${SHADER_SOURCE_DIR}/skydome.frag
 )
 
 foreach(SHADER ${SHADERS})
