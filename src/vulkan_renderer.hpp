@@ -32,6 +32,8 @@ struct FragmentUniforms {
     float fogEnd;
     uint32_t useTriplanarMapping;
     uint32_t alphaMode;
+    float alphaCutoff;
+    float padding;
 };
 
 class VulkanRenderer {

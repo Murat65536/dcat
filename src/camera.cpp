@@ -94,10 +94,17 @@ void Camera::orbit(float yawDelta, float pitchDelta) {
     pitch = std::clamp(pitch, -maxPitch, maxPitch);
 
     float dist = glm::distance(position, target);
+    
+    // Cache trigonometric values
+    float cosYaw = std::cos(yaw);
+    float sinYaw = std::sin(yaw);
+    float cosPitch = std::cos(pitch);
+    float sinPitch = std::sin(pitch);
+    
     glm::vec3 direction(
-        std::cos(yaw) * std::cos(pitch),
-        std::sin(pitch),
-        std::sin(yaw) * std::cos(pitch)
+        cosYaw * cosPitch,
+        sinPitch,
+        sinYaw * cosPitch
     );
     position = target - direction * dist;
 }
@@ -107,10 +114,16 @@ void Camera::zoom(float delta) {
     dist -= delta; // towards means less distance
     if (dist < 0.1f) dist = 0.1f;
 
+    // Cache trigonometric values
+    float cosYaw = std::cos(yaw);
+    float sinYaw = std::sin(yaw);
+    float cosPitch = std::cos(pitch);
+    float sinPitch = std::sin(pitch);
+    
     glm::vec3 direction(
-        std::cos(yaw) * std::cos(pitch),
-        std::sin(pitch),
-        std::sin(yaw) * std::cos(pitch)
+        cosYaw * cosPitch,
+        sinPitch,
+        sinYaw * cosPitch
     );
     position = target - direction * dist;
 }

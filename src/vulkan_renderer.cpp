@@ -1478,8 +1478,8 @@ const uint8_t* VulkanRenderer::render(
     const uint8_t* result = nullptr;
 
     if (frameReady_[prevFrame]) {
-        vmaInvalidateAllocation(allocator_, stagingBufferAllocations_[currentFrame_], 0, VK_WHOLE_SIZE);
-        memcpy(readbackBuffers_[currentFrame_].data(), mappedDatas_[currentFrame_], getFrameSize());
+        vmaInvalidateAllocation(allocator_, stagingBufferAllocations_[prevFrame], 0, VK_WHOLE_SIZE);
+        memcpy(readbackBuffers_[prevFrame].data(), mappedDatas_[prevFrame], getFrameSize());
         result = readbackBuffers_[prevFrame].data();
     }
 
@@ -1567,12 +1567,13 @@ const uint8_t* VulkanRenderer::render(
     // Copy bone matrices if available
     if (boneMatrices && boneCount > 0) {
         uint32_t numBonesToCopy = std::min(boneCount, static_cast<uint32_t>(MAX_BONES));
-        for (uint32_t i = 0; i < numBonesToCopy; i++) {
-            uniforms.boneMatrices[i] = boneMatrices[i];
-        }
-        // Initialize remaining bones to identity
-        for (uint32_t i = numBonesToCopy; i < MAX_BONES; i++) {
-            uniforms.boneMatrices[i] = glm::mat4(1.0f);
+        memcpy(uniforms.boneMatrices, boneMatrices, numBonesToCopy * sizeof(glm::mat4));
+        
+        // Only zero out remaining if necessary
+        if (numBonesToCopy < MAX_BONES) {
+            for (uint32_t i = numBonesToCopy; i < MAX_BONES; i++) {
+                uniforms.boneMatrices[i] = glm::mat4(1.0f);
+            }
         }
     } else {
         // Initialize all bones to identity for static models
@@ -1591,6 +1592,7 @@ const uint8_t* VulkanRenderer::render(
     fragUniforms.fogColor = glm::vec3(0.0f, 0.0f, 0.0f);
     fragUniforms.fogEnd = 10.0f;
     fragUniforms.useTriplanarMapping = useTriplanarMapping ? 1 : 0;
+    fragUniforms.alphaCutoff = 0.5f;
 
     // Handle Alpha Mode
     switch (alphaMode) {
@@ -1705,6 +1707,22 @@ const uint8_t* VulkanRenderer::render(
 
     vkCmdCopyImageToBuffer(commandBuffer, colorImage_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                            stagingBuffers_[currentFrame_], 1, &region);
+
+    // Add memory barrier to ensure buffer copy completes before CPU reads
+    VkBufferMemoryBarrier bufferBarrier{};
+    bufferBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    bufferBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    bufferBarrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    bufferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarrier.buffer = stagingBuffers_[currentFrame_];
+    bufferBarrier.offset = 0;
+    bufferBarrier.size = VK_WHOLE_SIZE;
+
+    vkCmdPipelineBarrier(commandBuffer,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_HOST_BIT,
+        0, 0, nullptr, 1, &bufferBarrier, 0, nullptr);
 
     vkEndCommandBuffer(commandBuffer);
 

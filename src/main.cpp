@@ -157,6 +157,24 @@ int main(int argc, char* argv[]) {
         }
     }
     
+    // Validate input parameters
+    if (args.width > 0 && (args.width <= 0 || args.width > 65535)) {
+        std::cerr << "Invalid width: " << args.width << " (must be 1-65535)" << std::endl;
+        return 1;
+    }
+    if (args.height > 0 && (args.height <= 0 || args.height > 65535)) {
+        std::cerr << "Invalid height: " << args.height << " (must be 1-65535)" << std::endl;
+        return 1;
+    }
+    if (args.targetFps <= 0) {
+        std::cerr << "Invalid FPS: " << args.targetFps << " (must be greater than 0)" << std::endl;
+        return 1;
+    }
+    if (args.modelScale <= 0) {
+        std::cerr << "Invalid scale: " << args.modelScale << " (must be greater than 0)" << std::endl;
+        return 1;
+    }
+    
     // Set up signal handler
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
@@ -212,13 +230,11 @@ int main(int argc, char* argv[]) {
                 if (texIndex >= 0 && texIndex < static_cast<int>(scene->mNumTextures)) {
                     const aiTexture* embeddedTex = scene->mTextures[texIndex];
                     if (embeddedTex->mHeight == 0) {
-                        // Compressed texture (PNG, JPEG, etc.)
                         return Texture::fromMemory(
                             reinterpret_cast<const unsigned char*>(embeddedTex->pcData),
                             embeddedTex->mWidth
                         );
                     } else {
-                        // Uncompressed ARGB8888
                         Texture tex;
                         tex.width = embeddedTex->mWidth;
                         tex.height = embeddedTex->mHeight;
