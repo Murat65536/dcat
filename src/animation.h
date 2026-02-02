@@ -86,14 +86,26 @@ typedef struct BoneNodeArray {
     size_t capacity;
 } BoneNodeArray;
 
-// Bone name to index mapping (simple linear search)
+// Bone name to index mapping using hash table for O(1) lookups
+#define BONE_MAP_SIZE 256
+
+static inline uint32_t bone_hash(const char* name) {
+    uint32_t hash = 5381;
+    while (*name) {
+        hash = ((hash << 5) + hash) + (unsigned char)*name++;
+    }
+    return hash;
+}
+
 typedef struct BoneMapEntry {
     char* name;
     int index;
+    struct BoneMapEntry* next;  // For collision chaining
 } BoneMapEntry;
 
 typedef struct BoneMap {
-    BoneMapEntry* entries;
+    BoneMapEntry* buckets[BONE_MAP_SIZE];
+    BoneMapEntry* entries;  // Pool for all entries
     size_t count;
     size_t capacity;
 } BoneMap;

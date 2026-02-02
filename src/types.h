@@ -17,9 +17,9 @@
 
 static inline void* aligned_malloc(size_t size) {
     if (size == 0) return NULL;
-    // Round up to multiple of ALIGN_SIZE
-    size = (size + ALIGN_SIZE - 1) & ~(size_t)(ALIGN_SIZE - 1);
-    return aligned_alloc(ALIGN_SIZE, size);
+    void* ptr = NULL;
+    if (posix_memalign(&ptr, ALIGN_SIZE, size) != 0) return NULL;
+    return ptr;
 }
 
 static inline void* aligned_realloc(void* ptr, size_t old_size, size_t new_size) {
@@ -27,18 +27,40 @@ static inline void* aligned_realloc(void* ptr, size_t old_size, size_t new_size)
         free(ptr);
         return NULL;
     }
-    // Round up to multiple of ALIGN_SIZE
-    new_size = (new_size + ALIGN_SIZE - 1) & ~(size_t)(ALIGN_SIZE - 1);
-    void* new_ptr = aligned_alloc(ALIGN_SIZE, new_size);
-    if (new_ptr && ptr && old_size > 0) {
-        memcpy(new_ptr, ptr, old_size < new_size ? old_size : new_size);
-        free(ptr);
+    if (ptr == NULL) {
+        return aligned_malloc(new_size);
     }
-    return new_ptr;
+    // Try realloc first - it may expand in place
+    void* new_ptr = realloc(ptr, new_size);
+    if (new_ptr) {
+        // Check if still aligned
+        if (((uintptr_t)new_ptr & (ALIGN_SIZE - 1)) == 0) {
+            return new_ptr;
+        }
+        // Not aligned, need to reallocate with alignment
+        void* aligned_ptr = aligned_malloc(new_size);
+        if (aligned_ptr) {
+            memcpy(aligned_ptr, new_ptr, old_size < new_size ? old_size : new_size);
+            free(new_ptr);
+            return aligned_ptr;
+        }
+        return new_ptr;  // Return unaligned as fallback
+    }
+    return NULL;
 }
 
 // Dynamic array macros using aligned memory
 #define ARRAY_INIT(arr) do { (arr).data = NULL; (arr).count = 0; (arr).capacity = 0; } while(0)
+
+#define ARRAY_RESERVE(arr, cap) do { \
+    if ((cap) > (arr).capacity) { \
+        size_t old_cap = (arr).capacity; \
+        (arr).capacity = (cap); \
+        (arr).data = aligned_realloc((arr).data, \
+            old_cap * sizeof(*(arr).data), \
+            (arr).capacity * sizeof(*(arr).data)); \
+    } \
+} while(0)
 
 #define ARRAY_PUSH(arr, item) do { \
     if ((arr).count >= (arr).capacity) { \

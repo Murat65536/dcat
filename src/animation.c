@@ -11,6 +11,7 @@ void animation_state_init(AnimationState* state) {
 }
 
 void bone_map_init(BoneMap* map) {
+    memset(map->buckets, 0, sizeof(map->buckets));
     map->entries = NULL;
     map->count = 0;
     map->capacity = 0;
@@ -25,21 +26,30 @@ void bone_map_free(BoneMap* map) {
 }
 
 int bone_map_find(const BoneMap* map, const char* name) {
-    for (size_t i = 0; i < map->count; i++) {
-        if (strcmp(map->entries[i].name, name) == 0) {
-            return map->entries[i].index;
+    uint32_t hash = bone_hash(name) % BONE_MAP_SIZE;
+    BoneMapEntry* entry = map->buckets[hash];
+    while (entry) {
+        if (strcmp(entry->name, name) == 0) {
+            return entry->index;
         }
+        entry = entry->next;
     }
     return -1;
 }
 
 void bone_map_insert(BoneMap* map, const char* name, int index) {
     if (map->count >= map->capacity) {
-        map->capacity = map->capacity ? map->capacity * 2 : 8;
+        map->capacity = map->capacity ? map->capacity * 2 : 32;
         map->entries = realloc(map->entries, map->capacity * sizeof(BoneMapEntry));
     }
-    map->entries[map->count].name = str_dup(name);
-    map->entries[map->count].index = index;
+    BoneMapEntry* entry = &map->entries[map->count];
+    entry->name = str_dup(name);
+    entry->index = index;
+    
+    // Insert into hash table
+    uint32_t hash = bone_hash(name) % BONE_MAP_SIZE;
+    entry->next = map->buckets[hash];
+    map->buckets[hash] = entry;
     map->count++;
 }
 
