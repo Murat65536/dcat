@@ -102,9 +102,6 @@ typedef struct VulkanRenderer {
     // Staging buffers
     VkBuffer staging_buffers[MAX_FRAMES_IN_FLIGHT];
     VulkanAllocation staging_buffer_allocs[MAX_FRAMES_IN_FLIGHT];
-    
-    // Readback buffers
-    uint8_t* readback_buffers[MAX_FRAMES_IN_FLIGHT];
     bool frame_ready[MAX_FRAMES_IN_FLIGHT];
     
     // Uniform buffers

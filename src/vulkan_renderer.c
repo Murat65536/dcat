@@ -88,10 +88,8 @@ bool vulkan_renderer_initialize(VulkanRenderer* r) {
     
     create_skydome_pipeline(r);
     
-    // Initialize readback buffers
-    size_t frame_size = vulkan_renderer_get_frame_size(r);
+    // Initialize frame tracking
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        r->readback_buffers[i] = malloc(frame_size);
         r->frame_ready[i] = false;
     }
     
@@ -1176,6 +1174,28 @@ static void update_normal_texture(VulkanRenderer* r, const Texture* texture) {
     r->cached_normal_data_ptr = texture->data;
 }
 
+static void upload_buffer_via_staging(VulkanRenderer* r, const void* data, VkDeviceSize size,
+                                       VkBufferUsageFlagBits usage_bit, VkBuffer* buffer, VulkanAllocation* alloc) {
+    VkBuffer staging_buffer;
+    VulkanAllocation staging_alloc;
+    create_buffer(r, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                  &staging_buffer, &staging_alloc);
+    
+    create_buffer(r, size, usage_bit | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer, alloc);
+    
+    memcpy(staging_alloc.mapped, data, size);
+    
+    VkCommandBuffer cmd = begin_single_time_commands(r);
+    VkBufferCopy copy_region = {0, 0, size};
+    vkCmdCopyBuffer(cmd, staging_buffer, *buffer, 1, &copy_region);
+    end_single_time_commands(r, cmd);
+    
+    vkDestroyBuffer(r->device, staging_buffer, NULL);
+    vkFreeMemory(r->device, staging_alloc.memory, NULL);
+}
+
 static void update_vertex_buffer(VulkanRenderer* r, const VertexArray* vertices) {
     if (vertices->count == 0) return;
     VkDeviceSize buffer_size = sizeof(Vertex) * vertices->count;
@@ -1186,13 +1206,10 @@ static void update_vertex_buffer(VulkanRenderer* r, const VertexArray* vertices)
             vkFreeMemory(r->device, r->vertex_buffer_alloc.memory, NULL);
         }
         
-        create_buffer(r, buffer_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                      &r->vertex_buffer, &r->vertex_buffer_alloc);
+        upload_buffer_via_staging(r, vertices->data, buffer_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                                  &r->vertex_buffer, &r->vertex_buffer_alloc);
         r->cached_vertex_count = vertices->count;
     }
-    
-    memcpy(r->vertex_buffer_alloc.mapped, vertices->data, buffer_size);
 }
 
 static void update_index_buffer(VulkanRenderer* r, const Uint32Array* indices) {
@@ -1205,13 +1222,10 @@ static void update_index_buffer(VulkanRenderer* r, const Uint32Array* indices) {
             vkFreeMemory(r->device, r->index_buffer_alloc.memory, NULL);
         }
         
-        create_buffer(r, buffer_size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                      &r->index_buffer, &r->index_buffer_alloc);
+        upload_buffer_via_staging(r, indices->data, buffer_size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                                  &r->index_buffer, &r->index_buffer_alloc);
         r->cached_index_count = indices->count;
     }
-    
-    memcpy(r->index_buffer_alloc.mapped, indices->data, buffer_size);
 }
 
 static void cleanup_render_targets(VulkanRenderer* r) {
@@ -1262,7 +1276,6 @@ static void cleanup(VulkanRenderer* r) {
         if (r->in_flight_fences[i] != VK_NULL_HANDLE) {
             vkDestroyFence(r->device, r->in_flight_fences[i], NULL);
         }
-        free(r->readback_buffers[i]);
     }
     
     if (r->vertex_buffer != VK_NULL_HANDLE) {
@@ -1353,11 +1366,8 @@ void vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height) 
     }
     create_staging_buffers(r);
     
-    // Resize readback buffers
-    size_t frame_size = vulkan_renderer_get_frame_size(r);
+    // Reset frame tracking
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        free(r->readback_buffers[i]);
-        r->readback_buffers[i] = malloc(frame_size);
         r->frame_ready[i] = false;
     }
 }
@@ -1440,43 +1450,11 @@ void vulkan_renderer_set_skydome(VulkanRenderer* r, const Mesh* mesh, const Text
         VkDeviceSize vertex_size = sizeof(Vertex) * mesh->vertices.count;
         VkDeviceSize index_size = sizeof(uint32_t) * mesh->indices.count;
         
-        // Create vertex buffer
-        VkBuffer staging_vb;
-        VulkanAllocation staging_vb_alloc;
-        create_buffer(r, vertex_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                      &staging_vb, &staging_vb_alloc);
-        memcpy(staging_vb_alloc.mapped, mesh->vertices.data, vertex_size);
+        upload_buffer_via_staging(r, mesh->vertices.data, vertex_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                                  &r->skydome_vertex_buffer, &r->skydome_vertex_buffer_alloc);
         
-        create_buffer(r, vertex_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &r->skydome_vertex_buffer, &r->skydome_vertex_buffer_alloc);
-        
-        VkCommandBuffer cmd = begin_single_time_commands(r);
-        VkBufferCopy copy_region = {0, 0, vertex_size};
-        vkCmdCopyBuffer(cmd, staging_vb, r->skydome_vertex_buffer, 1, &copy_region);
-        end_single_time_commands(r, cmd);
-        
-        vkDestroyBuffer(r->device, staging_vb, NULL);
-        vkFreeMemory(r->device, staging_vb_alloc.memory, NULL);
-        
-        // Create index buffer
-        VkBuffer staging_ib;
-        VulkanAllocation staging_ib_alloc;
-        create_buffer(r, index_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                      &staging_ib, &staging_ib_alloc);
-        memcpy(staging_ib_alloc.mapped, mesh->indices.data, index_size);
-        
-        create_buffer(r, index_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &r->skydome_index_buffer, &r->skydome_index_buffer_alloc);
-        
-        cmd = begin_single_time_commands(r);
-        copy_region.size = index_size;
-        vkCmdCopyBuffer(cmd, staging_ib, r->skydome_index_buffer, 1, &copy_region);
-        end_single_time_commands(r, cmd);
-        
-        vkDestroyBuffer(r->device, staging_ib, NULL);
-        vkFreeMemory(r->device, staging_ib_alloc.memory, NULL);
+        upload_buffer_via_staging(r, mesh->indices.data, index_size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                                  &r->skydome_index_buffer, &r->skydome_index_buffer_alloc);
     }
     
     if (texture && texture->data_size > 0) {
@@ -1503,12 +1481,11 @@ const uint8_t* vulkan_renderer_render(
     vkWaitForFences(r->device, 1, &r->in_flight_fences[r->current_frame], VK_TRUE, UINT64_MAX);
     
     int prev_frame = (r->current_frame - 1 + MAX_FRAMES_IN_FLIGHT) % MAX_FRAMES_IN_FLIGHT;
-    const uint8_t* result = NULL;
     
-    if (r->frame_ready[prev_frame]) {
-        memcpy(r->readback_buffers[prev_frame], r->staging_buffer_allocs[prev_frame].mapped, vulkan_renderer_get_frame_size(r));
-        result = r->readback_buffers[prev_frame];
-    }
+    // Return mapped pointer directly - no copy needed since staging buffer is persistently mapped
+    const uint8_t* result = r->frame_ready[prev_frame] 
+        ? (const uint8_t*)r->staging_buffer_allocs[prev_frame].mapped 
+        : NULL;
     
     vkResetFences(r->device, 1, &r->in_flight_fences[r->current_frame]);
     

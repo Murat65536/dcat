@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(dcat VERSION 0.1.0 LANGUAGES C)
 
-set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -28,7 +28,7 @@ FetchContent_Declare(
 FetchContent_Declare(
     cglm
     GIT_REPOSITORY https://github.com/recp/cglm.git
-    GIT_TAG v0.9.4
+    GIT_TAG master
     GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(stb cglm)

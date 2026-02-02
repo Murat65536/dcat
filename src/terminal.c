@@ -55,7 +55,7 @@ static void fast_buffer_append(const char* str, size_t len) {
     fast_buffer.ptr += len;
 }
 
-static void fast_buffer_append_u8(uint8_t v) {
+static inline void fast_buffer_append_u8(uint8_t v) {
     if (v >= 100) {
         *fast_buffer.ptr++ = '0' + v / 100;
         v %= 100;
@@ -69,26 +69,56 @@ static void fast_buffer_append_u8(uint8_t v) {
     }
 }
 
-static void fast_buffer_append_color_block(uint8_t rU, uint8_t gU, uint8_t bU,
+static inline void fast_buffer_append_color_block(uint8_t rU, uint8_t gU, uint8_t bU,
                                            uint8_t rL, uint8_t gL, uint8_t bL) {
-    // Foreground color
-    fast_buffer_append("\x1b[38;2;", 7);
+    // Write directly without memcpy: "\x1b[38;2;R;G;B;48;2;R;G;Bm▀"
+    char* p = fast_buffer.ptr;
+    
+    // Foreground color escape: "\x1b[38;2;"
+    *p++ = '\x1b';
+    *p++ = '[';
+    *p++ = '3';
+    *p++ = '8';
+    *p++ = ';';
+    *p++ = '2';
+    *p++ = ';';
+    fast_buffer.ptr = p;
     fast_buffer_append_u8(rU);
-    *fast_buffer.ptr++ = ';';
+    p = fast_buffer.ptr;
+    *p++ = ';';
+    fast_buffer.ptr = p;
     fast_buffer_append_u8(gU);
-    *fast_buffer.ptr++ = ';';
+    p = fast_buffer.ptr;
+    *p++ = ';';
+    fast_buffer.ptr = p;
     fast_buffer_append_u8(bU);
     
-    // Background color
-    fast_buffer_append(";48;2;", 6);
+    // Background color: ";48;2;"
+    p = fast_buffer.ptr;
+    *p++ = ';';
+    *p++ = '4';
+    *p++ = '8';
+    *p++ = ';';
+    *p++ = '2';
+    *p++ = ';';
+    fast_buffer.ptr = p;
     fast_buffer_append_u8(rL);
-    *fast_buffer.ptr++ = ';';
+    p = fast_buffer.ptr;
+    *p++ = ';';
+    fast_buffer.ptr = p;
     fast_buffer_append_u8(gL);
-    *fast_buffer.ptr++ = ';';
+    p = fast_buffer.ptr;
+    *p++ = ';';
+    fast_buffer.ptr = p;
     fast_buffer_append_u8(bL);
     
-    // Character (upper half block)
-    fast_buffer_append("m\xE2\x96\x80", 4);
+    // End with "m▀" (upper half block)
+    p = fast_buffer.ptr;
+    *p++ = 'm';
+    *p++ = '\xE2';
+    *p++ = '\x96';
+    *p++ = '\x80';
+    fast_buffer.ptr = p;
 }
 
 static void fast_buffer_flush(void) {

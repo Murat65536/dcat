@@ -502,6 +502,7 @@ int main(int argc, char* argv[]) {
         }
         
         // Render
+        double t_vulkan_start = get_time_seconds();
         const uint8_t* framebuffer = vulkan_renderer_render(
             renderer, &mesh, mvp, model_matrix,
             &diffuse_texture, &normal_texture, !args.no_lighting,
@@ -510,8 +511,10 @@ int main(int argc, char* argv[]) {
             bone_matrix_ptr, bone_count,
             &view, &projection
         );
+        double t_vulkan_end = get_time_seconds();
         
         // Output to terminal
+        double t_terminal_start = get_time_seconds();
         if (framebuffer != NULL) {
             if (args.use_kitty) {
                 render_kitty_shm(framebuffer, current_width, current_height);
@@ -529,6 +532,25 @@ int main(int argc, char* argv[]) {
                 }
                 draw_status_bar(delta_time > 0 ? 1.0f / delta_time : 0.0f, move_speed, camera.position, anim_name);
             }
+        }
+        double t_terminal_end = get_time_seconds();
+        
+        // Timing log
+        static int frame_count = 0;
+        static double vulkan_total = 0, terminal_total = 0;
+        static FILE* timing_log = NULL;
+        if (!timing_log) {
+            timing_log = fopen("/tmp/dcat_timing.log", "w");
+            if (timing_log) setbuf(timing_log, NULL);
+        }
+        vulkan_total += (t_vulkan_end - t_vulkan_start);
+        terminal_total += (t_terminal_end - t_terminal_start);
+        frame_count++;
+        if (timing_log && frame_count % 60 == 0) {
+            fprintf(timing_log, "Frames %d: Vulkan: %.2fms avg, Terminal: %.2fms avg, FPS: %.1f\n",
+                    frame_count, (vulkan_total / 60) * 1000.0, (terminal_total / 60) * 1000.0, 
+                    60.0 / (vulkan_total + terminal_total));
+            vulkan_total = terminal_total = 0;
         }
         
         // Frame rate limiting
