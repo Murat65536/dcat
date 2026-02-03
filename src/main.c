@@ -208,6 +208,13 @@ static double get_time_seconds(void) {
 int main(int argc, char* argv[]) {
     Args args = parse_args(argc, argv);
     
+    // Print build type for debugging
+    #ifdef NDEBUG
+        fprintf(stderr, "Build type: Release (optimized)\n");
+    #else
+        fprintf(stderr, "Build type: Debug\n");
+    #endif
+    
     if (!args.model_path) {
         print_usage();
         return 1;

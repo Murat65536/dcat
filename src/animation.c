@@ -46,7 +46,6 @@ void bone_map_insert(BoneMap* map, const char* name, int index) {
     entry->name = str_dup(name);
     entry->index = index;
     
-    // Insert into hash table
     uint32_t hash = bone_hash(name) % BONE_MAP_SIZE;
     entry->next = map->buckets[hash];
     map->buckets[hash] = entry;
@@ -54,21 +53,43 @@ void bone_map_insert(BoneMap* map, const char* name, int index) {
 }
 
 static int find_key_index(const VectorKeyArray* keys, float time) {
-    for (size_t i = 0; i < keys->count - 1; i++) {
-        if (time < keys->data[i + 1].time) {
-            return (int)i;
+    if (keys->count == 0) return -1;
+    if (keys->count == 1 || time <= keys->data[0].time) return 0;
+    if (time >= keys->data[keys->count - 1].time) return (int)keys->count - 1;
+    
+    int left = 0;
+    int right = (int)keys->count - 1;
+    
+    while (left < right - 1) {
+        int mid = (left + right) / 2;
+        if (keys->data[mid].time <= time) {
+            left = mid;
+        } else {
+            right = mid;
         }
     }
-    return (int)keys->count - 1;
+    
+    return left;
 }
 
 static int find_rotation_key_index(const QuaternionKeyArray* keys, float time) {
-    for (size_t i = 0; i < keys->count - 1; i++) {
-        if (time < keys->data[i + 1].time) {
-            return (int)i;
+    if (keys->count == 0) return -1;
+    if (keys->count == 1 || time <= keys->data[0].time) return 0;
+    if (time >= keys->data[keys->count - 1].time) return (int)keys->count - 1;
+    
+    int left = 0;
+    int right = (int)keys->count - 1;
+    
+    while (left < right - 1) {
+        int mid = (left + right) / 2;
+        if (keys->data[mid].time <= time) {
+            left = mid;
+        } else {
+            right = mid;
         }
     }
-    return (int)keys->count - 1;
+    
+    return left;
 }
 
 void interpolate_position(const VectorKeyArray* keys, float time, vec3 out) {
@@ -170,8 +191,7 @@ static void compute_bone_transform(const Skeleton* skeleton, const Animation* an
     const BoneNode* node = &skeleton->bone_hierarchy.data[bone_index];
     mat4 node_transform;
     glm_mat4_copy((vec4*)node->transformation, node_transform);
-    
-    // Find bone animation for this bone
+
     const BoneAnimation* bone_anim = NULL;
     for (size_t i = 0; i < animation->bone_animations.count; i++) {
         if (strcmp(animation->bone_animations.data[i].bone_name, node->name) == 0) {

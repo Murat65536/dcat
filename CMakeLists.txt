@@ -98,11 +98,15 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_options(dcat PRIVATE 
         -O3 
         -march=native
+        -flto
+        -ffast-math
+        -funroll-loops
         -g
         -DNDEBUG
     )
     set_target_properties(dcat PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION TRUE
+        LINK_FLAGS "-flto"
     )
 endif()
 

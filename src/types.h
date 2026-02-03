@@ -30,26 +30,17 @@ static inline void* aligned_realloc(void* ptr, size_t old_size, size_t new_size)
     if (ptr == NULL) {
         return aligned_malloc(new_size);
     }
-    // Try realloc first - it may expand in place
-    void* new_ptr = realloc(ptr, new_size);
-    if (new_ptr) {
-        // Check if still aligned
-        if (((uintptr_t)new_ptr & (ALIGN_SIZE - 1)) == 0) {
-            return new_ptr;
-        }
-        // Not aligned, need to reallocate with alignment
-        void* aligned_ptr = aligned_malloc(new_size);
-        if (aligned_ptr) {
-            memcpy(aligned_ptr, new_ptr, old_size < new_size ? old_size : new_size);
-            free(new_ptr);
-            return aligned_ptr;
-        }
-        return new_ptr;  // Return unaligned as fallback
+    
+    // Always use aligned allocation to maintain alignment guarantees
+    void* new_ptr = aligned_malloc(new_size);
+    if (new_ptr && old_size > 0) {
+        size_t copy_size = (old_size < new_size) ? old_size : new_size;
+        memcpy(new_ptr, ptr, copy_size);
     }
-    return NULL;
+    free(ptr);
+    return new_ptr;
 }
 
-// Dynamic array macros using aligned memory
 #define ARRAY_INIT(arr) do { (arr).data = NULL; (arr).count = 0; (arr).capacity = 0; } while(0)
 
 #define ARRAY_RESERVE(arr, cap) do { \

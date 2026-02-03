@@ -56,17 +56,9 @@ static void fast_buffer_append(const char* str, size_t len) {
 }
 
 static inline void fast_buffer_append_u8(uint8_t v) {
-    if (v >= 100) {
-        *fast_buffer.ptr++ = '0' + v / 100;
-        v %= 100;
-        *fast_buffer.ptr++ = '0' + v / 10;
-        *fast_buffer.ptr++ = '0' + v % 10;
-    } else if (v >= 10) {
-        *fast_buffer.ptr++ = '0' + v / 10;
-        *fast_buffer.ptr++ = '0' + v % 10;
-    } else {
-        *fast_buffer.ptr++ = '0' + v;
-    }
+    *fast_buffer.ptr++ = '0' + v / 100;
+    *fast_buffer.ptr++ = '0' + v / 10 % 10;
+    *fast_buffer.ptr++ = '0' + v % 10;
 }
 
 static inline void fast_buffer_append_color_block(uint8_t rU, uint8_t gU, uint8_t bU,
