@@ -150,7 +150,6 @@ set(SHADERS
     ${SHADER_SOURCE_DIR}/shader.frag
     ${SHADER_SOURCE_DIR}/skydome.vert
     ${SHADER_SOURCE_DIR}/skydome.frag
-    ${SHADER_SOURCE_DIR}/terminal.comp
 )
 
 foreach(SHADER ${SHADERS})
