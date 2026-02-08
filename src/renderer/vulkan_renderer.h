@@ -7,9 +7,9 @@
 #include <stdint.h>
 #include <stdatomic.h>
 
-#include "types.h"
-#include "model.h"
-#include "texture.h"
+#include "../core/types.h"
+#include "../graphics/model.h"
+#include "../graphics/texture.h"
 
 #define MAX_FRAMES_IN_FLIGHT 3
 

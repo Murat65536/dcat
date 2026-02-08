@@ -1,38 +1,36 @@
 #ifndef DCAT_MODEL_H
 #define DCAT_MODEL_H
 
-#include "types.h"
+#include "../core/types.h"
 #include "animation.h"
 
-// Mesh structure
+// Mesh structure with geometry, animation, and coordinate system data
 typedef struct Mesh {
     VertexArray vertices;
     Uint32Array indices;
-    uint64_t generation;  // Incremented when data changes
+    uint64_t generation;
     
-    // Animation data
     bool has_animations;
     Skeleton skeleton;
     AnimationArray animations;
     
-    // Coordinate system conversion (for handling Z-up models, etc.)
     mat4 coordinate_system_transform;
 } Mesh;
 
 // Initialize mesh to empty state
 void mesh_init(Mesh* mesh);
 
-// Free mesh resources
+// Free all mesh resources
 void mesh_free(Mesh* mesh);
 
-// Calculate camera setup based on model bounds
+// Calculate optimal camera setup for viewing the model
 void calculate_camera_setup(const VertexArray* vertices, CameraSetup* setup);
 
-// Load model from file using assimp C API
+// Load 3D model from file using Assimp
 bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs, MaterialInfo* out_material);
 
-// Material info functions
+// Material info management
 void material_info_init(MaterialInfo* info);
 void material_info_free(MaterialInfo* info);
 
-#endif // DCAT_MODEL_H
+#endif

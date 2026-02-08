@@ -1,7 +1,7 @@
 #ifndef DCAT_ANIMATION_H
 #define DCAT_ANIMATION_H
 
-#include "types.h"
+#include "../core/types.h"
 #include <cglm/cglm.h>
 
 // Animation key types

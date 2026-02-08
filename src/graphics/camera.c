@@ -1,8 +1,8 @@
 #include "camera.h"
-#include "cglm/cam.h"
-#include "cglm/vec3.h"
-#include "types.h"
+#include "../core/types.h"
 #include <math.h>
+#include <cglm/cam.h>
+#include <cglm/vec3.h>
 
 void camera_init(Camera* cam, uint32_t width, uint32_t height,
                  vec3 pos, vec3 tgt, float fov_degrees) {

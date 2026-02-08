@@ -6,16 +6,13 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
-
 #include <cglm/cglm.h>
 
 #define MAX_BONES 200
 #define MAX_BONE_INFLUENCE 4
-
-// Aligned memory allocation for AVX (32-byte alignment)
 #define ALIGN_SIZE 32
 
+// Aligned memory allocation for SIMD operations
 static inline void* aligned_malloc(size_t size) {
     if (size == 0) return NULL;
     void* ptr = NULL;
@@ -32,15 +29,12 @@ static inline void* aligned_realloc(void* ptr, size_t old_size, size_t new_size)
         return aligned_malloc(new_size);
     }
     
-    // Try standard realloc first - it can grow in place if possible
-    // If realloc moves the pointer, we need to ensure alignment
     void* new_ptr = realloc(ptr, new_size);
     if (new_ptr) {
-        // Check if the realloc'd pointer is properly aligned
         if (((uintptr_t)new_ptr & (ALIGN_SIZE - 1)) == 0) {
-            return new_ptr;  // Already aligned, we're good
+            return new_ptr;
         }
-        // Not aligned, need to allocate aligned memory and copy
+        
         void* aligned_ptr = aligned_malloc(new_size);
         if (aligned_ptr) {
             size_t copy_size = (old_size < new_size) ? old_size : new_size;
@@ -52,7 +46,12 @@ static inline void* aligned_realloc(void* ptr, size_t old_size, size_t new_size)
     return NULL;
 }
 
-#define ARRAY_INIT(arr) do { (arr).data = NULL; (arr).count = 0; (arr).capacity = 0; } while(0)
+// Dynamic array macros
+#define ARRAY_INIT(arr) do { \
+    (arr).data = NULL; \
+    (arr).count = 0; \
+    (arr).capacity = 0; \
+} while(0)
 
 #define ARRAY_RESERVE(arr, cap) do { \
     if ((cap) > (arr).capacity) { \
@@ -75,20 +74,23 @@ static inline void* aligned_realloc(void* ptr, size_t old_size, size_t new_size)
     (arr).data[(arr).count++] = (item); \
 } while(0)
 
-#define ARRAY_FREE(arr) do { free((arr).data); ARRAY_INIT(arr); } while(0)
+#define ARRAY_FREE(arr) do { \
+    free((arr).data); \
+    ARRAY_INIT(arr); \
+} while(0)
 
-// Vertex structure
+// Vertex structure with bone weights for skeletal animation
 typedef struct Vertex {
     vec3 position;
     vec2 texcoord;
     vec3 normal;
     vec3 tangent;
     vec3 bitangent;
-    ivec4 bone_ids;      // 4 bone indices per vertex (-1 means unused)
-    vec4 bone_weights;   // 4 weights (must sum to 1.0)
+    ivec4 bone_ids;
+    vec4 bone_weights;
 } Vertex;
 
-// Dynamic arrays for common types
+// Dynamic array types
 typedef struct VertexArray {
     Vertex* data;
     size_t count;
@@ -113,14 +115,14 @@ typedef struct Mat4Array {
     size_t capacity;
 } Mat4Array;
 
-// Alpha blending mode
+// Alpha blending modes
 typedef enum AlphaMode {
     ALPHA_MODE_OPAQUE,
     ALPHA_MODE_MASK,
     ALPHA_MODE_BLEND
 } AlphaMode;
 
-// Material information extracted from model
+// Material information
 typedef struct MaterialInfo {
     char* diffuse_path;
     char* normal_path;
@@ -149,4 +151,4 @@ static inline float clampf(float val, float min_val, float max_val) {
     return val;
 }
 
-#endif // DCAT_TYPES_H
+#endif

@@ -39,17 +39,20 @@ endif()
 # Add executable
 add_executable(dcat
     src/main.c
-    src/camera.c
-    src/model.c
-    src/animation.c
-    src/texture.c
-    src/vulkan_renderer.c
+    src/core/args.c
+    src/graphics/camera.c
+    src/graphics/model.c
+    src/graphics/animation.c
+    src/graphics/texture.c
+    src/graphics/texture_loader.c
+    src/graphics/skydome.c
+    src/renderer/vulkan_renderer.c
+    src/input/input_device.c
+    src/input/input_handler.c
     src/terminal/terminal.c
     src/terminal/terminal_pixels.c
     src/terminal/sixel.c
     src/terminal/kitty.c
-    src/input_device.c
-    src/skydome.c
 )
 
 # cglm uses SIMD with aligned stores - we need unaligned for malloc'd memory
