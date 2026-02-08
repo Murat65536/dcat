@@ -1,21 +1,18 @@
 cmake_minimum_required(VERSION 3.16)
-project(dcat VERSION 0.1.0 LANGUAGES CXX)
+project(dcat VERSION 0.1.0 LANGUAGES C)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_C_STANDARD 23)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Set default build type to Debug if not specified
+# Set default build type to Release if not specified
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
-
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 # Find required packages
 find_package(Vulkan REQUIRED)
 find_package(assimp REQUIRED)
-find_package(glm REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SIXEL REQUIRED libsixel)
 
@@ -27,12 +24,12 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
 )
 FetchContent_Declare(
-    VulkanMemoryAllocator
-    GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+    cglm
+    GIT_REPOSITORY https://github.com/recp/cglm.git
     GIT_TAG master
     GIT_SHALLOW TRUE
 )
-FetchContent_MakeAvailable(stb VulkanMemoryAllocator)
+FetchContent_MakeAvailable(stb cglm)
 
 if(NOT TARGET stb)
     add_library(stb INTERFACE)
@@ -41,17 +38,21 @@ endif()
 
 # Add executable
 add_executable(dcat
-    src/main.cpp
-    src/camera.cpp
-    src/model.cpp
-    src/animation.cpp
-    src/texture.cpp
-    src/vulkan_renderer.cpp
-    src/terminal.cpp
-    src/input_device.cpp
-    src/skydome.cpp
+    src/main.c
+    src/camera.c
+    src/model.c
+    src/animation.c
+    src/texture.c
+    src/vulkan_renderer.c
+    src/terminal/terminal.c
+    src/terminal/terminal_pixels.c
+    src/terminal/sixel.c
+    src/terminal/kitty.c
+    src/input_device.c
+    src/skydome.c
 )
 
+# cglm uses SIMD with aligned stores - we need unaligned for malloc'd memory
 target_include_directories(dcat PRIVATE
     ${Vulkan_INCLUDE_DIRS}
     ${SIXEL_INCLUDE_DIRS}
@@ -61,16 +62,18 @@ target_include_directories(dcat PRIVATE
 target_link_libraries(dcat PRIVATE
     Vulkan::Vulkan
     assimp
-    glm::glm
-    ${SIXEL_LIBRARIES}
+    cglm
     stb
+    ${SIXEL_LIBRARIES}
     rt
-    VulkanMemoryAllocator
+    pthread
+    m
 )
+
+option(USE_SANITIZERS "Enable Address and Undefined Sanitizers in Debug build" ON)
 
 # Debug build configuration
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message(STATUS "Configuring Debug build with validation layers")
     target_compile_definitions(dcat PRIVATE 
         DEBUG_BUILD=1
         VK_ENABLE_VALIDATION=1
@@ -81,38 +84,53 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         -Wall
         -Wextra
         -Wpedantic
-        -fsanitize=address
-        -fsanitize=undefined
+    )
+
+    if(USE_SANITIZERS)
+        target_compile_options(dcat PRIVATE 
+            -fsanitize=address
+            -fsanitize=undefined
+        )
+        target_link_options(dcat PRIVATE
+            -fsanitize=address
+            -fsanitize=undefined
+        )
+    endif()
+endif()
+
+# Profile build
+if(CMAKE_BUILD_TYPE STREQUAL "Profile")
+    target_compile_definitions(dcat PRIVATE NDEBUG=1)
+    target_compile_options(dcat PRIVATE 
+        -O2
+        -g
+        -pg
     )
     target_link_options(dcat PRIVATE
-        -fsanitize=address
-        -fsanitize=undefined
-    )
-    
-    # VMA debug settings
-    target_compile_definitions(dcat PRIVATE
-        VMA_DEBUG_MARGIN=16
-        VMA_DEBUG_DETECT_CORRUPTION=1
+        -pg
     )
 endif()
 
 # Release build optimization
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    message(STATUS "Configuring Release build with optimizations")
     target_compile_definitions(dcat PRIVATE NDEBUG=1)
     target_compile_options(dcat PRIVATE 
         -O3 
         -march=native
+        -flto
+        -ffast-math
+        -funroll-loops
+        -g
         -DNDEBUG
     )
     set_target_properties(dcat PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION TRUE
+        LINK_FLAGS "-flto"
     )
 endif()
 
 # RelWithDebInfo build
 if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-    message(STATUS "Configuring RelWithDebInfo build")
     target_compile_options(dcat PRIVATE -O2 -g)
 endif()
 
@@ -132,6 +150,7 @@ set(SHADERS
     ${SHADER_SOURCE_DIR}/shader.frag
     ${SHADER_SOURCE_DIR}/skydome.vert
     ${SHADER_SOURCE_DIR}/skydome.frag
+    ${SHADER_SOURCE_DIR}/terminal.comp
 )
 
 foreach(SHADER ${SHADERS})
