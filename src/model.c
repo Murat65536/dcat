@@ -396,6 +396,7 @@ static void load_animations(const struct aiScene* scene, AnimationArray* animati
         animation.duration = (float)ai_anim->mDuration;
         animation.ticks_per_second = (float)ai_anim->mTicksPerSecond;
         ARRAY_INIT(animation.bone_animations);
+        bone_anim_map_init(&animation.bone_anim_map);
         
         for (unsigned int j = 0; j < ai_anim->mNumChannels; j++) {
             const struct aiNodeAnim* channel = ai_anim->mChannels[j];
@@ -432,6 +433,12 @@ static void load_animations(const struct aiScene* scene, AnimationArray* animati
             }
             
             ARRAY_PUSH(animation.bone_animations, bone_anim);
+        }
+        
+        // Build bone animation hash map for fast lookups
+        for (size_t j = 0; j < animation.bone_animations.count; j++) {
+            const char* bone_name = animation.bone_animations.data[j].bone_name;
+            bone_anim_map_insert(&animation.bone_anim_map, bone_name, (int)j);
         }
         
         // Calculate actual duration from keyframes

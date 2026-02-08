@@ -23,6 +23,8 @@ static bool create_sampler(VulkanRenderer* r);
 static bool create_command_buffers(VulkanRenderer* r);
 static bool create_sync_objects(VulkanRenderer* r);
 static bool create_descriptor_sets(VulkanRenderer* r);
+static bool create_terminal_pipeline(VulkanRenderer* r);
+static bool create_terminal_buffers(VulkanRenderer* r);
 static void cleanup_render_targets(VulkanRenderer* r);
 static void cleanup(VulkanRenderer* r);
 
@@ -68,6 +70,7 @@ void vulkan_renderer_destroy(VulkanRenderer* r) {
 }
 
 bool vulkan_renderer_initialize(VulkanRenderer* r) {
+    fprintf(stderr, "Initializing Vulkan renderer...\n");
     if (!create_instance(r)) return false;
     if (!select_physical_device(r)) return false;
     if (!create_logical_device(r)) return false;
@@ -85,6 +88,15 @@ bool vulkan_renderer_initialize(VulkanRenderer* r) {
     if (!create_command_buffers(r)) return false;
     if (!create_sync_objects(r)) return false;
     if (!create_descriptor_sets(r)) return false;
+    
+    if (!create_terminal_pipeline(r)) {
+        fprintf(stderr, "Failed to create terminal pipeline\n");
+        return false;
+    }
+    if (!create_terminal_buffers(r)) {
+        fprintf(stderr, "Failed to create terminal buffers\n");
+        return false;
+    }
     
     create_skydome_pipeline(r);
     
@@ -274,6 +286,20 @@ static bool select_physical_device(VulkanRenderer* r) {
         bool found_queue = false;
         for (uint32_t i = 0; i < queue_family_count; i++) {
             if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                // Check for required features
+                VkPhysicalDeviceVulkan12Features features12 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+                
+                VkPhysicalDeviceFeatures2 features2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+                features2.pNext = &features12;
+                
+                vkGetPhysicalDeviceFeatures2(devices[d], &features2);
+                
+                if (!features12.shaderInt8 || !features12.storageBuffer8BitAccess || !features2.features.fillModeNonSolid) {
+                    fprintf(stderr, "Device %d skipped: missing required features (int8: %d, 8bit_storage: %d, wireframe: %d)\n", 
+                            d, features12.shaderInt8, features12.storageBuffer8BitAccess, features2.features.fillModeNonSolid);
+                    continue;
+                }
+
                 r->physical_device = devices[d];
                 r->graphics_queue_family = i;
                 found_queue = true;
@@ -305,10 +331,17 @@ static bool create_logical_device(VulkanRenderer* r) {
     queue_create_info.queueCount = 1;
     queue_create_info.pQueuePriorities = &queue_priority;
     
+    // Legacy features
     VkPhysicalDeviceFeatures device_features = {0};
     device_features.fillModeNonSolid = VK_TRUE;
+
+    // Vulkan 1.2 features (replacing the individual structs)
+    VkPhysicalDeviceVulkan12Features features12 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+    features12.shaderInt8 = VK_TRUE;
+    features12.storageBuffer8BitAccess = VK_TRUE;
     
     VkDeviceCreateInfo create_info = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+    create_info.pNext = &features12;
     create_info.pQueueCreateInfos = &queue_create_info;
     create_info.queueCreateInfoCount = 1;
     create_info.pEnabledFeatures = &device_features;
@@ -335,19 +368,21 @@ static bool create_command_pool(VulkanRenderer* r) {
 }
 
 static bool create_descriptor_pool(VulkanRenderer* r) {
-    VkDescriptorPoolSize pool_sizes[3] = {
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2 * MAX_FRAMES_IN_FLIGHT},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 * MAX_FRAMES_IN_FLIGHT},
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 * MAX_FRAMES_IN_FLIGHT}
+    VkDescriptorPoolSize pool_sizes[5] = {
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 4 * MAX_FRAMES_IN_FLIGHT},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 * MAX_FRAMES_IN_FLIGHT},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 4 * MAX_FRAMES_IN_FLIGHT},
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4 * MAX_FRAMES_IN_FLIGHT},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4 * MAX_FRAMES_IN_FLIGHT}
     };
     
     VkDescriptorPoolCreateInfo pool_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    pool_info.poolSizeCount = 3;
+    pool_info.poolSizeCount = 5;
     pool_info.pPoolSizes = pool_sizes;
-    pool_info.maxSets = 2 * MAX_FRAMES_IN_FLIGHT;
+    pool_info.maxSets = 8 * MAX_FRAMES_IN_FLIGHT;
     
     if (vkCreateDescriptorPool(r->device, &pool_info, NULL, &r->descriptor_pool) != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create descriptor pool\n");
+        fprintf(stderr, "Failed to create descriptor pool. This might be due to requesting too many descriptors or memory limits.\n");
         return false;
     }
     return true;
@@ -414,7 +449,7 @@ static bool create_render_pass(VulkanRenderer* r) {
     VkAttachmentDescription attachments[2] = {0};
     
     // Color attachment
-    attachments[0].format = VK_FORMAT_R8G8B8A8_SRGB;
+    attachments[0].format = VK_FORMAT_R8G8B8A8_UNORM;
     attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
     attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -521,6 +556,7 @@ static char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* o
                 }
             }
             
+            fprintf(stderr, "Loaded shader: %s\n", path);
             return buffer;
         }
     }
@@ -863,12 +899,12 @@ static bool create_skydome_pipeline(VulkanRenderer* r) {
 
 static bool create_render_targets(VulkanRenderer* r) {
     // Color image
-    if (!create_image(r, r->width, r->height, VK_FORMAT_R8G8B8A8_SRGB,
-                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+    if (!create_image(r, r->width, r->height, VK_FORMAT_R8G8B8A8_UNORM,
+                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
                       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &r->color_image, &r->color_image_alloc)) {
         return false;
     }
-    r->color_image_view = create_image_view(r, r->color_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+    r->color_image_view = create_image_view(r, r->color_image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
     
     // Depth image
     if (!create_image(r, r->width, r->height, VK_FORMAT_D32_SFLOAT,
@@ -906,6 +942,11 @@ static bool create_staging_buffers(VulkanRenderer* r) {
         if (!create_buffer(r, buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                            &r->staging_buffers[i], &r->staging_buffer_allocs[i])) {
+            return false;
+        }
+        // Allocate CPU-side readback buffer (reading directly from mapped GPU memory is slow)
+        r->readback_buffers[i] = (uint8_t*)malloc(buffer_size);
+        if (!r->readback_buffers[i]) {
             return false;
         }
     }
@@ -1228,6 +1269,142 @@ static void update_index_buffer(VulkanRenderer* r, const Uint32Array* indices) {
     }
 }
 
+static bool create_terminal_pipeline(VulkanRenderer* r) {
+    size_t comp_size;
+    char* comp_code = read_shader_file(r, "terminal.comp.spv", &comp_size);
+    if (!comp_code) return false;
+
+    VkShaderModule comp_module = create_shader_module(r, comp_code, comp_size);
+    free(comp_code);
+    if (comp_module == VK_NULL_HANDLE) return false;
+
+    VkDescriptorSetLayoutBinding bindings[2] = {0};
+    // Input image
+    bindings[0].binding = 0;
+    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    bindings[0].descriptorCount = 1;
+    bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    // Output buffer
+    bindings[1].binding = 1;
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[1].descriptorCount = 1;
+    bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    VkDescriptorSetLayoutCreateInfo layout_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    layout_info.bindingCount = 2;
+    layout_info.pBindings = bindings;
+
+    if (vkCreateDescriptorSetLayout(r->device, &layout_info, NULL, &r->terminal_descriptor_set_layout) != VK_SUCCESS) {
+        vkDestroyShaderModule(r->device, comp_module, NULL);
+        return false;
+    }
+
+    VkPushConstantRange push_constant_range = {0};
+    push_constant_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    push_constant_range.offset = 0;
+    push_constant_range.size = sizeof(uint32_t) * 2;
+
+    VkPipelineLayoutCreateInfo pipeline_layout_info = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    pipeline_layout_info.setLayoutCount = 1;
+    pipeline_layout_info.pSetLayouts = &r->terminal_descriptor_set_layout;
+    pipeline_layout_info.pushConstantRangeCount = 1;
+    pipeline_layout_info.pPushConstantRanges = &push_constant_range;
+
+    if (vkCreatePipelineLayout(r->device, &pipeline_layout_info, NULL, &r->terminal_pipeline_layout) != VK_SUCCESS) {
+        vkDestroyShaderModule(r->device, comp_module, NULL);
+        return false;
+    }
+
+    VkComputePipelineCreateInfo pipeline_info = {VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+    pipeline_info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    pipeline_info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    pipeline_info.stage.module = comp_module;
+    pipeline_info.stage.pName = "main";
+    pipeline_info.layout = r->terminal_pipeline_layout;
+
+    if (vkCreateComputePipelines(r->device, VK_NULL_HANDLE, 1, &pipeline_info, NULL, &r->terminal_pipeline) != VK_SUCCESS) {
+        vkDestroyShaderModule(r->device, comp_module, NULL);
+        return false;
+    }
+
+    vkDestroyShaderModule(r->device, comp_module, NULL);
+
+    VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        layouts[i] = r->terminal_descriptor_set_layout;
+    }
+
+    VkDescriptorSetAllocateInfo alloc_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    alloc_info.descriptorPool = r->descriptor_pool;
+    alloc_info.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
+    alloc_info.pSetLayouts = layouts;
+
+    if (vkAllocateDescriptorSets(r->device, &alloc_info, r->terminal_descriptor_sets) != VK_SUCCESS) {
+        return false;
+    }
+
+    return true;
+}
+
+static bool create_terminal_buffers(VulkanRenderer* r) {
+    uint32_t width = r->width;
+    uint32_t height = r->height;
+    
+    // Header: 12 bytes
+    // Block: 39 bytes (covers 2 pixels vertically)
+    // Footer: 13 bytes
+    VkDeviceSize buffer_size = 12 + (VkDeviceSize)width * ((height + 1) / 2) * 39 + 13;
+
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        if (!create_buffer(r, buffer_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                           &r->terminal_output_buffers[i], &r->terminal_output_buffer_allocs[i])) {
+            return false;
+        }
+
+        // Allocate CPU-side readback buffer
+        r->terminal_readback_buffers[i] = (char*)malloc(buffer_size);
+        if (!r->terminal_readback_buffers[i]) {
+            return false;
+        }
+
+        // Initialize the buffer with headers and block templates
+        char* p = (char*)r->terminal_output_buffer_allocs[i].mapped;
+        
+        // Header
+        memcpy(p, "\x1b[?2026h\x1b[H", 12);
+        p += 12;
+
+        // Templates
+        const char* template = "\x1b[38;2;000;000;000;48;2;000;000;000m\xe2\x96\x80";
+        for (uint32_t b = 0; b < width * ((height + 1) / 2); b++) {
+            memcpy(p, template, 39);
+            p += 39;
+        }
+
+        // Footer
+        memcpy(p, "\x1b[0m\x1b[?2026l", 13);
+
+        // Update descriptor sets
+        VkDescriptorImageInfo image_info = {0};
+        image_info.imageView = r->color_image_view;
+        image_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+        VkDescriptorBufferInfo buffer_info = {r->terminal_output_buffers[i], 0, buffer_size};
+
+        VkWriteDescriptorSet writes[2] = {
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, r->terminal_descriptor_sets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &image_info, NULL, NULL},
+            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, r->terminal_descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, NULL, &buffer_info, NULL}
+        };
+        vkUpdateDescriptorSets(r->device, 2, writes, 0, NULL);
+    }
+
+    return true;
+}
+
+
+
 static void cleanup_render_targets(VulkanRenderer* r) {
     if (r->framebuffer != VK_NULL_HANDLE) {
         vkDestroyFramebuffer(r->device, r->framebuffer, NULL);
@@ -1254,85 +1431,151 @@ static void cleanup_render_targets(VulkanRenderer* r) {
 }
 
 static void cleanup(VulkanRenderer* r) {
-    if (r->device == VK_NULL_HANDLE) return;
+    if (r->device != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(r->device);
+    }
     
-    vkDeviceWaitIdle(r->device);
-    
-    if (r->sampler != VK_NULL_HANDLE) vkDestroySampler(r->device, r->sampler, NULL);
-    
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        if (r->staging_buffers[i] != VK_NULL_HANDLE) {
-            vkDestroyBuffer(r->device, r->staging_buffers[i], NULL);
-            vkFreeMemory(r->device, r->staging_buffer_allocs[i].memory, NULL);
+    if (r->device != VK_NULL_HANDLE) {
+        if (r->sampler != VK_NULL_HANDLE) {
+            vkDestroySampler(r->device, r->sampler, NULL);
         }
-        if (r->uniform_buffers[i] != VK_NULL_HANDLE) {
-            vkDestroyBuffer(r->device, r->uniform_buffers[i], NULL);
-            vkFreeMemory(r->device, r->uniform_buffer_allocs[i].memory, NULL);
+        
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            if (r->staging_buffers[i] != VK_NULL_HANDLE) {
+                vkDestroyBuffer(r->device, r->staging_buffers[i], NULL);
+                if (r->staging_buffer_allocs[i].memory != VK_NULL_HANDLE) {
+                    vkFreeMemory(r->device, r->staging_buffer_allocs[i].memory, NULL);
+                }
+            }
+            free(r->readback_buffers[i]);
+            if (r->uniform_buffers[i] != VK_NULL_HANDLE) {
+                vkDestroyBuffer(r->device, r->uniform_buffers[i], NULL);
+                if (r->uniform_buffer_allocs[i].memory != VK_NULL_HANDLE) {
+                    vkFreeMemory(r->device, r->uniform_buffer_allocs[i].memory, NULL);
+                }
+            }
+            if (r->fragment_uniform_buffers[i] != VK_NULL_HANDLE) {
+                vkDestroyBuffer(r->device, r->fragment_uniform_buffers[i], NULL);
+                if (r->fragment_uniform_buffer_allocs[i].memory != VK_NULL_HANDLE) {
+                    vkFreeMemory(r->device, r->fragment_uniform_buffer_allocs[i].memory, NULL);
+                }
+            }
+            if (r->in_flight_fences[i] != VK_NULL_HANDLE) {
+                vkDestroyFence(r->device, r->in_flight_fences[i], NULL);
+            }
+            if (r->terminal_output_buffers[i] != VK_NULL_HANDLE) {
+                vkDestroyBuffer(r->device, r->terminal_output_buffers[i], NULL);
+                vkFreeMemory(r->device, r->terminal_output_buffer_allocs[i].memory, NULL);
+            }
+            free(r->terminal_readback_buffers[i]);
         }
-        if (r->fragment_uniform_buffers[i] != VK_NULL_HANDLE) {
-            vkDestroyBuffer(r->device, r->fragment_uniform_buffers[i], NULL);
-            vkFreeMemory(r->device, r->fragment_uniform_buffer_allocs[i].memory, NULL);
+        
+        if (r->terminal_pipeline != VK_NULL_HANDLE) {
+            vkDestroyPipeline(r->device, r->terminal_pipeline, NULL);
         }
-        if (r->in_flight_fences[i] != VK_NULL_HANDLE) {
-            vkDestroyFence(r->device, r->in_flight_fences[i], NULL);
+        if (r->terminal_pipeline_layout != VK_NULL_HANDLE) {
+            vkDestroyPipelineLayout(r->device, r->terminal_pipeline_layout, NULL);
         }
-    }
-    
-    if (r->vertex_buffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(r->device, r->vertex_buffer, NULL);
-        vkFreeMemory(r->device, r->vertex_buffer_alloc.memory, NULL);
-    }
-    if (r->index_buffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(r->device, r->index_buffer, NULL);
-        vkFreeMemory(r->device, r->index_buffer_alloc.memory, NULL);
-    }
-    if (r->skydome_vertex_buffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(r->device, r->skydome_vertex_buffer, NULL);
-        vkFreeMemory(r->device, r->skydome_vertex_buffer_alloc.memory, NULL);
-    }
-    if (r->skydome_index_buffer != VK_NULL_HANDLE) {
-        vkDestroyBuffer(r->device, r->skydome_index_buffer, NULL);
-        vkFreeMemory(r->device, r->skydome_index_buffer_alloc.memory, NULL);
-    }
-    
-    if (r->diffuse_image != VK_NULL_HANDLE) {
-        vkDestroyImageView(r->device, r->diffuse_image_view, NULL);
-        vkDestroyImage(r->device, r->diffuse_image, NULL);
-        vkFreeMemory(r->device, r->diffuse_image_alloc.memory, NULL);
-    }
-    if (r->normal_image != VK_NULL_HANDLE) {
-        vkDestroyImageView(r->device, r->normal_image_view, NULL);
-        vkDestroyImage(r->device, r->normal_image, NULL);
-        vkFreeMemory(r->device, r->normal_image_alloc.memory, NULL);
-    }
-    if (r->skydome_image != VK_NULL_HANDLE) {
-        vkDestroyImageView(r->device, r->skydome_image_view, NULL);
-        vkDestroyImage(r->device, r->skydome_image, NULL);
-        vkFreeMemory(r->device, r->skydome_image_alloc.memory, NULL);
+        if (r->terminal_descriptor_set_layout != VK_NULL_HANDLE) {
+            vkDestroyDescriptorSetLayout(r->device, r->terminal_descriptor_set_layout, NULL);
+        }
+
+        if (r->vertex_buffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(r->device, r->vertex_buffer, NULL);
+            if (r->vertex_buffer_alloc.memory != VK_NULL_HANDLE) {
+                vkFreeMemory(r->device, r->vertex_buffer_alloc.memory, NULL);
+            }
+        }
+        if (r->index_buffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(r->device, r->index_buffer, NULL);
+            if (r->index_buffer_alloc.memory != VK_NULL_HANDLE) {
+                vkFreeMemory(r->device, r->index_buffer_alloc.memory, NULL);
+            }
+        }
+        if (r->skydome_vertex_buffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(r->device, r->skydome_vertex_buffer, NULL);
+            if (r->skydome_vertex_buffer_alloc.memory != VK_NULL_HANDLE) {
+                vkFreeMemory(r->device, r->skydome_vertex_buffer_alloc.memory, NULL);
+            }
+        }
+        if (r->skydome_index_buffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(r->device, r->skydome_index_buffer, NULL);
+            if (r->skydome_index_buffer_alloc.memory != VK_NULL_HANDLE) {
+                vkFreeMemory(r->device, r->skydome_index_buffer_alloc.memory, NULL);
+            }
+        }
+        
+        if (r->diffuse_image != VK_NULL_HANDLE) {
+            if (r->diffuse_image_view != VK_NULL_HANDLE) {
+                vkDestroyImageView(r->device, r->diffuse_image_view, NULL);
+            }
+            vkDestroyImage(r->device, r->diffuse_image, NULL);
+            if (r->diffuse_image_alloc.memory != VK_NULL_HANDLE) {
+                vkFreeMemory(r->device, r->diffuse_image_alloc.memory, NULL);
+            }
+        }
+        if (r->normal_image != VK_NULL_HANDLE) {
+            if (r->normal_image_view != VK_NULL_HANDLE) {
+                vkDestroyImageView(r->device, r->normal_image_view, NULL);
+            }
+            vkDestroyImage(r->device, r->normal_image, NULL);
+            if (r->normal_image_alloc.memory != VK_NULL_HANDLE) {
+                vkFreeMemory(r->device, r->normal_image_alloc.memory, NULL);
+            }
+        }
+        if (r->skydome_image != VK_NULL_HANDLE) {
+            if (r->skydome_image_view != VK_NULL_HANDLE) {
+                vkDestroyImageView(r->device, r->skydome_image_view, NULL);
+            }
+            vkDestroyImage(r->device, r->skydome_image, NULL);
+            if (r->skydome_image_alloc.memory != VK_NULL_HANDLE) {
+                vkFreeMemory(r->device, r->skydome_image_alloc.memory, NULL);
+            }
+        }
     }
     
     cleanup_render_targets(r);
     
-    vkDestroyPipeline(r->device, r->graphics_pipeline, NULL);
-    vkDestroyPipeline(r->device, r->wireframe_pipeline, NULL);
-    vkDestroyPipelineLayout(r->device, r->pipeline_layout, NULL);
+    if (r->device != VK_NULL_HANDLE) {
+        if (r->graphics_pipeline != VK_NULL_HANDLE) {
+            vkDestroyPipeline(r->device, r->graphics_pipeline, NULL);
+        }
+        if (r->wireframe_pipeline != VK_NULL_HANDLE) {
+            vkDestroyPipeline(r->device, r->wireframe_pipeline, NULL);
+        }
+        if (r->pipeline_layout != VK_NULL_HANDLE) {
+            vkDestroyPipelineLayout(r->device, r->pipeline_layout, NULL);
+        }
+        
+        if (r->skydome_pipeline != VK_NULL_HANDLE) {
+            vkDestroyPipeline(r->device, r->skydome_pipeline, NULL);
+        }
+        if (r->skydome_pipeline_layout != VK_NULL_HANDLE) {
+            vkDestroyPipelineLayout(r->device, r->skydome_pipeline_layout, NULL);
+        }
+        if (r->skydome_descriptor_set_layout != VK_NULL_HANDLE) {
+            vkDestroyDescriptorSetLayout(r->device, r->skydome_descriptor_set_layout, NULL);
+        }
+        
+        if (r->render_pass != VK_NULL_HANDLE) {
+            vkDestroyRenderPass(r->device, r->render_pass, NULL);
+        }
+        if (r->descriptor_pool != VK_NULL_HANDLE) {
+            vkDestroyDescriptorPool(r->device, r->descriptor_pool, NULL);
+        }
+        if (r->descriptor_set_layout != VK_NULL_HANDLE) {
+            vkDestroyDescriptorSetLayout(r->device, r->descriptor_set_layout, NULL);
+        }
+        if (r->command_pool != VK_NULL_HANDLE) {
+            vkDestroyCommandPool(r->device, r->command_pool, NULL);
+        }
+        
+        vkDestroyDevice(r->device, NULL);
+    }
     
-    if (r->skydome_pipeline != VK_NULL_HANDLE) {
-        vkDestroyPipeline(r->device, r->skydome_pipeline, NULL);
+    if (r->instance != VK_NULL_HANDLE) {
+        vkDestroyInstance(r->instance, NULL);
     }
-    if (r->skydome_pipeline_layout != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(r->device, r->skydome_pipeline_layout, NULL);
-    }
-    if (r->skydome_descriptor_set_layout != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(r->device, r->skydome_descriptor_set_layout, NULL);
-    }
-    
-    vkDestroyRenderPass(r->device, r->render_pass, NULL);
-    vkDestroyDescriptorPool(r->device, r->descriptor_pool, NULL);
-    vkDestroyDescriptorSetLayout(r->device, r->descriptor_set_layout, NULL);
-    vkDestroyCommandPool(r->device, r->command_pool, NULL);
-    vkDestroyDevice(r->device, NULL);
-    vkDestroyInstance(r->instance, NULL);
 }
 
 void vulkan_renderer_set_light_direction(VulkanRenderer* r, const float* direction) {
@@ -1363,8 +1606,17 @@ void vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height) 
             vkDestroyBuffer(r->device, r->staging_buffers[i], NULL);
             vkFreeMemory(r->device, r->staging_buffer_allocs[i].memory, NULL);
         }
+        free(r->readback_buffers[i]);
+        r->readback_buffers[i] = NULL;
+        if (r->terminal_output_buffers[i] != VK_NULL_HANDLE) {
+            vkDestroyBuffer(r->device, r->terminal_output_buffers[i], NULL);
+            vkFreeMemory(r->device, r->terminal_output_buffer_allocs[i].memory, NULL);
+        }
+        free(r->terminal_readback_buffers[i]);
+        r->terminal_readback_buffers[i] = NULL;
     }
     create_staging_buffers(r);
+    create_terminal_buffers(r);
     
     // Reset frame tracking
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -1480,12 +1732,17 @@ const uint8_t* vulkan_renderer_render(
 ) {
     vkWaitForFences(r->device, 1, &r->in_flight_fences[r->current_frame], VK_TRUE, UINT64_MAX);
     
-    int prev_frame = (r->current_frame - 1 + MAX_FRAMES_IN_FLIGHT) % MAX_FRAMES_IN_FLIGHT;
-    
-    // Return mapped pointer directly - no copy needed since staging buffer is persistently mapped
-    const uint8_t* result = r->frame_ready[prev_frame] 
-        ? (const uint8_t*)r->staging_buffer_allocs[prev_frame].mapped 
-        : NULL;
+    // Read from current_frame (which was submitted 2 iterations ago and is now guaranteed done)
+    const uint8_t* result = NULL;
+    if (r->frame_ready[r->current_frame]) {
+        size_t frame_size = r->width * r->height * 4;
+        memcpy(r->readback_buffers[r->current_frame], r->staging_buffer_allocs[r->current_frame].mapped, frame_size);
+        result = r->readback_buffers[r->current_frame];
+
+        // Copy compute outputs to readback buffers
+        size_t terminal_size = 12 + (size_t)r->width * ((r->height + 1) / 2) * 39 + 13;
+        memcpy(r->terminal_readback_buffers[r->current_frame], r->terminal_output_buffer_allocs[r->current_frame].mapped, terminal_size);
+    }
     
     vkResetFences(r->device, 1, &r->in_flight_fences[r->current_frame]);
     
@@ -1563,7 +1820,7 @@ const uint8_t* vulkan_renderer_render(
     VkCommandBufferBeginInfo begin_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     vkBeginCommandBuffer(cmd, &begin_info);
     
-    VkClearValue clear_values[2] = {{{0, 0, 0, 1}}, {{1.0f, 0}}};
+    VkClearValue clear_values[2] = {{{{0, 0, 0, 1}}}, {{{1.0f, 0}}}};
     
     VkRenderPassBeginInfo rp_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rp_info.renderPass = r->render_pass;
@@ -1616,6 +1873,50 @@ const uint8_t* vulkan_renderer_render(
     
     vkCmdEndRenderPass(cmd);
     
+    // Compute Passes
+    {
+        // Transition color image to GENERAL for compute storage access
+        VkImageMemoryBarrier compute_barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        compute_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        compute_barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        compute_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        compute_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        compute_barrier.image = r->color_image;
+        compute_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        compute_barrier.subresourceRange.levelCount = 1;
+        compute_barrier.subresourceRange.layerCount = 1;
+        compute_barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        compute_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &compute_barrier);
+
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->terminal_pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->terminal_pipeline_layout, 0, 1, &r->terminal_descriptor_sets[r->current_frame], 0, NULL);
+        uint32_t push_data[2] = {r->width, r->height};
+        vkCmdPushConstants(cmd, r->terminal_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_data), push_data);
+        vkCmdDispatch(cmd, (r->width + 15) / 16, ((r->height + 1) / 2 + 15) / 16, 1);
+
+        // Transition back to TRANSFER_SRC for staging copy
+        compute_barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        compute_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        compute_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        compute_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &compute_barrier);
+
+        // Add buffer barrier for compute output buffers to ensure host visibility
+        VkBufferMemoryBarrier out_buffer_barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        out_buffer_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        out_buffer_barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        out_buffer_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        out_buffer_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        out_buffer_barrier.size = VK_WHOLE_SIZE;
+
+        out_buffer_barrier.buffer = r->terminal_output_buffers[r->current_frame];
+
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, NULL, 1, &out_buffer_barrier, 0, NULL);
+    }
+    
     // Copy to staging buffer
     VkBufferImageCopy region = {0};
     region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1649,4 +1950,12 @@ const uint8_t* vulkan_renderer_render(
     r->current_frame = (r->current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     
     return result;
+}
+
+const char* vulkan_renderer_get_terminal_output(VulkanRenderer* r) {
+    uint32_t prev_frame = (r->current_frame + MAX_FRAMES_IN_FLIGHT - 1) % MAX_FRAMES_IN_FLIGHT;
+    if (r->frame_ready[prev_frame]) {
+        return r->terminal_readback_buffers[prev_frame];
+    }
+    return NULL;
 }

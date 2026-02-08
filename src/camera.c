@@ -1,4 +1,7 @@
 #include "camera.h"
+#include "cglm/cam.h"
+#include "cglm/vec3.h"
+#include "types.h"
 #include <math.h>
 
 void camera_init(Camera* cam, uint32_t width, uint32_t height,

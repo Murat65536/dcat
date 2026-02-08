@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 #include <cglm/cglm.h>
 
@@ -31,14 +32,24 @@ static inline void* aligned_realloc(void* ptr, size_t old_size, size_t new_size)
         return aligned_malloc(new_size);
     }
     
-    // Always use aligned allocation to maintain alignment guarantees
-    void* new_ptr = aligned_malloc(new_size);
-    if (new_ptr && old_size > 0) {
-        size_t copy_size = (old_size < new_size) ? old_size : new_size;
-        memcpy(new_ptr, ptr, copy_size);
+    // Try standard realloc first - it can grow in place if possible
+    // If realloc moves the pointer, we need to ensure alignment
+    void* new_ptr = realloc(ptr, new_size);
+    if (new_ptr) {
+        // Check if the realloc'd pointer is properly aligned
+        if (((uintptr_t)new_ptr & (ALIGN_SIZE - 1)) == 0) {
+            return new_ptr;  // Already aligned, we're good
+        }
+        // Not aligned, need to allocate aligned memory and copy
+        void* aligned_ptr = aligned_malloc(new_size);
+        if (aligned_ptr) {
+            size_t copy_size = (old_size < new_size) ? old_size : new_size;
+            memcpy(aligned_ptr, new_ptr, copy_size);
+        }
+        free(new_ptr);
+        return aligned_ptr;
     }
-    free(ptr);
-    return new_ptr;
+    return NULL;
 }
 
 #define ARRAY_INIT(arr) do { (arr).data = NULL; (arr).count = 0; (arr).capacity = 0; } while(0)

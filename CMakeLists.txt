@@ -16,7 +16,6 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 find_package(Vulkan REQUIRED)
 find_package(assimp REQUIRED)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(SIXEL REQUIRED libsixel)
 
 include(FetchContent)
 FetchContent_Declare(
@@ -46,7 +45,7 @@ add_executable(dcat
     src/animation.c
     src/texture.c
     src/vulkan_renderer.c
-    src/terminal.c
+    src/terminal/terminal.c
     src/input_device.c
     src/skydome.c
 )
@@ -54,7 +53,6 @@ add_executable(dcat
 # cglm uses SIMD with aligned stores - we need unaligned for malloc'd memory
 target_include_directories(dcat PRIVATE
     ${Vulkan_INCLUDE_DIRS}
-    ${SIXEL_INCLUDE_DIRS}
     src
 )
 
@@ -62,7 +60,6 @@ target_link_libraries(dcat PRIVATE
     Vulkan::Vulkan
     assimp
     cglm
-    ${SIXEL_LIBRARIES}
     stb
     rt
     pthread
@@ -88,6 +85,20 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_link_options(dcat PRIVATE
         -fsanitize=address
         -fsanitize=undefined
+    )
+endif()
+
+# Profile build
+if(CMAKE_BUILD_TYPE STREQUAL "Profile")
+    message(STATUS "Configuring Profile build")
+    target_compile_definitions(dcat PRIVATE NDEBUG=1)
+    target_compile_options(dcat PRIVATE 
+        -O2
+        -g
+        -pg
+    )
+    target_link_options(dcat PRIVATE
+        -pg
     )
 endif()
 
@@ -132,6 +143,7 @@ set(SHADERS
     ${SHADER_SOURCE_DIR}/shader.frag
     ${SHADER_SOURCE_DIR}/skydome.vert
     ${SHADER_SOURCE_DIR}/skydome.frag
+    ${SHADER_SOURCE_DIR}/terminal.comp
 )
 
 foreach(SHADER ${SHADERS})

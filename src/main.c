@@ -6,7 +6,6 @@
 #include <poll.h>
 #include <pthread.h>
 #include <stdatomic.h>
-#include <math.h>
 #include <time.h>
 
 #include <assimp/cimport.h>
@@ -14,9 +13,9 @@
 
 #include "camera.h"
 #include "model.h"
+#include "terminal/terminal.h"
 #include "texture.h"
 #include "vulkan_renderer.h"
-#include "terminal.h"
 #include "input_device.h"
 #include "skydome.h"
 
@@ -30,8 +29,6 @@ typedef struct Args {
     float camera_distance;
     float model_scale;
     int target_fps;
-    bool use_sixel;
-    bool use_kitty;
     bool no_lighting;
     bool fps_controls;
     bool show_status_bar;
@@ -55,8 +52,6 @@ static void print_usage(void) {
     printf("      --camera-distance DIST  camera distance from origin\n");
     printf("      --model-scale SCALE  scale multiplier for the model\n");
     printf("  -f, --fps FPS            target frames per second (default: 60)\n");
-    printf("  -S, --sixel              enable Sixel graphics mode\n");
-    printf("  -K, --kitty              enable Kitty graphics protocol mode\n");
     printf("      --no-lighting        disable lighting calculations\n");
     printf("      --fps-controls       enable first-person camera controls\n");
     printf("  -s, --status-bar         show status bar\n");
@@ -88,10 +83,6 @@ static Args parse_args(int argc, char* argv[]) {
             if (++i < argc) args.model_scale = atof(argv[i]);
         } else if (strcmp(argv[i], "-f") == 0 || strcmp(argv[i], "--fps") == 0) {
             if (++i < argc) args.target_fps = atoi(argv[i]);
-        } else if (strcmp(argv[i], "-S") == 0 || strcmp(argv[i], "--sixel") == 0) {
-            args.use_sixel = true;
-        } else if (strcmp(argv[i], "-K") == 0 || strcmp(argv[i], "--kitty") == 0) {
-            args.use_kitty = true;
         } else if (strcmp(argv[i], "--no-lighting") == 0) {
             args.no_lighting = true;
         } else if (strcmp(argv[i], "--fps-controls") == 0) {
@@ -207,14 +198,7 @@ static double get_time_seconds(void) {
 
 int main(int argc, char* argv[]) {
     Args args = parse_args(argc, argv);
-    
-    // Print build type for debugging
-    #ifdef NDEBUG
-        fprintf(stderr, "Build type: Release (optimized)\n");
-    #else
-        fprintf(stderr, "Build type: Debug\n");
-    #endif
-    
+
     if (!args.model_path) {
         print_usage();
         return 1;
@@ -246,7 +230,7 @@ int main(int argc, char* argv[]) {
     
     // Calculate render dimensions
     uint32_t width, height;
-    calculate_render_dimensions(args.width, args.height, args.use_sixel, args.use_kitty, args.show_status_bar, &width, &height);
+    calculate_render_dimensions(args.width, args.height, args.show_status_bar, &width, &height);
     
     // Initialize Vulkan renderer
     VulkanRenderer* renderer = vulkan_renderer_create(width, height);
@@ -400,6 +384,7 @@ int main(int argc, char* argv[]) {
     
     uint32_t current_width = width;
     uint32_t current_height = height;
+    
     Camera camera;
     camera_init(&camera, current_width, current_height, camera_position, camera_target, 60.0f);
     
@@ -422,10 +407,11 @@ int main(int argc, char* argv[]) {
     while (atomic_load(&g_running)) {
         // Check for terminal resize
         uint32_t new_width, new_height;
-        calculate_render_dimensions(args.width, args.height, args.use_sixel, args.use_kitty, args.show_status_bar, &new_width, &new_height);
+        calculate_render_dimensions(args.width, args.height, args.show_status_bar, &new_width, &new_height);
         if (new_width != current_width || new_height != current_height) {
             current_width = new_width;
             current_height = new_height;
+            
             vulkan_renderer_resize(renderer, current_width, current_height);
             camera_init(&camera, current_width, current_height, camera.position, camera.target, 90.0f);
             camera_view_matrix(&camera, view);
@@ -509,7 +495,6 @@ int main(int argc, char* argv[]) {
         }
         
         // Render
-        double t_vulkan_start = get_time_seconds();
         const uint8_t* framebuffer = vulkan_renderer_render(
             renderer, &mesh, mvp, model_matrix,
             &diffuse_texture, &normal_texture, !args.no_lighting,
@@ -518,17 +503,12 @@ int main(int argc, char* argv[]) {
             bone_matrix_ptr, bone_count,
             &view, &projection
         );
-        double t_vulkan_end = get_time_seconds();
-        
-        // Output to terminal
-        double t_terminal_start = get_time_seconds();
+
         if (framebuffer != NULL) {
-            if (args.use_kitty) {
-                render_kitty_shm(framebuffer, current_width, current_height);
-            } else if (args.use_sixel) {
-                render_sixel(framebuffer, current_width, current_height);
-            } else {
-                render_terminal(framebuffer, current_width, current_height);
+            const char* terminal_output = vulkan_renderer_get_terminal_output(renderer);
+            if (terminal_output) {
+                size_t len = 12 + (size_t)current_width * ((current_height + 1) / 2) * 39 + 13;
+                safe_write(terminal_output, len);
             }
             
             if (args.show_status_bar) {
@@ -539,25 +519,6 @@ int main(int argc, char* argv[]) {
                 }
                 draw_status_bar(delta_time > 0 ? 1.0f / delta_time : 0.0f, move_speed, camera.position, anim_name);
             }
-        }
-        double t_terminal_end = get_time_seconds();
-        
-        // Timing log
-        static int frame_count = 0;
-        static double vulkan_total = 0, terminal_total = 0;
-        static FILE* timing_log = NULL;
-        if (!timing_log) {
-            timing_log = fopen("/tmp/dcat_timing.log", "w");
-            if (timing_log) setbuf(timing_log, NULL);
-        }
-        vulkan_total += (t_vulkan_end - t_vulkan_start);
-        terminal_total += (t_terminal_end - t_terminal_start);
-        frame_count++;
-        if (timing_log && frame_count % 60 == 0) {
-            fprintf(timing_log, "Frames %d: Vulkan: %.2fms avg, Terminal: %.2fms avg, FPS: %.1f\n",
-                    frame_count, (vulkan_total / 60) * 1000.0, (terminal_total / 60) * 1000.0, 
-                    60.0 / (vulkan_total + terminal_total));
-            vulkan_total = terminal_total = 0;
         }
         
         // Frame rate limiting

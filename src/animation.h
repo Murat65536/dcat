@@ -28,6 +28,38 @@ typedef struct QuaternionKeyArray {
     size_t capacity;
 } QuaternionKeyArray;
 
+// Bone name to index mapping using hash table for O(1) lookups
+#define BONE_MAP_SIZE 256
+
+static inline uint32_t bone_hash(const char* name) {
+    uint32_t hash = 5381;
+    while (*name) {
+        hash = ((hash << 5) + hash) + (unsigned char)*name++;
+    }
+    return hash;
+}
+
+typedef struct BoneMapEntry {
+    char* name;
+    int index;
+    struct BoneMapEntry* next;  // For collision chaining
+} BoneMapEntry;
+
+typedef struct BoneMap {
+    BoneMapEntry* buckets[BONE_MAP_SIZE];
+    BoneMapEntry* entries;  // Pool for all entries
+    size_t count;
+    size_t capacity;
+} BoneMap;
+
+// Hash map for bone animations (for O(1) lookup during animation)
+typedef struct BoneAnimationMap {
+    BoneMapEntry* buckets[BONE_MAP_SIZE];
+    BoneMapEntry* entries;
+    size_t count;
+    size_t capacity;
+} BoneAnimationMap;
+
 // Animation for a single bone
 typedef struct BoneAnimation {
     char* bone_name;
@@ -48,6 +80,7 @@ typedef struct Animation {
     float duration;
     float ticks_per_second;
     BoneAnimationArray bone_animations;
+    BoneAnimationMap bone_anim_map;  // name -> index in bone_animations
 } Animation;
 
 typedef struct AnimationArray {
@@ -85,30 +118,6 @@ typedef struct BoneNodeArray {
     size_t count;
     size_t capacity;
 } BoneNodeArray;
-
-// Bone name to index mapping using hash table for O(1) lookups
-#define BONE_MAP_SIZE 256
-
-static inline uint32_t bone_hash(const char* name) {
-    uint32_t hash = 5381;
-    while (*name) {
-        hash = ((hash << 5) + hash) + (unsigned char)*name++;
-    }
-    return hash;
-}
-
-typedef struct BoneMapEntry {
-    char* name;
-    int index;
-    struct BoneMapEntry* next;  // For collision chaining
-} BoneMapEntry;
-
-typedef struct BoneMap {
-    BoneMapEntry* buckets[BONE_MAP_SIZE];
-    BoneMapEntry* entries;  // Pool for all entries
-    size_t count;
-    size_t capacity;
-} BoneMap;
 
 // Skeleton
 typedef struct Skeleton {
@@ -148,6 +157,12 @@ void bone_map_init(BoneMap* map);
 void bone_map_free(BoneMap* map);
 int bone_map_find(const BoneMap* map, const char* name);
 void bone_map_insert(BoneMap* map, const char* name, int index);
+
+// Bone animation map functions (reuse same structure)
+void bone_anim_map_init(BoneAnimationMap* map);
+void bone_anim_map_free(BoneAnimationMap* map);
+int bone_anim_map_find(const BoneAnimationMap* map, const char* name);
+void bone_anim_map_insert(BoneAnimationMap* map, const char* name, int index);
 
 // Cleanup functions
 void skeleton_free(Skeleton* skeleton);

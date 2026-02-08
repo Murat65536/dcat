@@ -26,6 +26,7 @@ void bone_map_free(BoneMap* map) {
 }
 
 int bone_map_find(const BoneMap* map, const char* name) {
+    if (!map || !name) return -1;
     uint32_t hash = bone_hash(name) % BONE_MAP_SIZE;
     BoneMapEntry* entry = map->buckets[hash];
     while (entry) {
@@ -40,7 +41,20 @@ int bone_map_find(const BoneMap* map, const char* name) {
 void bone_map_insert(BoneMap* map, const char* name, int index) {
     if (map->count >= map->capacity) {
         map->capacity = map->capacity ? map->capacity * 2 : 32;
+        BoneMapEntry* old_entries = map->entries;
         map->entries = realloc(map->entries, map->capacity * sizeof(BoneMapEntry));
+        
+        // If realloc moved the memory, rebuild all bucket pointers
+        if (map->entries != old_entries && old_entries != NULL) {
+            // Clear buckets
+            memset(map->buckets, 0, sizeof(map->buckets));
+            // Rebuild bucket pointers to point to new locations
+            for (size_t i = 0; i < map->count; i++) {
+                uint32_t hash = bone_hash(map->entries[i].name) % BONE_MAP_SIZE;
+                map->entries[i].next = map->buckets[hash];
+                map->buckets[hash] = &map->entries[i];
+            }
+        }
     }
     BoneMapEntry* entry = &map->entries[map->count];
     entry->name = str_dup(name);
@@ -50,6 +64,23 @@ void bone_map_insert(BoneMap* map, const char* name, int index) {
     entry->next = map->buckets[hash];
     map->buckets[hash] = entry;
     map->count++;
+}
+
+// Bone animation map functions (same implementation as bone map)
+void bone_anim_map_init(BoneAnimationMap* map) {
+    bone_map_init((BoneMap*)map);
+}
+
+void bone_anim_map_free(BoneAnimationMap* map) {
+    bone_map_free((BoneMap*)map);
+}
+
+int bone_anim_map_find(const BoneAnimationMap* map, const char* name) {
+    return bone_map_find((const BoneMap*)map, name);
+}
+
+void bone_anim_map_insert(BoneAnimationMap* map, const char* name, int index) {
+    bone_map_insert((BoneMap*)map, name, index);
 }
 
 static int find_key_index(const VectorKeyArray* keys, float time) {
@@ -192,11 +223,12 @@ static void compute_bone_transform(const Skeleton* skeleton, const Animation* an
     mat4 node_transform;
     glm_mat4_copy((vec4*)node->transformation, node_transform);
 
+    // Fast O(1) lookup using hash map instead of O(n) linear search
     const BoneAnimation* bone_anim = NULL;
-    for (size_t i = 0; i < animation->bone_animations.count; i++) {
-        if (strcmp(animation->bone_animations.data[i].bone_name, node->name) == 0) {
-            bone_anim = &animation->bone_animations.data[i];
-            break;
+    if (animation->bone_anim_map.count > 0) {
+        int anim_idx = bone_anim_map_find(&animation->bone_anim_map, node->name);
+        if (anim_idx >= 0 && anim_idx < (int)animation->bone_animations.count) {
+            bone_anim = &animation->bone_animations.data[anim_idx];
         }
     }
     
@@ -314,6 +346,7 @@ void animation_free(Animation* animation) {
         free(animation->bone_animations.data[i].rotation_keys.data);
     }
     free(animation->bone_animations.data);
+    bone_anim_map_free(&animation->bone_anim_map);
 }
 
 void animation_array_free(AnimationArray* arr) {
