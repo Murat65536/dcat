@@ -11,7 +11,7 @@
 #include "model.h"
 #include "texture.h"
 
-#define MAX_FRAMES_IN_FLIGHT 2
+#define MAX_FRAMES_IN_FLIGHT 3
 
 // Push constants for vertex shader
 typedef struct PushConstants {

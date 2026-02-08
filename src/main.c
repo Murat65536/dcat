@@ -36,10 +36,16 @@ typedef struct Args {
 } Args;
 
 static atomic_bool g_running = true;
+static volatile sig_atomic_t g_resize_pending = 1;
 
 static void signal_handler(int sig) {
     (void)sig;
     atomic_store(&g_running, false);
+}
+
+static void resize_handler(int sig) {
+    (void)sig;
+    g_resize_pending = 1;
 }
 
 static void print_usage(void) {
@@ -225,12 +231,15 @@ int main(int argc, char* argv[]) {
     // Set up signal handlers
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
+    signal(SIGWINCH, resize_handler);
     
     enable_focus_tracking();
     
     // Calculate render dimensions
     uint32_t width, height;
     calculate_render_dimensions(args.width, args.height, args.show_status_bar, &width, &height);
+    g_resize_pending = 0;
+    size_t terminal_output_size = 12 + (size_t)width * ((height + 1) / 2) * 39 + 13;
     
     // Initialize Vulkan renderer
     VulkanRenderer* renderer = vulkan_renderer_create(width, height);
@@ -239,6 +248,7 @@ int main(int argc, char* argv[]) {
         disable_focus_tracking();
         return 1;
     }
+    vulkan_renderer_set_light_direction(renderer, (vec3){0.0f, -1.0f, -0.5f});
     
     // Load model
     Mesh mesh;
@@ -358,6 +368,20 @@ int main(int argc, char* argv[]) {
         glm_vec3_scale(direction, args.camera_distance, camera_offset);
         glm_vec3_add(camera_target, camera_offset, camera_position);
     }
+
+    mat4 model_matrix;
+    glm_mat4_identity(model_matrix);
+    glm_mat4_mul(model_matrix, mesh.coordinate_system_transform, model_matrix);
+
+    mat4 scale_mat;
+    glm_scale_make(scale_mat, (vec3){model_scale_factor, model_scale_factor, model_scale_factor});
+    glm_mat4_mul(model_matrix, scale_mat, model_matrix);
+
+    mat4 translate_mat;
+    vec3 neg_center;
+    glm_vec3_negate_to(model_center, neg_center);
+    glm_translate_make(translate_mat, neg_center);
+    glm_mat4_mul(model_matrix, translate_mat, model_matrix);
     
     // Constants
     const float MOVE_SPEED_BASE = 0.5f;
@@ -393,6 +417,7 @@ int main(int argc, char* argv[]) {
     camera_projection_matrix(&camera, projection);
     
     double last_frame_time = get_time_seconds();
+    double last_output_time = last_frame_time;
     
     atomic_bool is_focused = true;
     
@@ -405,22 +430,27 @@ int main(int argc, char* argv[]) {
     
     // Main render loop
     while (atomic_load(&g_running)) {
-        // Check for terminal resize
-        uint32_t new_width, new_height;
-        calculate_render_dimensions(args.width, args.height, args.show_status_bar, &new_width, &new_height);
-        if (new_width != current_width || new_height != current_height) {
-            current_width = new_width;
-            current_height = new_height;
-            
-            vulkan_renderer_resize(renderer, current_width, current_height);
-            camera_init(&camera, current_width, current_height, camera.position, camera.target, 90.0f);
-            camera_view_matrix(&camera, view);
-            camera_projection_matrix(&camera, projection);
+        // Check for terminal resize (only when signaled)
+        if (g_resize_pending) {
+            g_resize_pending = 0;
+            uint32_t new_width, new_height;
+            calculate_render_dimensions(args.width, args.height, args.show_status_bar, &new_width, &new_height);
+            if (new_width != current_width || new_height != current_height) {
+                current_width = new_width;
+                current_height = new_height;
+                terminal_output_size = 12 + (size_t)current_width * ((current_height + 1) / 2) * 39 + 13;
+                
+                vulkan_renderer_resize(renderer, current_width, current_height);
+                camera_init(&camera, current_width, current_height, camera.position, camera.target, 90.0f);
+                camera_view_matrix(&camera, view);
+                camera_projection_matrix(&camera, projection);
+            }
         }
         
         double frame_start = get_time_seconds();
         float delta_time = (float)(frame_start - last_frame_time);
         last_frame_time = frame_start;
+        bool output_due = true;
         
         // Handle input
         if (input_devices_ready && atomic_load(&is_focused)) {
@@ -462,62 +492,49 @@ int main(int argc, char* argv[]) {
             camera_view_matrix(&camera, view);
         }
         
-        // Calculate model matrix
-        mat4 model_matrix;
-        glm_mat4_identity(model_matrix);
-        glm_mat4_mul(model_matrix, mesh.coordinate_system_transform, model_matrix);
-        
-        mat4 scale_mat;
-        glm_scale_make(scale_mat, (vec3){model_scale_factor, model_scale_factor, model_scale_factor});
-        glm_mat4_mul(model_matrix, scale_mat, model_matrix);
-        
-        mat4 translate_mat;
-        vec3 neg_center;
-        glm_vec3_negate_to(model_center, neg_center);
-        glm_translate_make(translate_mat, neg_center);
-        glm_mat4_mul(model_matrix, translate_mat, model_matrix);
-        
-        mat4 mvp;
-        glm_mat4_mul(projection, view, mvp);
-        glm_mat4_mul(mvp, model_matrix, mvp);
-        
-        // Set light direction
-        vulkan_renderer_set_light_direction(renderer, (vec3){0.0f, -1.0f, -0.5f});
-        
         // Update animation
         const mat4* bone_matrix_ptr = NULL;
         uint32_t bone_count = 0;
         
         if (has_animations) {
-            update_animation(&mesh, &anim_state, delta_time, bone_matrices);
-            bone_matrix_ptr = (const mat4*)bone_matrices;
-            bone_count = (uint32_t)mesh.skeleton.bones.count;
+            update_animation(&mesh, &anim_state, delta_time, output_due ? bone_matrices : NULL);
+            if (output_due) {
+                bone_matrix_ptr = (const mat4*)bone_matrices;
+                bone_count = (uint32_t)mesh.skeleton.bones.count;
+            }
         }
         
-        // Render
-        const uint8_t* framebuffer = vulkan_renderer_render(
-            renderer, &mesh, mvp, model_matrix,
-            &diffuse_texture, &normal_texture, !args.no_lighting,
-            camera.position, !has_uvs,
-            material_info.alpha_mode,
-            bone_matrix_ptr, bone_count,
-            &view, &projection
-        );
-
-        if (framebuffer != NULL) {
-            const char* terminal_output = vulkan_renderer_get_terminal_output(renderer);
-            if (terminal_output) {
-                size_t len = 12 + (size_t)current_width * ((current_height + 1) / 2) * 39 + 13;
-                safe_write(terminal_output, len);
-            }
+        if (output_due) {
+            mat4 mvp;
+            glm_mat4_mul(projection, view, mvp);
+            glm_mat4_mul(mvp, model_matrix, mvp);
             
-            if (args.show_status_bar) {
-                const char* anim_name = "";
-                if (has_animations && anim_state.current_animation_index >= 0 &&
-                    anim_state.current_animation_index < (int)mesh.animations.count) {
-                    anim_name = mesh.animations.data[anim_state.current_animation_index].name;
+            const uint8_t* framebuffer = vulkan_renderer_render(
+                renderer, &mesh, mvp, model_matrix,
+                &diffuse_texture, &normal_texture, !args.no_lighting,
+                camera.position, !has_uvs,
+                material_info.alpha_mode,
+                bone_matrix_ptr, bone_count,
+                &view, &projection
+            );
+            
+            if (framebuffer != NULL) {
+                const char* terminal_output = vulkan_renderer_get_terminal_output(renderer);
+                if (terminal_output) {
+                    double output_delta = frame_start - last_output_time;
+                    float display_fps = output_delta > 0.0 ? (float)(1.0 / output_delta) : 0.0f;
+                    safe_write(terminal_output, terminal_output_size);
+                    last_output_time = frame_start;
+                    
+                    if (args.show_status_bar) {
+                        const char* anim_name = "";
+                        if (has_animations && anim_state.current_animation_index >= 0 &&
+                            anim_state.current_animation_index < (int)mesh.animations.count) {
+                            anim_name = mesh.animations.data[anim_state.current_animation_index].name;
+                        }
+                        draw_status_bar(display_fps, move_speed, camera.position, anim_name);
+                    }
                 }
-                draw_status_bar(delta_time > 0 ? 1.0f / delta_time : 0.0f, move_speed, camera.position, anim_name);
             }
         }
         

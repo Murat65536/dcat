@@ -8,6 +8,8 @@ void animation_state_init(AnimationState* state) {
     state->current_animation_index = 0;
     state->current_time = 0.0f;
     state->playing = true;
+    state->last_animation_index = -1;
+    state->last_computed_time = -1.0f;
 }
 
 void bone_map_init(BoneMap* map) {
@@ -316,8 +318,19 @@ void update_animation(const Mesh* mesh, AnimationState* state, float delta_time,
             state->current_time = fmodf(state->current_time, animation->duration);
         }
     }
+
+    if (!bone_matrices) {
+        return;
+    }
+    
+    if (state->current_animation_index == state->last_animation_index &&
+        state->current_time == state->last_computed_time) {
+        return;
+    }
     
     compute_bone_matrices(&mesh->skeleton, animation, state->current_time, bone_matrices);
+    state->last_animation_index = state->current_animation_index;
+    state->last_computed_time = state->current_time;
 }
 
 void skeleton_free(Skeleton* skeleton) {

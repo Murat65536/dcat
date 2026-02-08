@@ -5,12 +5,10 @@ set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Set default build type to Debug if not specified
+# Set default build type to Release if not specified
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
-
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 # Find required packages
 find_package(Vulkan REQUIRED)
@@ -66,9 +64,10 @@ target_link_libraries(dcat PRIVATE
     m
 )
 
+option(USE_SANITIZERS "Enable Address and Undefined Sanitizers in Debug build" ON)
+
 # Debug build configuration
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message(STATUS "Configuring Debug build with validation layers")
     target_compile_definitions(dcat PRIVATE 
         DEBUG_BUILD=1
         VK_ENABLE_VALIDATION=1
@@ -79,18 +78,22 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         -Wall
         -Wextra
         -Wpedantic
-        -fsanitize=address
-        -fsanitize=undefined
     )
-    target_link_options(dcat PRIVATE
-        -fsanitize=address
-        -fsanitize=undefined
-    )
+
+    if(USE_SANITIZERS)
+        target_compile_options(dcat PRIVATE 
+            -fsanitize=address
+            -fsanitize=undefined
+        )
+        target_link_options(dcat PRIVATE
+            -fsanitize=address
+            -fsanitize=undefined
+        )
+    endif()
 endif()
 
 # Profile build
 if(CMAKE_BUILD_TYPE STREQUAL "Profile")
-    message(STATUS "Configuring Profile build")
     target_compile_definitions(dcat PRIVATE NDEBUG=1)
     target_compile_options(dcat PRIVATE 
         -O2
@@ -104,7 +107,6 @@ endif()
 
 # Release build optimization
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    message(STATUS "Configuring Release build with optimizations")
     target_compile_definitions(dcat PRIVATE NDEBUG=1)
     target_compile_options(dcat PRIVATE 
         -O3 
@@ -123,7 +125,6 @@ endif()
 
 # RelWithDebInfo build
 if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-    message(STATUS "Configuring RelWithDebInfo build")
     target_compile_options(dcat PRIVATE -O2 -g)
 endif()
 

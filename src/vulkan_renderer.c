@@ -294,9 +294,9 @@ static bool select_physical_device(VulkanRenderer* r) {
                 
                 vkGetPhysicalDeviceFeatures2(devices[d], &features2);
                 
-                if (!features12.shaderInt8 || !features12.storageBuffer8BitAccess || !features2.features.fillModeNonSolid) {
-                    fprintf(stderr, "Device %d skipped: missing required features (int8: %d, 8bit_storage: %d, wireframe: %d)\n", 
-                            d, features12.shaderInt8, features12.storageBuffer8BitAccess, features2.features.fillModeNonSolid);
+                if (!features12.shaderInt8 || !features12.storageBuffer8BitAccess || !features12.uniformAndStorageBuffer8BitAccess || !features2.features.fillModeNonSolid) {
+                    fprintf(stderr, "Device %d skipped: missing required features (int8: %d, 8bit_storage: %d, 8bit_uniform: %d, wireframe: %d)\n", 
+                            d, features12.shaderInt8, features12.storageBuffer8BitAccess, features12.uniformAndStorageBuffer8BitAccess, features2.features.fillModeNonSolid);
                     continue;
                 }
 
@@ -339,6 +339,7 @@ static bool create_logical_device(VulkanRenderer* r) {
     VkPhysicalDeviceVulkan12Features features12 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
     features12.shaderInt8 = VK_TRUE;
     features12.storageBuffer8BitAccess = VK_TRUE;
+    features12.uniformAndStorageBuffer8BitAccess = VK_TRUE;
     
     VkDeviceCreateInfo create_info = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     create_info.pNext = &features12;

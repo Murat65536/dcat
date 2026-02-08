@@ -132,6 +132,8 @@ typedef struct AnimationState {
     int current_animation_index;
     float current_time;
     bool playing;
+    int last_animation_index;
+    float last_computed_time;
 } AnimationState;
 
 // Forward declaration
