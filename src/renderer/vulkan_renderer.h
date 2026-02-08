@@ -152,15 +152,6 @@ typedef struct VulkanRenderer {
     uint64_t cached_mesh_generation;
     const void* cached_diffuse_data_ptr;
     const void* cached_normal_data_ptr;
-    
-    // Terminal compute
-    VkDescriptorSetLayout terminal_descriptor_set_layout;
-    VkPipelineLayout terminal_pipeline_layout;
-    VkPipeline terminal_pipeline;
-    VkDescriptorSet terminal_descriptor_sets[MAX_FRAMES_IN_FLIGHT];
-    VkBuffer terminal_output_buffers[MAX_FRAMES_IN_FLIGHT];
-    VulkanAllocation terminal_output_buffer_allocs[MAX_FRAMES_IN_FLIGHT];
-    char* terminal_readback_buffers[MAX_FRAMES_IN_FLIGHT];
 
     char shader_directory[256];
     uint32_t current_frame;
@@ -200,9 +191,6 @@ const uint8_t* vulkan_renderer_render(
     const mat4* view,
     const mat4* projection
 );
-
-// Get terminal outputs
-const char* vulkan_renderer_get_terminal_output(VulkanRenderer* r);
 
 // Set skydome
 void vulkan_renderer_set_skydome(VulkanRenderer* r, const Mesh* mesh, const Texture* texture);

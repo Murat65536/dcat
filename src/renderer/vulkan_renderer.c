@@ -23,8 +23,7 @@ static bool create_sampler(VulkanRenderer* r);
 static bool create_command_buffers(VulkanRenderer* r);
 static bool create_sync_objects(VulkanRenderer* r);
 static bool create_descriptor_sets(VulkanRenderer* r);
-static bool create_terminal_pipeline(VulkanRenderer* r);
-static bool create_terminal_buffers(VulkanRenderer* r);
+
 static void cleanup_render_targets(VulkanRenderer* r);
 static void cleanup(VulkanRenderer* r);
 
@@ -88,16 +87,7 @@ bool vulkan_renderer_initialize(VulkanRenderer* r) {
     if (!create_command_buffers(r)) return false;
     if (!create_sync_objects(r)) return false;
     if (!create_descriptor_sets(r)) return false;
-    
-    if (!create_terminal_pipeline(r)) {
-        fprintf(stderr, "Failed to create terminal pipeline\n");
-        return false;
-    }
-    if (!create_terminal_buffers(r)) {
-        fprintf(stderr, "Failed to create terminal buffers\n");
-        return false;
-    }
-    
+
     create_skydome_pipeline(r);
     
     // Initialize frame tracking
@@ -1274,151 +1264,9 @@ static void update_index_buffer(VulkanRenderer* r, const Uint32Array* indices) {
     }
 }
 
-static bool create_terminal_pipeline(VulkanRenderer* r) {
-    size_t comp_size;
-    char* comp_code = read_shader_file(r, "terminal.comp.spv", &comp_size);
-    if (!comp_code) return false;
 
-    VkShaderModule comp_module = create_shader_module(r, comp_code, comp_size);
-    free(comp_code);
-    if (comp_module == VK_NULL_HANDLE) return false;
 
-    VkDescriptorSetLayoutBinding bindings[2] = {0};
-    // Input image
-    bindings[0].binding = 0;
-    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    bindings[0].descriptorCount = 1;
-    bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Output buffer
-    bindings[1].binding = 1;
-    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    bindings[1].descriptorCount = 1;
-    bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-    VkDescriptorSetLayoutCreateInfo layout_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    layout_info.bindingCount = 2;
-    layout_info.pBindings = bindings;
-
-    if (vkCreateDescriptorSetLayout(r->device, &layout_info, NULL, &r->terminal_descriptor_set_layout) != VK_SUCCESS) {
-        vkDestroyShaderModule(r->device, comp_module, NULL);
-        return false;
-    }
-
-    VkPushConstantRange push_constant_range = {0};
-    push_constant_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    push_constant_range.offset = 0;
-    push_constant_range.size = sizeof(uint32_t) * 2;
-
-    VkPipelineLayoutCreateInfo pipeline_layout_info = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    pipeline_layout_info.setLayoutCount = 1;
-    pipeline_layout_info.pSetLayouts = &r->terminal_descriptor_set_layout;
-    pipeline_layout_info.pushConstantRangeCount = 1;
-    pipeline_layout_info.pPushConstantRanges = &push_constant_range;
-
-    if (vkCreatePipelineLayout(r->device, &pipeline_layout_info, NULL, &r->terminal_pipeline_layout) != VK_SUCCESS) {
-        vkDestroyShaderModule(r->device, comp_module, NULL);
-        return false;
-    }
-
-    VkComputePipelineCreateInfo pipeline_info = {VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
-    pipeline_info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    pipeline_info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    pipeline_info.stage.module = comp_module;
-    pipeline_info.stage.pName = "main";
-    pipeline_info.layout = r->terminal_pipeline_layout;
-
-    if (vkCreateComputePipelines(r->device, VK_NULL_HANDLE, 1, &pipeline_info, NULL, &r->terminal_pipeline) != VK_SUCCESS) {
-        vkDestroyShaderModule(r->device, comp_module, NULL);
-        return false;
-    }
-
-    vkDestroyShaderModule(r->device, comp_module, NULL);
-
-    VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        layouts[i] = r->terminal_descriptor_set_layout;
-    }
-
-    VkDescriptorSetAllocateInfo alloc_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-    alloc_info.descriptorPool = r->descriptor_pool;
-    alloc_info.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
-    alloc_info.pSetLayouts = layouts;
-
-    if (vkAllocateDescriptorSets(r->device, &alloc_info, r->terminal_descriptor_sets) != VK_SUCCESS) {
-        return false;
-    }
-
-    return true;
-}
-
-static bool create_terminal_buffers(VulkanRenderer* r) {
-    uint32_t width = r->width;
-    uint32_t height = r->height;
-    
-    // Header: 12 bytes
-    // Block: 39 bytes (covers 2 pixels vertically)
-    // Footer: 13 bytes
-    VkDeviceSize buffer_size = 12 + (VkDeviceSize)width * ((height + 1) / 2) * 39 + 13;
-
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        // Prefer HOST_CACHED for fast CPU reads; fall back to HOST_COHERENT
-        if (!create_buffer(r, buffer_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-                           &r->terminal_output_buffers[i], &r->terminal_output_buffer_allocs[i])) {
-            if (!create_buffer(r, buffer_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                               &r->terminal_output_buffers[i], &r->terminal_output_buffer_allocs[i])) {
-                return false;
-            }
-        }
-
-        // Allocate CPU-side readback buffer
-        r->terminal_readback_buffers[i] = (char*)malloc(buffer_size);
-        if (!r->terminal_readback_buffers[i]) {
-            return false;
-        }
-
-        // Initialize the buffer with headers and block templates
-        char* p = (char*)r->terminal_output_buffer_allocs[i].mapped;
-        
-        // Header
-        memcpy(p, "\x1b[?2026h\x1b[H", 12);
-        p += 12;
-
-        // Templates
-        const char* template = "\x1b[38;2;000;000;000;48;2;000;000;000m\xe2\x96\x80";
-        for (uint32_t b = 0; b < width * ((height + 1) / 2); b++) {
-            memcpy(p, template, 39);
-            p += 39;
-        }
-
-        // Footer
-        memcpy(p, "\x1b[0m\x1b[?2026l", 13);
-
-        // Flush CPU cache to make template visible to GPU (needed for non-coherent memory)
-        VkMappedMemoryRange range = {VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
-        range.memory = r->terminal_output_buffer_allocs[i].memory;
-        range.offset = 0;
-        range.size = VK_WHOLE_SIZE;
-        vkFlushMappedMemoryRanges(r->device, 1, &range);
-
-        // Update descriptor sets
-        VkDescriptorImageInfo image_info = {0};
-        image_info.imageView = r->color_image_view;
-        image_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-
-        VkDescriptorBufferInfo buffer_info = {r->terminal_output_buffers[i], 0, buffer_size};
-
-        VkWriteDescriptorSet writes[2] = {
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, r->terminal_descriptor_sets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &image_info, NULL, NULL},
-            {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, r->terminal_descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, NULL, &buffer_info, NULL}
-        };
-        vkUpdateDescriptorSets(r->device, 2, writes, 0, NULL);
-    }
-
-    return true;
-}
 
 
 
@@ -1480,21 +1328,6 @@ static void cleanup(VulkanRenderer* r) {
             if (r->in_flight_fences[i] != VK_NULL_HANDLE) {
                 vkDestroyFence(r->device, r->in_flight_fences[i], NULL);
             }
-            if (r->terminal_output_buffers[i] != VK_NULL_HANDLE) {
-                vkDestroyBuffer(r->device, r->terminal_output_buffers[i], NULL);
-                vkFreeMemory(r->device, r->terminal_output_buffer_allocs[i].memory, NULL);
-            }
-            free(r->terminal_readback_buffers[i]);
-        }
-        
-        if (r->terminal_pipeline != VK_NULL_HANDLE) {
-            vkDestroyPipeline(r->device, r->terminal_pipeline, NULL);
-        }
-        if (r->terminal_pipeline_layout != VK_NULL_HANDLE) {
-            vkDestroyPipelineLayout(r->device, r->terminal_pipeline_layout, NULL);
-        }
-        if (r->terminal_descriptor_set_layout != VK_NULL_HANDLE) {
-            vkDestroyDescriptorSetLayout(r->device, r->terminal_descriptor_set_layout, NULL);
         }
 
         if (r->vertex_buffer != VK_NULL_HANDLE) {
@@ -1625,15 +1458,8 @@ void vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height) 
         }
         free(r->readback_buffers[i]);
         r->readback_buffers[i] = NULL;
-        if (r->terminal_output_buffers[i] != VK_NULL_HANDLE) {
-            vkDestroyBuffer(r->device, r->terminal_output_buffers[i], NULL);
-            vkFreeMemory(r->device, r->terminal_output_buffer_allocs[i].memory, NULL);
-        }
-        free(r->terminal_readback_buffers[i]);
-        r->terminal_readback_buffers[i] = NULL;
     }
     create_staging_buffers(r);
-    create_terminal_buffers(r);
     
     // Reset frame tracking
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -1926,10 +1752,4 @@ const uint8_t* vulkan_renderer_render(
     return result;
 }
 
-const char* vulkan_renderer_get_terminal_output(VulkanRenderer* r) {
-    uint32_t prev_frame = (r->current_frame + MAX_FRAMES_IN_FLIGHT - 1) % MAX_FRAMES_IN_FLIGHT;
-    if (r->frame_ready[prev_frame]) {
-        return r->terminal_readback_buffers[prev_frame];
-    }
-    return NULL;
-}
+
