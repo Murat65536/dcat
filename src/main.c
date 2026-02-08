@@ -14,6 +14,9 @@
 #include "camera.h"
 #include "model.h"
 #include "terminal/terminal.h"
+#include "terminal/terminal_pixels.h"
+#include "terminal/sixel.h"
+#include "terminal/kitty.h"
 #include "texture.h"
 #include "vulkan_renderer.h"
 #include "input_device.h"
@@ -33,6 +36,8 @@ typedef struct Args {
     bool fps_controls;
     bool show_status_bar;
     bool show_help;
+    bool use_sixel;
+    bool use_kitty;
 } Args;
 
 static atomic_bool g_running = true;
@@ -61,6 +66,8 @@ static void print_usage(void) {
     printf("      --no-lighting        disable lighting calculations\n");
     printf("      --fps-controls       enable first-person camera controls\n");
     printf("  -s, --status-bar         show status bar\n");
+    printf("  -S, --sixel              enable Sixel graphics mode\n");
+    printf("  -K, --kitty              enable Kitty graphics protocol mode\n");
     printf("  -h, --help               display this help and exit\n\n");
 }
 
@@ -95,6 +102,10 @@ static Args parse_args(int argc, char* argv[]) {
             args.fps_controls = true;
         } else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--status-bar") == 0) {
             args.show_status_bar = true;
+        } else if (strcmp(argv[i], "-S") == 0 || strcmp(argv[i], "--sixel") == 0) {
+            args.use_sixel = true;
+        } else if (strcmp(argv[i], "-K") == 0 || strcmp(argv[i], "--kitty") == 0) {
+            args.use_kitty = true;
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             args.show_help = true;
         } else if (argv[i][0] != '-') {
@@ -237,9 +248,8 @@ int main(int argc, char* argv[]) {
     
     // Calculate render dimensions
     uint32_t width, height;
-    calculate_render_dimensions(args.width, args.height, args.show_status_bar, &width, &height);
+    calculate_render_dimensions(args.width, args.height, args.use_sixel, args.use_kitty, args.show_status_bar, &width, &height);
     g_resize_pending = 0;
-    size_t terminal_output_size = 12 + (size_t)width * ((height + 1) / 2) * 39 + 13;
     
     // Initialize Vulkan renderer
     VulkanRenderer* renderer = vulkan_renderer_create(width, height);
@@ -434,11 +444,10 @@ int main(int argc, char* argv[]) {
         if (g_resize_pending) {
             g_resize_pending = 0;
             uint32_t new_width, new_height;
-            calculate_render_dimensions(args.width, args.height, args.show_status_bar, &new_width, &new_height);
+            calculate_render_dimensions(args.width, args.height, args.use_sixel, args.use_kitty, args.show_status_bar, &new_width, &new_height);
             if (new_width != current_width || new_height != current_height) {
                 current_width = new_width;
                 current_height = new_height;
-                terminal_output_size = 12 + (size_t)current_width * ((current_height + 1) / 2) * 39 + 13;
                 
                 vulkan_renderer_resize(renderer, current_width, current_height);
                 camera_init(&camera, current_width, current_height, camera.position, camera.target, 90.0f);
@@ -519,21 +528,24 @@ int main(int argc, char* argv[]) {
             );
             
             if (framebuffer != NULL) {
-                const char* terminal_output = vulkan_renderer_get_terminal_output(renderer);
-                if (terminal_output) {
-                    double output_delta = frame_start - last_output_time;
-                    float display_fps = output_delta > 0.0 ? (float)(1.0 / output_delta) : 0.0f;
-                    safe_write(terminal_output, terminal_output_size);
-                    last_output_time = frame_start;
+                double output_delta = frame_start - last_output_time;
+                float display_fps = output_delta > 0.0 ? (float)(1.0 / output_delta) : 0.0f;
+                if (args.use_kitty) {
+                    render_kitty(framebuffer, current_width, current_height);
+                } else if (args.use_sixel) {
+                    render_sixel(framebuffer, current_width, current_height);
+                } else {
+                    render_terminal(framebuffer, current_width, current_height);
+                }
+                last_output_time = frame_start;
                     
-                    if (args.show_status_bar) {
-                        const char* anim_name = "";
-                        if (has_animations && anim_state.current_animation_index >= 0 &&
-                            anim_state.current_animation_index < (int)mesh.animations.count) {
-                            anim_name = mesh.animations.data[anim_state.current_animation_index].name;
-                        }
-                        draw_status_bar(display_fps, move_speed, camera.position, anim_name);
+                if (args.show_status_bar) {
+                    const char* anim_name = "";
+                    if (has_animations && anim_state.current_animation_index >= 0 &&
+                        anim_state.current_animation_index < (int)mesh.animations.count) {
+                        anim_name = mesh.animations.data[anim_state.current_animation_index].name;
                     }
+                    draw_status_bar(display_fps, move_speed, camera.position, anim_name);
                 }
             }
         }

@@ -30,11 +30,27 @@ void get_terminal_size_pixels(uint32_t *width, uint32_t *height) {
 }
 
 void calculate_render_dimensions(int explicit_width, int explicit_height,
+                                 bool use_sixel, bool use_kitty,
                                  bool reserve_bottom_line, uint32_t *out_width,
                                  uint32_t *out_height) {
   if (explicit_width > 0 && explicit_height > 0) {
     *out_width = (uint32_t)explicit_width;
     *out_height = (uint32_t)explicit_height;
+    return;
+  }
+
+  if (use_sixel || use_kitty) {
+    get_terminal_size_pixels(out_width, out_height);
+    if (reserve_bottom_line) {
+      uint32_t cols, rows;
+      get_terminal_size(&cols, &rows);
+      if (rows > 0) {
+        uint32_t char_height = *out_height / rows;
+        if (*out_height > char_height) {
+          *out_height -= char_height;
+        }
+      }
+    }
     return;
   }
 

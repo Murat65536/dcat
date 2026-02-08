@@ -14,6 +14,7 @@ endif()
 find_package(Vulkan REQUIRED)
 find_package(assimp REQUIRED)
 find_package(PkgConfig REQUIRED)
+pkg_check_modules(SIXEL REQUIRED libsixel)
 
 include(FetchContent)
 FetchContent_Declare(
@@ -44,6 +45,9 @@ add_executable(dcat
     src/texture.c
     src/vulkan_renderer.c
     src/terminal/terminal.c
+    src/terminal/terminal_pixels.c
+    src/terminal/sixel.c
+    src/terminal/kitty.c
     src/input_device.c
     src/skydome.c
 )
@@ -51,6 +55,7 @@ add_executable(dcat
 # cglm uses SIMD with aligned stores - we need unaligned for malloc'd memory
 target_include_directories(dcat PRIVATE
     ${Vulkan_INCLUDE_DIRS}
+    ${SIXEL_INCLUDE_DIRS}
     src
 )
 
@@ -59,6 +64,7 @@ target_link_libraries(dcat PRIVATE
     assimp
     cglm
     stb
+    ${SIXEL_LIBRARIES}
     rt
     pthread
     m

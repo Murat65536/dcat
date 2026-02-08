@@ -1,0 +1,95 @@
+#include "kitty.h"
+#include "terminal.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+
+static const char base64_chars[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static size_t base64_encode(const uint8_t *data, size_t len, char *out) {
+    char *p = out;
+    for (size_t i = 0; i < len; i += 3) {
+        uint32_t n = (uint32_t)data[i] << 16;
+        if (i + 1 < len) n |= (uint32_t)data[i + 1] << 8;
+        if (i + 2 < len) n |= (uint32_t)data[i + 2];
+
+        *p++ = base64_chars[(n >> 18) & 0x3F];
+        *p++ = base64_chars[(n >> 12) & 0x3F];
+        *p++ = (i + 1 < len) ? base64_chars[(n >> 6) & 0x3F] : '=';
+        *p++ = (i + 2 < len) ? base64_chars[n & 0x3F] : '=';
+    }
+    return (size_t)(p - out);
+}
+
+#define KITTY_NUM_BUFS 32
+
+static char kitty_shm_names[KITTY_NUM_BUFS][64];
+static bool kitty_shm_active[KITTY_NUM_BUFS];
+
+static void kitty_cleanup(void) {
+    for (int i = 0; i < KITTY_NUM_BUFS; i++) {
+        if (kitty_shm_active[i]) {
+            shm_unlink(kitty_shm_names[i]);
+            kitty_shm_active[i] = false;
+        }
+    }
+}
+
+static bool kitty_initialized = false;
+
+void render_kitty(const uint8_t *buffer, uint32_t width, uint32_t height) {
+    static uint32_t buf_idx = 0;
+
+    if (!kitty_initialized) {
+        memset(kitty_shm_active, 0, sizeof(kitty_shm_active));
+        atexit(kitty_cleanup);
+        kitty_initialized = true;
+    }
+
+    buf_idx = (buf_idx + 1) % KITTY_NUM_BUFS;
+    size_t data_size = (size_t)width * height * 4;
+
+    char shm_name[64];
+    int name_len = snprintf(shm_name, sizeof(shm_name), "/dcat_shm_%d_%u", getpid(), buf_idx);
+
+    char encoded_name[128];
+    size_t encoded_len = base64_encode((const uint8_t *)shm_name, (size_t)name_len, encoded_name);
+
+    int fd = shm_open(shm_name, O_CREAT | O_RDWR, 0600);
+    if (fd == -1) return;
+
+    if (ftruncate(fd, (off_t)data_size) == -1) {
+        close(fd);
+        shm_unlink(shm_name);
+        return;
+    }
+
+    void *ptr = mmap(NULL, data_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    close(fd);
+    if (ptr == MAP_FAILED) {
+        shm_unlink(shm_name);
+        return;
+    }
+
+    memcpy(ptr, buffer, data_size);
+    munmap(ptr, data_size);
+
+    // Track for cleanup
+    memcpy(kitty_shm_names[buf_idx], shm_name, (size_t)(name_len + 1));
+    kitty_shm_active[buf_idx] = true;
+
+    char cmd[512];
+    int cmd_len = snprintf(cmd, sizeof(cmd),
+        "\x1b_Ga=T,f=32,s=%u,v=%u,t=s,i=1,C=1,q=1;", width, height);
+    memcpy(cmd + cmd_len, encoded_name, encoded_len);
+    cmd_len += (int)encoded_len;
+    memcpy(cmd + cmd_len, "\x1b\\", 2);
+    cmd_len += 2;
+
+    safe_write(cmd, (size_t)cmd_len);
+}

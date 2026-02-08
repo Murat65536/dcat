@@ -940,12 +940,16 @@ static bool create_staging_buffers(VulkanRenderer* r) {
     VkDeviceSize buffer_size = r->width * r->height * 4;
     
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        // Prefer HOST_CACHED for fast CPU reads; fall back to HOST_COHERENT
         if (!create_buffer(r, buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
                            &r->staging_buffers[i], &r->staging_buffer_allocs[i])) {
-            return false;
+            if (!create_buffer(r, buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                               &r->staging_buffers[i], &r->staging_buffer_allocs[i])) {
+                return false;
+            }
         }
-        // Allocate CPU-side readback buffer (reading directly from mapped GPU memory is slow)
         r->readback_buffers[i] = (uint8_t*)malloc(buffer_size);
         if (!r->readback_buffers[i]) {
             return false;
@@ -1358,10 +1362,15 @@ static bool create_terminal_buffers(VulkanRenderer* r) {
     VkDeviceSize buffer_size = 12 + (VkDeviceSize)width * ((height + 1) / 2) * 39 + 13;
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        // Prefer HOST_CACHED for fast CPU reads; fall back to HOST_COHERENT
         if (!create_buffer(r, buffer_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
                            &r->terminal_output_buffers[i], &r->terminal_output_buffer_allocs[i])) {
-            return false;
+            if (!create_buffer(r, buffer_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                               &r->terminal_output_buffers[i], &r->terminal_output_buffer_allocs[i])) {
+                return false;
+            }
         }
 
         // Allocate CPU-side readback buffer
@@ -1386,6 +1395,13 @@ static bool create_terminal_buffers(VulkanRenderer* r) {
 
         // Footer
         memcpy(p, "\x1b[0m\x1b[?2026l", 13);
+
+        // Flush CPU cache to make template visible to GPU (needed for non-coherent memory)
+        VkMappedMemoryRange range = {VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
+        range.memory = r->terminal_output_buffer_allocs[i].memory;
+        range.offset = 0;
+        range.size = VK_WHOLE_SIZE;
+        vkFlushMappedMemoryRanges(r->device, 1, &range);
 
         // Update descriptor sets
         VkDescriptorImageInfo image_info = {0};
@@ -1601,7 +1617,7 @@ void vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height) 
     create_render_targets(r);
     create_framebuffer(r);
     
-    // Recreate staging buffers
+    // Recreate staging and terminal output buffers
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         if (r->staging_buffers[i] != VK_NULL_HANDLE) {
             vkDestroyBuffer(r->device, r->staging_buffers[i], NULL);
@@ -1733,16 +1749,18 @@ const uint8_t* vulkan_renderer_render(
 ) {
     vkWaitForFences(r->device, 1, &r->in_flight_fences[r->current_frame], VK_TRUE, UINT64_MAX);
     
-    // Read from current_frame (which was submitted 2 iterations ago and is now guaranteed done)
+    // Read framebuffer from the frame that just completed
     const uint8_t* result = NULL;
     if (r->frame_ready[r->current_frame]) {
+        // Invalidate CPU cache before reading from GPU-written staging buffer
+        VkMappedMemoryRange range = {VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
+        range.memory = r->staging_buffer_allocs[r->current_frame].memory;
+        range.offset = 0;
+        range.size = VK_WHOLE_SIZE;
+        vkInvalidateMappedMemoryRanges(r->device, 1, &range);
         size_t frame_size = r->width * r->height * 4;
         memcpy(r->readback_buffers[r->current_frame], r->staging_buffer_allocs[r->current_frame].mapped, frame_size);
         result = r->readback_buffers[r->current_frame];
-
-        // Copy compute outputs to readback buffers
-        size_t terminal_size = 12 + (size_t)r->width * ((r->height + 1) / 2) * 39 + 13;
-        memcpy(r->terminal_readback_buffers[r->current_frame], r->terminal_output_buffer_allocs[r->current_frame].mapped, terminal_size);
     }
     
     vkResetFences(r->device, 1, &r->in_flight_fences[r->current_frame]);
@@ -1874,51 +1892,7 @@ const uint8_t* vulkan_renderer_render(
     
     vkCmdEndRenderPass(cmd);
     
-    // Compute Passes
-    {
-        // Transition color image to GENERAL for compute storage access
-        VkImageMemoryBarrier compute_barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-        compute_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        compute_barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-        compute_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        compute_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        compute_barrier.image = r->color_image;
-        compute_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        compute_barrier.subresourceRange.levelCount = 1;
-        compute_barrier.subresourceRange.layerCount = 1;
-        compute_barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        compute_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-        
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &compute_barrier);
-
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->terminal_pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->terminal_pipeline_layout, 0, 1, &r->terminal_descriptor_sets[r->current_frame], 0, NULL);
-        uint32_t push_data[2] = {r->width, r->height};
-        vkCmdPushConstants(cmd, r->terminal_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_data), push_data);
-        vkCmdDispatch(cmd, (r->width + 15) / 16, ((r->height + 1) / 2 + 15) / 16, 1);
-
-        // Transition back to TRANSFER_SRC for staging copy
-        compute_barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-        compute_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        compute_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        compute_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-        
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &compute_barrier);
-
-        // Add buffer barrier for compute output buffers to ensure host visibility
-        VkBufferMemoryBarrier out_buffer_barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-        out_buffer_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        out_buffer_barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-        out_buffer_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        out_buffer_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        out_buffer_barrier.size = VK_WHOLE_SIZE;
-
-        out_buffer_barrier.buffer = r->terminal_output_buffers[r->current_frame];
-
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, NULL, 1, &out_buffer_barrier, 0, NULL);
-    }
-    
-    // Copy to staging buffer
+    // Copy color image to staging buffer for CPU readback
     VkBufferImageCopy region = {0};
     region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     region.imageSubresource.layerCount = 1;
@@ -1928,7 +1902,6 @@ const uint8_t* vulkan_renderer_render(
     
     vkCmdCopyImageToBuffer(cmd, r->color_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, r->staging_buffers[r->current_frame], 1, &region);
     
-    // Memory barrier
     VkBufferMemoryBarrier buffer_barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
     buffer_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     buffer_barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;

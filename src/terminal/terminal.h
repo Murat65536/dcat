@@ -11,6 +11,7 @@
 void get_terminal_size(uint32_t* cols, uint32_t* rows);
 void get_terminal_size_pixels(uint32_t* width, uint32_t* height);
 void calculate_render_dimensions(int explicit_width, int explicit_height,
+                                 bool use_sixel, bool use_kitty,
                                  bool reserve_bottom_line,
                                  uint32_t* out_width, uint32_t* out_height);
 
