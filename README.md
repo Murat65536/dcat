@@ -1,16 +1,6 @@
 # dcat
 
-A terminal-based 3D model viewer
-
-## Features
-
-- 3D model rendering in the terminal
-- Support for multiple model formats (via Assimp)
-- Texture and normal mapping support
-- Skydome/skybox background rendering
-- Animation playback
-- FPS camera controls
-- Sixel and Kitty graphics protocol support
+A 3D Model Viewer for the Terminal
 
 ## Controls
 
