@@ -23,13 +23,7 @@ FetchContent_Declare(
     GIT_TAG master
     GIT_SHALLOW TRUE
 )
-FetchContent_Declare(
-    cglm
-    GIT_REPOSITORY https://github.com/recp/cglm.git
-    GIT_TAG master
-    GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(stb cglm)
+FetchContent_MakeAvailable(stb)
 
 if(NOT TARGET stb)
     add_library(stb INTERFACE)
