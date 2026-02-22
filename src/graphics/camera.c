@@ -11,7 +11,7 @@ void camera_init(Camera* cam, uint32_t width, uint32_t height,
     glm_vec3_copy((vec3){0.0f, 1.0f, 0.0f}, cam->up);
     cam->fov = glm_rad(fov_degrees);
     cam->aspect = (float)width / (float)height;
-    cam->near_plane = 0.01f;
+    cam->near_plane = 0.0001f;
     cam->far_plane = 100.0f;
 
     vec3 direction;

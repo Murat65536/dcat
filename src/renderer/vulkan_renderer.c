@@ -644,7 +644,7 @@ static bool create_graphics_pipeline(VulkanRenderer* r) {
     VkPipelineInputAssemblyStateCreateInfo input_assembly = {.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     
-    VkViewport viewport = {0, 0, (float)r->width, (float)r->height, 0, 1};
+    VkViewport viewport = {0, 0, (float)r->width, (float)r->height, 1, 0};
     VkRect2D scissor = {{0, 0}, {r->width, r->height}};
     
     VkPipelineViewportStateCreateInfo viewport_state = {.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
@@ -665,7 +665,7 @@ static bool create_graphics_pipeline(VulkanRenderer* r) {
     VkPipelineDepthStencilStateCreateInfo depth_stencil = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
     depth_stencil.depthTestEnable = VK_TRUE;
     depth_stencil.depthWriteEnable = VK_TRUE;
-    depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depth_stencil.depthCompareOp = VK_COMPARE_OP_GREATER;
     
     VkPipelineColorBlendAttachmentState color_blend_attachment = {0};
     color_blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
@@ -809,7 +809,7 @@ static bool create_skydome_pipeline(VulkanRenderer* r) {
     VkPipelineInputAssemblyStateCreateInfo input_assembly = {.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     
-    VkViewport viewport = {0, 0, (float)r->width, (float)r->height, 0, 1};
+    VkViewport viewport = {0, 0, (float)r->width, (float)r->height, 1, 0};
     VkRect2D scissor = {{0, 0}, {r->width, r->height}};
     VkPipelineViewportStateCreateInfo viewport_state = {.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
     viewport_state.viewportCount = 1;
@@ -829,7 +829,7 @@ static bool create_skydome_pipeline(VulkanRenderer* r) {
     VkPipelineDepthStencilStateCreateInfo depth_stencil = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
     depth_stencil.depthTestEnable = VK_TRUE;
     depth_stencil.depthWriteEnable = VK_FALSE;
-    depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    depth_stencil.depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL;
     
     VkPipelineColorBlendAttachmentState color_blend = {0};
     color_blend.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
@@ -1664,7 +1664,7 @@ const uint8_t* vulkan_renderer_render(
     VkCommandBufferBeginInfo begin_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     vkBeginCommandBuffer(cmd, &begin_info);
     
-    VkClearValue clear_values[2] = {{{{0, 0, 0, 1}}}, {{{1.0f, 0}}}};
+    VkClearValue clear_values[2] = {{{{0, 0, 0, 1}}}, {{{0.0f, 0}}}};
     
     VkRenderPassBeginInfo rp_info = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rp_info.renderPass = r->render_pass;
@@ -1676,7 +1676,7 @@ const uint8_t* vulkan_renderer_render(
     
     vkCmdBeginRenderPass(cmd, &rp_info, VK_SUBPASS_CONTENTS_INLINE);
     
-    VkViewport viewport = {0, 0, (float)r->width, (float)r->height, 0, 1};
+    VkViewport viewport = {0, 0, (float)r->width, (float)r->height, 1, 0};
     VkRect2D scissor = {{0, 0}, {r->width, r->height}};
     vkCmdSetViewport(cmd, 0, 1, &viewport);
     vkCmdSetScissor(cmd, 0, 1, &scissor);

@@ -58,6 +58,9 @@ foreach d : debug_defs
   target_c_args += ['-D' + d]
 endforeach
 
+# Vulkan depth clip space is [0, 1]
+target_c_args += ['-DCGLM_FORCE_DEPTH_ZERO_TO_ONE']
+
 sources = files(
   'src/main.c',
   'src/core/args.c',
