@@ -238,13 +238,9 @@ int main(int argc, char* argv[]) {
     bool has_animations = mesh.has_animations && mesh.animations.count > 0;
     
     Texture diffuse_texture, normal_texture;
-    if (!load_diffuse_texture(args.model_path, args.texture_path, 
-                              &material_info, &diffuse_texture)) {
-        texture_init_default(&diffuse_texture);
-    }
-    if (!load_normal_texture(args.normal_map_path, &material_info, &normal_texture)) {
-        texture_create_flat_normal_map(&normal_texture);
-    }
+    load_diffuse_texture(args.model_path, args.texture_path,
+                         &material_info, &diffuse_texture);
+    load_normal_texture(args.normal_map_path, &material_info, &normal_texture);
     
     Mesh skydome_mesh;
     Texture skydome_texture;

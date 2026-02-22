@@ -60,7 +60,14 @@ bool load_normal_texture(const char* normal_arg, const MaterialInfo* material_in
     const char* final_path = normal_arg ? normal_arg : material_info->normal_path;
     
     if (final_path && final_path[0] != '\0') {
-        return texture_from_file(out_texture, final_path);
+        if (texture_from_file(out_texture, final_path)) {
+            return true;
+        }
+        // texture_from_file() leaves a gray fallback allocated on failure.
+        // Replace it with a flat normal map without leaking that fallback.
+        texture_free(out_texture);
+        texture_create_flat_normal_map(out_texture);
+        return true;
     }
     
     texture_create_flat_normal_map(out_texture);
