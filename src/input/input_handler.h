@@ -14,6 +14,7 @@ typedef struct InputThreadData {
     VulkanRenderer* renderer;
     AnimationState* anim_state;
     Mesh* mesh;
+    pthread_mutex_t* state_mutex;
     atomic_bool* is_focused;
     atomic_bool* running;
     bool fps_controls;

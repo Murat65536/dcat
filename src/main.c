@@ -40,7 +40,6 @@ static double get_time_seconds(void) {
 
 typedef struct RenderContext {
     VulkanRenderer* renderer;
-    Camera* camera;
     mat4 model_matrix;
     Texture* diffuse_texture;
     Texture* normal_texture;
@@ -50,8 +49,6 @@ typedef struct RenderContext {
 } RenderContext;
 
 typedef struct AnimationContext {
-    AnimationState* anim_state;
-    Mesh* mesh;
     mat4* bone_matrices;
     bool has_animations;
 } AnimationContext;
@@ -152,7 +149,8 @@ static void process_input_devices(InputManager* input_manager, KeyState* key_sta
 static void render_frame(const RenderContext* ctx, const AnimationContext* anim_ctx,
                          const Mesh* mesh, mat4 view, mat4 projection,
                          const Args* args, uint32_t width, uint32_t height, 
-                         float fps, float move_speed) {
+                         float fps, float move_speed, const vec3 camera_position,
+                         int current_animation_index) {
     mat4 mvp;
     glm_mat4_mul((vec4*)projection, (vec4*)view, mvp);
     glm_mat4_mul(mvp, (vec4*)ctx->model_matrix, mvp);
@@ -168,7 +166,7 @@ static void render_frame(const RenderContext* ctx, const AnimationContext* anim_
     const uint8_t* framebuffer = vulkan_renderer_render(
         ctx->renderer, mesh, mvp, ctx->model_matrix,
         ctx->diffuse_texture, ctx->normal_texture, ctx->enable_lighting,
-        ctx->camera->position, ctx->has_uvs, ctx->alpha_mode,
+        camera_position, ctx->has_uvs, ctx->alpha_mode,
         bone_matrix_ptr, bone_count, (const mat4*)&view, (const mat4*)&projection
     );
     
@@ -183,11 +181,11 @@ static void render_frame(const RenderContext* ctx, const AnimationContext* anim_
         
         if (args->show_status_bar) {
             const char* anim_name = "";
-            if (anim_ctx->has_animations && anim_ctx->anim_state->current_animation_index >= 0 &&
-                anim_ctx->anim_state->current_animation_index < (int)mesh->animations.count) {
-                anim_name = mesh->animations.data[anim_ctx->anim_state->current_animation_index].name;
+            if (anim_ctx->has_animations && current_animation_index >= 0 &&
+                current_animation_index < (int)mesh->animations.count) {
+                anim_name = mesh->animations.data[current_animation_index].name;
             }
-            draw_status_bar(fps, move_speed, ctx->camera->position, anim_name);
+            draw_status_bar(fps, move_speed, camera_position, anim_name);
         }
     }
 }
@@ -285,12 +283,13 @@ int main(int argc, char* argv[]) {
     mat4 view, projection;
     camera_view_matrix(&camera, view);
     camera_projection_matrix(&camera, projection);
+    pthread_mutex_t shared_state_mutex = PTHREAD_MUTEX_INITIALIZER;
     
     double last_frame_time = get_time_seconds();
     atomic_bool is_focused = true;
     
     InputThreadData input_data = {
-        &camera, renderer, &anim_state, &mesh, &is_focused, &g_running,
+        &camera, renderer, &anim_state, &mesh, &shared_state_mutex, &is_focused, &g_running,
         args.fps_controls, has_animations
     };
     pthread_t input_thread;
@@ -298,7 +297,6 @@ int main(int argc, char* argv[]) {
     
     RenderContext render_ctx = {
         .renderer = renderer,
-        .camera = &camera,
         .model_matrix = {{0}},
         .diffuse_texture = &diffuse_texture,
         .normal_texture = &normal_texture,
@@ -309,7 +307,7 @@ int main(int argc, char* argv[]) {
     glm_mat4_copy(model_matrix, render_ctx.model_matrix);
     
     AnimationContext anim_ctx = {
-        &anim_state, &mesh, bone_matrices, has_animations
+        bone_matrices, has_animations
     };
     
     while (atomic_load(&g_running)) {
@@ -323,30 +321,36 @@ int main(int argc, char* argv[]) {
                 width = new_width;
                 height = new_height;
                 vulkan_renderer_resize(renderer, width, height);
+                pthread_mutex_lock(&shared_state_mutex);
                 camera_init(&camera, width, height, camera.position, camera.target, 90.0f);
                 camera_view_matrix(&camera, view);
                 camera_projection_matrix(&camera, projection);
+                pthread_mutex_unlock(&shared_state_mutex);
             }
         }
         
         double frame_start = get_time_seconds();
         float delta_time = (float)(frame_start - last_frame_time);
         last_frame_time = frame_start;
-        
+        vec3 camera_position_snapshot;
+        int current_animation_index_snapshot = -1;
+
+        pthread_mutex_lock(&shared_state_mutex);
         if (input_devices_ready && atomic_load(&is_focused) && args.fps_controls) {
             process_input_devices(input_manager, &key_state, &camera, delta_time, 
                                 &move_speed, atomic_load(&is_focused));
-            camera_view_matrix(&camera, view);
-        } else if (!args.fps_controls) {
-            camera_view_matrix(&camera, view);
         }
-        
+        camera_view_matrix(&camera, view);
+        glm_vec3_copy(camera.position, camera_position_snapshot);
         if (has_animations) {
             update_animation(&mesh, &anim_state, delta_time, bone_matrices);
+            current_animation_index_snapshot = anim_state.current_animation_index;
         }
+        pthread_mutex_unlock(&shared_state_mutex);
         
         render_frame(&render_ctx, &anim_ctx, &mesh, view, projection, &args, 
-                    width, height, 1.0f / delta_time, move_speed);
+                    width, height, 1.0f / delta_time, move_speed,
+                    camera_position_snapshot, current_animation_index_snapshot);
         
         double frame_end = get_time_seconds();
         double frame_duration = frame_end - frame_start;
@@ -362,6 +366,7 @@ int main(int argc, char* argv[]) {
     exit_alternate_screen();
     show_cursor();
     disable_focus_tracking();
+    pthread_mutex_destroy(&shared_state_mutex);
     
     free(bone_matrices);
     texture_free(&diffuse_texture);

@@ -15,8 +15,17 @@ void* input_thread_func(void* arg) {
             ssize_t n = read(STDIN_FILENO, buffer, sizeof(buffer));
             
             if (n > 0) {
+                bool state_locked = false;
+                if (!data->fps_controls || data->has_animations) {
+                    pthread_mutex_lock(data->state_mutex);
+                    state_locked = true;
+                }
+
                 for (ssize_t i = 0; i < n; i++) {
                     if (buffer[i] == 'q' || buffer[i] == 'Q') {
+                        if (state_locked) {
+                            pthread_mutex_unlock(data->state_mutex);
+                        }
                         atomic_store(data->running, false);
                         return NULL;
                     }
@@ -69,6 +78,10 @@ void* input_thread_func(void* arg) {
                             data->anim_state->playing = !data->anim_state->playing;
                         }
                     }
+                }
+
+                if (state_locked) {
+                    pthread_mutex_unlock(data->state_mutex);
                 }
                 
                 for (ssize_t i = 0; i < n; i++) {
