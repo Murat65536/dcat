@@ -111,7 +111,7 @@ static uint32_t find_memory_type(VulkanRenderer* r, uint32_t type_filter, VkMemo
 
 static bool create_buffer(VulkanRenderer* r, VkDeviceSize size, VkBufferUsageFlags usage,
                           VkMemoryPropertyFlags properties, VkBuffer* buffer, VulkanAllocation* alloc) {
-    VkBufferCreateInfo buffer_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    VkBufferCreateInfo buffer_info = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     buffer_info.size = size;
     buffer_info.usage = usage;
     buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -124,7 +124,7 @@ static bool create_buffer(VulkanRenderer* r, VkDeviceSize size, VkBufferUsageFla
     VkMemoryRequirements mem_req;
     vkGetBufferMemoryRequirements(r->device, *buffer, &mem_req);
     
-    VkMemoryAllocateInfo alloc_info = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    VkMemoryAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     alloc_info.allocationSize = mem_req.size;
     alloc_info.memoryTypeIndex = find_memory_type(r, mem_req.memoryTypeBits, properties);
     
@@ -151,7 +151,7 @@ static bool create_buffer(VulkanRenderer* r, VkDeviceSize size, VkBufferUsageFla
 static bool create_image(VulkanRenderer* r, uint32_t width, uint32_t height, VkFormat format,
                          VkImageUsageFlags usage, VkMemoryPropertyFlags properties,
                          VkImage* image, VulkanAllocation* alloc) {
-    VkImageCreateInfo image_info = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    VkImageCreateInfo image_info = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     image_info.imageType = VK_IMAGE_TYPE_2D;
     image_info.extent.width = width;
     image_info.extent.height = height;
@@ -173,7 +173,7 @@ static bool create_image(VulkanRenderer* r, uint32_t width, uint32_t height, VkF
     VkMemoryRequirements mem_req;
     vkGetImageMemoryRequirements(r->device, *image, &mem_req);
     
-    VkMemoryAllocateInfo alloc_info = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    VkMemoryAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     alloc_info.allocationSize = mem_req.size;
     alloc_info.memoryTypeIndex = find_memory_type(r, mem_req.memoryTypeBits, properties);
     
@@ -193,7 +193,7 @@ static bool create_image(VulkanRenderer* r, uint32_t width, uint32_t height, VkF
 }
 
 static VkImageView create_image_view(VulkanRenderer* r, VkImage image, VkFormat format, VkImageAspectFlags aspect_flags) {
-    VkImageViewCreateInfo view_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    VkImageViewCreateInfo view_info = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     view_info.image = image;
     view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
     view_info.format = format;
@@ -212,14 +212,14 @@ static VkImageView create_image_view(VulkanRenderer* r, VkImage image, VkFormat 
 }
 
 static bool create_instance(VulkanRenderer* r) {
-    VkApplicationInfo app_info = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
+    VkApplicationInfo app_info = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO};
     app_info.pApplicationName = "dcat";
     app_info.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
     app_info.pEngineName = "No Engine";
     app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
     app_info.apiVersion = VK_API_VERSION_1_2;
     
-    VkInstanceCreateInfo create_info = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+    VkInstanceCreateInfo create_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     create_info.pApplicationInfo = &app_info;
     
 #ifndef NDEBUG
@@ -273,13 +273,12 @@ static bool select_physical_device(VulkanRenderer* r) {
         VkQueueFamilyProperties* queue_families = malloc(queue_family_count * sizeof(VkQueueFamilyProperties));
         vkGetPhysicalDeviceQueueFamilyProperties(devices[d], &queue_family_count, queue_families);
         
-        bool found_queue = false;
         for (uint32_t i = 0; i < queue_family_count; i++) {
             if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
                 // Check for required features
-                VkPhysicalDeviceVulkan12Features features12 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+                VkPhysicalDeviceVulkan12Features features12 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
                 
-                VkPhysicalDeviceFeatures2 features2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+                VkPhysicalDeviceFeatures2 features2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
                 features2.pNext = &features12;
                 
                 vkGetPhysicalDeviceFeatures2(devices[d], &features2);
@@ -292,8 +291,6 @@ static bool select_physical_device(VulkanRenderer* r) {
 
                 r->physical_device = devices[d];
                 r->graphics_queue_family = i;
-                found_queue = true;
-                
                 if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
                     free(queue_families);
                     free(devices);
@@ -316,7 +313,7 @@ static bool select_physical_device(VulkanRenderer* r) {
 
 static bool create_logical_device(VulkanRenderer* r) {
     float queue_priority = 1.0f;
-    VkDeviceQueueCreateInfo queue_create_info = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+    VkDeviceQueueCreateInfo queue_create_info = {.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
     queue_create_info.queueFamilyIndex = r->graphics_queue_family;
     queue_create_info.queueCount = 1;
     queue_create_info.pQueuePriorities = &queue_priority;
@@ -326,12 +323,12 @@ static bool create_logical_device(VulkanRenderer* r) {
     device_features.fillModeNonSolid = VK_TRUE;
 
     // Vulkan 1.2 features (replacing the individual structs)
-    VkPhysicalDeviceVulkan12Features features12 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+    VkPhysicalDeviceVulkan12Features features12 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
     features12.shaderInt8 = VK_TRUE;
     features12.storageBuffer8BitAccess = VK_TRUE;
     features12.uniformAndStorageBuffer8BitAccess = VK_TRUE;
     
-    VkDeviceCreateInfo create_info = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+    VkDeviceCreateInfo create_info = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     create_info.pNext = &features12;
     create_info.pQueueCreateInfos = &queue_create_info;
     create_info.queueCreateInfoCount = 1;
@@ -347,7 +344,7 @@ static bool create_logical_device(VulkanRenderer* r) {
 }
 
 static bool create_command_pool(VulkanRenderer* r) {
-    VkCommandPoolCreateInfo pool_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+    VkCommandPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     pool_info.queueFamilyIndex = r->graphics_queue_family;
     pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     
@@ -367,7 +364,7 @@ static bool create_descriptor_pool(VulkanRenderer* r) {
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4 * MAX_FRAMES_IN_FLIGHT}
     };
     
-    VkDescriptorPoolCreateInfo pool_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    VkDescriptorPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     pool_info.poolSizeCount = 5;
     pool_info.pPoolSizes = pool_sizes;
     pool_info.maxSets = 8 * MAX_FRAMES_IN_FLIGHT;
@@ -406,7 +403,7 @@ static bool create_descriptor_set_layout(VulkanRenderer* r) {
     bindings[3].descriptorCount = 1;
     bindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     
-    VkDescriptorSetLayoutCreateInfo layout_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    VkDescriptorSetLayoutCreateInfo layout_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
     layout_info.bindingCount = 4;
     layout_info.pBindings = bindings;
     
@@ -423,7 +420,7 @@ static bool create_pipeline_layout(VulkanRenderer* r) {
     push_constant_range.offset = 0;
     push_constant_range.size = sizeof(PushConstants);
     
-    VkPipelineLayoutCreateInfo pipeline_layout_info = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    VkPipelineLayoutCreateInfo pipeline_layout_info = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     pipeline_layout_info.setLayoutCount = 1;
     pipeline_layout_info.pSetLayouts = &r->descriptor_set_layout;
     pipeline_layout_info.pushConstantRangeCount = 1;
@@ -468,7 +465,7 @@ static bool create_render_pass(VulkanRenderer* r) {
     subpass.pColorAttachments = &color_ref;
     subpass.pDepthStencilAttachment = &depth_ref;
     
-    VkRenderPassCreateInfo render_pass_info = {VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
+    VkRenderPassCreateInfo render_pass_info = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
     render_pass_info.attachmentCount = 2;
     render_pass_info.pAttachments = attachments;
     render_pass_info.subpassCount = 1;
@@ -482,6 +479,8 @@ static bool create_render_pass(VulkanRenderer* r) {
 }
 
 static char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size) {
+    enum { MAX_SHADER_FILENAME_LEN = 255 };
+    enum { MAX_SHADER_DIR_LEN = 240 };
     const char* search_paths[] = {
         "",  // Will be replaced with shader_directory if set
         "./shaders/",
@@ -506,7 +505,7 @@ static char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* o
     // Try shader directory first if set
     if (r->shader_directory[0]) {
         char path[512];
-        snprintf(path, sizeof(path), "%s%s", r->shader_directory, filename);
+        snprintf(path, sizeof(path), "%s%.*s", r->shader_directory, MAX_SHADER_FILENAME_LEN, filename);
         FILE* f = fopen(path, "rb");
         if (f) {
             fseek(f, 0, SEEK_END);
@@ -523,9 +522,9 @@ static char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* o
     for (size_t i = 0; i < (sizeof(search_paths) / sizeof(search_paths[0])); i++) {
         char path[512];
         if (i == 0 && exe_dir[0]) {
-            snprintf(path, sizeof(path), "%sshaders/%s", exe_dir, filename);
+            snprintf(path, sizeof(path), "%.*sshaders/%.*s", MAX_SHADER_DIR_LEN, exe_dir, MAX_SHADER_FILENAME_LEN, filename);
         } else {
-            snprintf(path, sizeof(path), "%s%s", search_paths[i], filename);
+            snprintf(path, sizeof(path), "%s%.*s", search_paths[i], MAX_SHADER_FILENAME_LEN, filename);
         }
         
         FILE* f = fopen(path, "rb");
@@ -557,7 +556,7 @@ static char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* o
 }
 
 static VkShaderModule create_shader_module(VulkanRenderer* r, const char* code, size_t size) {
-    VkShaderModuleCreateInfo create_info = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+    VkShaderModuleCreateInfo create_info = {.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
     create_info.codeSize = size;
     create_info.pCode = (const uint32_t*)code;
     
@@ -590,8 +589,8 @@ static bool create_graphics_pipeline(VulkanRenderer* r) {
     }
     
     VkPipelineShaderStageCreateInfo shader_stages[2] = {
-        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
-        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}
+        {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
+        {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}
     };
     shader_stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
     shader_stages[0].module = vert_module;
@@ -636,34 +635,34 @@ static bool create_graphics_pipeline(VulkanRenderer* r) {
     attr_descs[6].format = VK_FORMAT_R32G32B32A32_SFLOAT;
     attr_descs[6].offset = offsetof(Vertex, bone_weights);
     
-    VkPipelineVertexInputStateCreateInfo vertex_input_info = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    VkPipelineVertexInputStateCreateInfo vertex_input_info = {.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
     vertex_input_info.vertexBindingDescriptionCount = 1;
     vertex_input_info.pVertexBindingDescriptions = &binding_desc;
     vertex_input_info.vertexAttributeDescriptionCount = 7;
     vertex_input_info.pVertexAttributeDescriptions = attr_descs;
     
-    VkPipelineInputAssemblyStateCreateInfo input_assembly = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+    VkPipelineInputAssemblyStateCreateInfo input_assembly = {.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     
     VkViewport viewport = {0, 0, (float)r->width, (float)r->height, 0, 1};
     VkRect2D scissor = {{0, 0}, {r->width, r->height}};
     
-    VkPipelineViewportStateCreateInfo viewport_state = {VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+    VkPipelineViewportStateCreateInfo viewport_state = {.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
     viewport_state.viewportCount = 1;
     viewport_state.pViewports = &viewport;
     viewport_state.scissorCount = 1;
     viewport_state.pScissors = &scissor;
     
-    VkPipelineRasterizationStateCreateInfo rasterizer = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+    VkPipelineRasterizationStateCreateInfo rasterizer = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = VK_CULL_MODE_NONE;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     
-    VkPipelineMultisampleStateCreateInfo multisampling = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+    VkPipelineMultisampleStateCreateInfo multisampling = {.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
     multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
     
-    VkPipelineDepthStencilStateCreateInfo depth_stencil = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+    VkPipelineDepthStencilStateCreateInfo depth_stencil = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
     depth_stencil.depthTestEnable = VK_TRUE;
     depth_stencil.depthWriteEnable = VK_TRUE;
     depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
@@ -679,16 +678,16 @@ static bool create_graphics_pipeline(VulkanRenderer* r) {
     color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
     color_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
     
-    VkPipelineColorBlendStateCreateInfo color_blending = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+    VkPipelineColorBlendStateCreateInfo color_blending = {.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
     color_blending.attachmentCount = 1;
     color_blending.pAttachments = &color_blend_attachment;
     
     VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dynamic_state = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+    VkPipelineDynamicStateCreateInfo dynamic_state = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
     dynamic_state.dynamicStateCount = 2;
     dynamic_state.pDynamicStates = dynamic_states;
     
-    VkGraphicsPipelineCreateInfo pipeline_info = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+    VkGraphicsPipelineCreateInfo pipeline_info = {.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
     pipeline_info.stageCount = 2;
     pipeline_info.pStages = shader_stages;
     pipeline_info.pVertexInputState = &vertex_input_info;
@@ -754,7 +753,7 @@ static bool create_skydome_pipeline(VulkanRenderer* r) {
     sampler_binding.descriptorCount = 1;
     sampler_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     
-    VkDescriptorSetLayoutCreateInfo layout_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    VkDescriptorSetLayoutCreateInfo layout_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
     layout_info.bindingCount = 1;
     layout_info.pBindings = &sampler_binding;
     
@@ -770,7 +769,7 @@ static bool create_skydome_pipeline(VulkanRenderer* r) {
     push_constant_range.offset = 0;
     push_constant_range.size = sizeof(mat4);
     
-    VkPipelineLayoutCreateInfo pipeline_layout_info = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    VkPipelineLayoutCreateInfo pipeline_layout_info = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     pipeline_layout_info.setLayoutCount = 1;
     pipeline_layout_info.pSetLayouts = &r->skydome_descriptor_set_layout;
     pipeline_layout_info.pushConstantRangeCount = 1;
@@ -784,8 +783,8 @@ static bool create_skydome_pipeline(VulkanRenderer* r) {
     
     // Setup shader stages
     VkPipelineShaderStageCreateInfo shader_stages[2] = {
-        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
-        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}
+        {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
+        {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}
     };
     shader_stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
     shader_stages[0].module = vert_module;
@@ -801,33 +800,33 @@ static bool create_skydome_pipeline(VulkanRenderer* r) {
         {1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, texcoord)}
     };
     
-    VkPipelineVertexInputStateCreateInfo vertex_input = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    VkPipelineVertexInputStateCreateInfo vertex_input = {.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
     vertex_input.vertexBindingDescriptionCount = 1;
     vertex_input.pVertexBindingDescriptions = &binding_desc;
     vertex_input.vertexAttributeDescriptionCount = 2;
     vertex_input.pVertexAttributeDescriptions = attr_descs;
     
-    VkPipelineInputAssemblyStateCreateInfo input_assembly = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+    VkPipelineInputAssemblyStateCreateInfo input_assembly = {.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     
     VkViewport viewport = {0, 0, (float)r->width, (float)r->height, 0, 1};
     VkRect2D scissor = {{0, 0}, {r->width, r->height}};
-    VkPipelineViewportStateCreateInfo viewport_state = {VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+    VkPipelineViewportStateCreateInfo viewport_state = {.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
     viewport_state.viewportCount = 1;
     viewport_state.pViewports = &viewport;
     viewport_state.scissorCount = 1;
     viewport_state.pScissors = &scissor;
     
-    VkPipelineRasterizationStateCreateInfo rasterizer = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+    VkPipelineRasterizationStateCreateInfo rasterizer = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = VK_CULL_MODE_FRONT_BIT;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     
-    VkPipelineMultisampleStateCreateInfo multisampling = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+    VkPipelineMultisampleStateCreateInfo multisampling = {.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
     multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
     
-    VkPipelineDepthStencilStateCreateInfo depth_stencil = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+    VkPipelineDepthStencilStateCreateInfo depth_stencil = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
     depth_stencil.depthTestEnable = VK_TRUE;
     depth_stencil.depthWriteEnable = VK_FALSE;
     depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
@@ -836,16 +835,16 @@ static bool create_skydome_pipeline(VulkanRenderer* r) {
     color_blend.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                                  VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     
-    VkPipelineColorBlendStateCreateInfo color_blending = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+    VkPipelineColorBlendStateCreateInfo color_blending = {.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
     color_blending.attachmentCount = 1;
     color_blending.pAttachments = &color_blend;
     
     VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dynamic_state = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+    VkPipelineDynamicStateCreateInfo dynamic_state = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
     dynamic_state.dynamicStateCount = 2;
     dynamic_state.pDynamicStates = dynamic_states;
     
-    VkGraphicsPipelineCreateInfo pipeline_info = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+    VkGraphicsPipelineCreateInfo pipeline_info = {.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
     pipeline_info.stageCount = 2;
     pipeline_info.pStages = shader_stages;
     pipeline_info.pVertexInputState = &vertex_input;
@@ -875,7 +874,7 @@ static bool create_skydome_pipeline(VulkanRenderer* r) {
         layouts[i] = r->skydome_descriptor_set_layout;
     }
     
-    VkDescriptorSetAllocateInfo alloc_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    VkDescriptorSetAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     alloc_info.descriptorPool = r->descriptor_pool;
     alloc_info.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
     alloc_info.pSetLayouts = layouts;
@@ -911,7 +910,7 @@ static bool create_render_targets(VulkanRenderer* r) {
 static bool create_framebuffer(VulkanRenderer* r) {
     VkImageView attachments[2] = {r->color_image_view, r->depth_image_view};
     
-    VkFramebufferCreateInfo fb_info = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+    VkFramebufferCreateInfo fb_info = {.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
     fb_info.renderPass = r->render_pass;
     fb_info.attachmentCount = 2;
     fb_info.pAttachments = attachments;
@@ -966,7 +965,7 @@ static bool create_uniform_buffers(VulkanRenderer* r) {
 }
 
 static bool create_sampler(VulkanRenderer* r) {
-    VkSamplerCreateInfo sampler_info = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    VkSamplerCreateInfo sampler_info = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
     sampler_info.magFilter = VK_FILTER_LINEAR;
     sampler_info.minFilter = VK_FILTER_LINEAR;
     sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
@@ -983,7 +982,7 @@ static bool create_sampler(VulkanRenderer* r) {
 }
 
 static bool create_command_buffers(VulkanRenderer* r) {
-    VkCommandBufferAllocateInfo alloc_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    VkCommandBufferAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     alloc_info.commandPool = r->command_pool;
     alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     alloc_info.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
@@ -996,7 +995,7 @@ static bool create_command_buffers(VulkanRenderer* r) {
 }
 
 static bool create_sync_objects(VulkanRenderer* r) {
-    VkFenceCreateInfo fence_info = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    VkFenceCreateInfo fence_info = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
     
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -1015,7 +1014,7 @@ static bool create_descriptor_sets(VulkanRenderer* r) {
         r->descriptor_sets_dirty[i] = true;
     }
     
-    VkDescriptorSetAllocateInfo alloc_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    VkDescriptorSetAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     alloc_info.descriptorPool = r->descriptor_pool;
     alloc_info.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
     alloc_info.pSetLayouts = layouts;
@@ -1028,7 +1027,7 @@ static bool create_descriptor_sets(VulkanRenderer* r) {
 }
 
 static VkCommandBuffer begin_single_time_commands(VulkanRenderer* r) {
-    VkCommandBufferAllocateInfo alloc_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    VkCommandBufferAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     alloc_info.commandPool = r->command_pool;
     alloc_info.commandBufferCount = 1;
@@ -1036,7 +1035,7 @@ static VkCommandBuffer begin_single_time_commands(VulkanRenderer* r) {
     VkCommandBuffer cmd;
     vkAllocateCommandBuffers(r->device, &alloc_info, &cmd);
     
-    VkCommandBufferBeginInfo begin_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    VkCommandBufferBeginInfo begin_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(cmd, &begin_info);
     
@@ -1046,7 +1045,7 @@ static VkCommandBuffer begin_single_time_commands(VulkanRenderer* r) {
 static void end_single_time_commands(VulkanRenderer* r, VkCommandBuffer cmd) {
     vkEndCommandBuffer(cmd);
     
-    VkSubmitInfo submit_info = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    VkSubmitInfo submit_info = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &cmd;
     
@@ -1059,7 +1058,7 @@ static void end_single_time_commands(VulkanRenderer* r, VkCommandBuffer cmd) {
 static void transition_image_layout(VulkanRenderer* r, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout) {
     VkCommandBuffer cmd = begin_single_time_commands(r);
     
-    VkImageMemoryBarrier barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    VkImageMemoryBarrier barrier = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     barrier.oldLayout = old_layout;
     barrier.newLayout = new_layout;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -1516,7 +1515,7 @@ static void update_skydome_texture(VulkanRenderer* r, const Texture* texture) {
         image_info.imageView = r->skydome_image_view;
         image_info.sampler = r->sampler;
         
-        VkWriteDescriptorSet write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        VkWriteDescriptorSet write = {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         write.dstSet = r->skydome_descriptor_sets[i];
         write.dstBinding = 0;
         write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1579,7 +1578,7 @@ const uint8_t* vulkan_renderer_render(
     const uint8_t* result = NULL;
     if (r->frame_ready[r->current_frame]) {
         // Invalidate CPU cache before reading from GPU-written staging buffer
-        VkMappedMemoryRange range = {VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
+        VkMappedMemoryRange range = {.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
         range.memory = r->staging_buffer_allocs[r->current_frame].memory;
         range.offset = 0;
         range.size = VK_WHOLE_SIZE;
@@ -1662,12 +1661,12 @@ const uint8_t* vulkan_renderer_render(
     VkCommandBuffer cmd = r->command_buffers[r->current_frame];
     vkResetCommandBuffer(cmd, 0);
     
-    VkCommandBufferBeginInfo begin_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    VkCommandBufferBeginInfo begin_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     vkBeginCommandBuffer(cmd, &begin_info);
     
     VkClearValue clear_values[2] = {{{{0, 0, 0, 1}}}, {{{1.0f, 0}}}};
     
-    VkRenderPassBeginInfo rp_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+    VkRenderPassBeginInfo rp_info = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rp_info.renderPass = r->render_pass;
     rp_info.framebuffer = r->framebuffer;
     rp_info.renderArea.extent.width = r->width;
@@ -1728,7 +1727,7 @@ const uint8_t* vulkan_renderer_render(
     
     vkCmdCopyImageToBuffer(cmd, r->color_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, r->staging_buffers[r->current_frame], 1, &region);
     
-    VkBufferMemoryBarrier buffer_barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    VkBufferMemoryBarrier buffer_barrier = {.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
     buffer_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     buffer_barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
     buffer_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -1740,7 +1739,7 @@ const uint8_t* vulkan_renderer_render(
     
     vkEndCommandBuffer(cmd);
     
-    VkSubmitInfo submit_info = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    VkSubmitInfo submit_info = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &cmd;
     
@@ -1751,4 +1750,3 @@ const uint8_t* vulkan_renderer_render(
     
     return result;
 }
-

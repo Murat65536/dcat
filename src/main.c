@@ -301,8 +301,14 @@ int main(int argc, char* argv[]) {
     pthread_create(&input_thread, NULL, input_thread_func, &input_data);
     
     RenderContext render_ctx = {
-        renderer, &camera, {0}, &diffuse_texture, &normal_texture,
-        !args.no_lighting, !has_uvs, material_info.alpha_mode
+        .renderer = renderer,
+        .camera = &camera,
+        .model_matrix = {{0}},
+        .diffuse_texture = &diffuse_texture,
+        .normal_texture = &normal_texture,
+        .enable_lighting = !args.no_lighting,
+        .has_uvs = !has_uvs,
+        .alpha_mode = material_info.alpha_mode
     };
     glm_mat4_copy(model_matrix, render_ctx.model_matrix);
     
