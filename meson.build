@@ -25,9 +25,9 @@ if get_option('profile')
   add_project_link_arguments('-pg', language: 'c')
 endif
 
+target_override_options = []
 if buildtype == 'debug' and get_option('use_sanitizers')
-  add_project_arguments('-fsanitize=address', '-fsanitize=undefined', language: 'c')
-  add_project_link_arguments('-fsanitize=address', '-fsanitize=undefined', language: 'c')
+  target_override_options += ['b_sanitize=address,undefined']
 endif
 
 vulkan_dep = dependency('vulkan', required: true)
@@ -126,5 +126,6 @@ dcat = executable(
     rt_dep,
   ],
   c_args: target_c_args,
+  override_options: target_override_options,
   install: true,
 )
