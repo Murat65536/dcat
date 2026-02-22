@@ -5,14 +5,14 @@
 
 void print_usage(void) {
     printf("Usage: dcat [OPTION]... [MODEL]\n\n");
-    printf("  -t, --texture PATH       path to the texture file (defaults to gray)\n");
+    printf("  -t, --texture PATH       path to the texture file\n");
     printf("  -n, --normal-map PATH    path to normal image file\n");
     printf("      --skydome PATH       path to skydome texture file\n");
-    printf("  -W, --width WIDTH        renderer width (defaults to terminal width)\n");
-    printf("  -H, --height HEIGHT      renderer height (defaults to terminal height)\n");
+    printf("  -W, --width WIDTH        renderer width\n");
+    printf("  -H, --height HEIGHT      renderer height\n");
     printf("      --camera-distance DIST  camera distance from origin\n");
     printf("      --model-scale SCALE  scale multiplier for the model\n");
-    printf("  -f, --fps FPS            target frames per second (default: 60)\n");
+    printf("  -f, --fps FPS            target frames per second\n");
     printf("      --no-lighting        disable lighting calculations\n");
     printf("      --fps-controls       enable first-person camera controls\n");
     printf("  -s, --status-bar         show status bar\n");

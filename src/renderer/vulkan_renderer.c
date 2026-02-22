@@ -520,7 +520,7 @@ static char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* o
     }
     
     // Try various paths
-    for (int i = 0; i < 4; i++) {
+    for (size_t i = 0; i < (sizeof(search_paths) / sizeof(search_paths[0])); i++) {
         char path[512];
         if (i == 0 && exe_dir[0]) {
             snprintf(path, sizeof(path), "%sshaders/%s", exe_dir, filename);
@@ -1751,5 +1751,4 @@ const uint8_t* vulkan_renderer_render(
     
     return result;
 }
-
 

@@ -1,0 +1,13 @@
+option(
+  'use_sanitizers',
+  type: 'boolean',
+  value: true,
+  description: 'Enable AddressSanitizer and UBSan in debug builds',
+)
+
+option(
+  'profile',
+  type: 'boolean',
+  value: false,
+  description: 'Enable gprof profiling flags (-pg)',
+)

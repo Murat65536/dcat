@@ -1,10 +1,10 @@
 # dcat
 
-A 3D Model Viewer for the Terminal
+A 3d model viewer for the terminal
 
 ## Controls
 
-- `q` - Quit the viewer
+- `q` - Quit
 - `m` - Toggle wireframe
 - Animation controls:
   - `p` - Play/Pause animation
@@ -20,3 +20,23 @@ A 3D Model Viewer for the Terminal
 - When FPS controls are disabled
   - `w/a/s/d` - Rotate the camera around the model
   - `e/r` - Zoom in and out
+
+## Build
+
+```sh
+meson setup build
+meson compile -C build
+```
+
+Debug build with sanitizers:
+
+```sh
+meson setup build-debug --buildtype=debug -Duse_sanitizers=true
+meson compile -C build-debug
+```
+
+Install:
+
+```sh
+meson install -C build
+```
