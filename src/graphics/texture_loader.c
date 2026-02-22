@@ -39,12 +39,17 @@ bool load_diffuse_texture(const char* model_path, const char* texture_arg,
             out_texture->height = embedded_tex->mHeight;
             out_texture->data_size = embedded_tex->mWidth * embedded_tex->mHeight * 4;
             out_texture->data = malloc(out_texture->data_size);
-            
-            for (unsigned int i = 0; i < embedded_tex->mWidth * embedded_tex->mHeight; i++) {
-                out_texture->data[i * 4 + 0] = embedded_tex->pcData[i].r;
-                out_texture->data[i * 4 + 1] = embedded_tex->pcData[i].g;
-                out_texture->data[i * 4 + 2] = embedded_tex->pcData[i].b;
-                out_texture->data[i * 4 + 3] = embedded_tex->pcData[i].a;
+
+            if (!out_texture->data) {
+                texture_init_default(out_texture);
+            } else {
+                for (unsigned int i = 0; i < embedded_tex->mWidth * embedded_tex->mHeight; i++) {
+                    out_texture->data[i * 4 + 0] = embedded_tex->pcData[i].r;
+                    out_texture->data[i * 4 + 1] = embedded_tex->pcData[i].g;
+                    out_texture->data[i * 4 + 2] = embedded_tex->pcData[i].b;
+                    out_texture->data[i * 4 + 3] = embedded_tex->pcData[i].a;
+                }
+                texture_update_transparency(out_texture);
             }
         }
         

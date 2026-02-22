@@ -239,6 +239,11 @@ int main(int argc, char* argv[]) {
     load_diffuse_texture(args.model_path, args.texture_path,
                          &material_info, &diffuse_texture);
     load_normal_texture(args.normal_map_path, &material_info, &normal_texture);
+
+    AlphaMode alpha_mode = material_info.alpha_mode;
+    if (alpha_mode == ALPHA_MODE_OPAQUE && diffuse_texture.has_transparency) {
+        alpha_mode = ALPHA_MODE_BLEND;
+    }
     
     Mesh skydome_mesh;
     Texture skydome_texture;
@@ -302,7 +307,7 @@ int main(int argc, char* argv[]) {
         .normal_texture = &normal_texture,
         .enable_lighting = !args.no_lighting,
         .has_uvs = !has_uvs,
-        .alpha_mode = material_info.alpha_mode
+        .alpha_mode = alpha_mode
     };
     glm_mat4_copy(model_matrix, render_ctx.model_matrix);
     

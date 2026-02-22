@@ -10,6 +10,7 @@ typedef struct Texture {
     uint32_t height;
     uint8_t* data;       // RGBA, 4 bytes per pixel
     size_t data_size;
+    bool has_transparency;
 } Texture;
 
 // Initialize to a default 1x1 gray texture
@@ -26,5 +27,8 @@ bool texture_from_memory(Texture* tex, const unsigned char* buffer, size_t size)
 
 // Free texture data
 void texture_free(Texture* tex);
+
+// Recompute has_transparency from RGBA pixel data.
+void texture_update_transparency(Texture* tex);
 
 #endif // DCAT_TEXTURE_H
