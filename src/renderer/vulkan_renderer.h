@@ -12,6 +12,7 @@
 #include "../graphics/texture.h"
 
 #define MAX_FRAMES_IN_FLIGHT 3
+#define NUM_STAGING_BUFFERS (MAX_FRAMES_IN_FLIGHT + 1)
 
 // Push constants for vertex shader
 typedef struct PushConstants {
@@ -100,12 +101,11 @@ typedef struct VulkanRenderer {
     VkFramebuffer framebuffer;
     
     // Staging buffers
-    VkBuffer staging_buffers[MAX_FRAMES_IN_FLIGHT];
-    VulkanAllocation staging_buffer_allocs[MAX_FRAMES_IN_FLIGHT];
+    VkBuffer staging_buffers[NUM_STAGING_BUFFERS];
+    VulkanAllocation staging_buffer_allocs[NUM_STAGING_BUFFERS];
     bool frame_ready[MAX_FRAMES_IN_FLIGHT];
-    
-    // CPU-side readback buffers (reading from mapped GPU memory is slow)
-    uint8_t* readback_buffers[MAX_FRAMES_IN_FLIGHT];
+    uint32_t current_staging_buffer;
+    uint32_t frame_staging_buffers[MAX_FRAMES_IN_FLIGHT];
     
     // Uniform buffers
     VkBuffer uniform_buffers[MAX_FRAMES_IN_FLIGHT];

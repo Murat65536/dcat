@@ -928,7 +928,7 @@ static bool create_framebuffer(VulkanRenderer* r) {
 static bool create_staging_buffers(VulkanRenderer* r) {
     VkDeviceSize buffer_size = r->width * r->height * 4;
     
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    for (int i = 0; i < NUM_STAGING_BUFFERS; i++) {
         // Prefer HOST_CACHED for fast CPU reads; fall back to HOST_COHERENT
         if (!create_buffer(r, buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
@@ -938,10 +938,6 @@ static bool create_staging_buffers(VulkanRenderer* r) {
                                &r->staging_buffers[i], &r->staging_buffer_allocs[i])) {
                 return false;
             }
-        }
-        r->readback_buffers[i] = (uint8_t*)malloc(buffer_size);
-        if (!r->readback_buffers[i]) {
-            return false;
         }
     }
     return true;
@@ -1304,14 +1300,15 @@ static void cleanup(VulkanRenderer* r) {
             vkDestroySampler(r->device, r->sampler, NULL);
         }
         
-        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        for (int i = 0; i < NUM_STAGING_BUFFERS; i++) {
             if (r->staging_buffers[i] != VK_NULL_HANDLE) {
                 vkDestroyBuffer(r->device, r->staging_buffers[i], NULL);
                 if (r->staging_buffer_allocs[i].memory != VK_NULL_HANDLE) {
                     vkFreeMemory(r->device, r->staging_buffer_allocs[i].memory, NULL);
                 }
             }
-            free(r->readback_buffers[i]);
+        }
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             if (r->uniform_buffers[i] != VK_NULL_HANDLE) {
                 vkDestroyBuffer(r->device, r->uniform_buffers[i], NULL);
                 if (r->uniform_buffer_allocs[i].memory != VK_NULL_HANDLE) {
@@ -1450,13 +1447,11 @@ void vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height) 
     create_framebuffer(r);
     
     // Recreate staging and terminal output buffers
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    for (int i = 0; i < NUM_STAGING_BUFFERS; i++) {
         if (r->staging_buffers[i] != VK_NULL_HANDLE) {
             vkDestroyBuffer(r->device, r->staging_buffers[i], NULL);
             vkFreeMemory(r->device, r->staging_buffer_allocs[i].memory, NULL);
         }
-        free(r->readback_buffers[i]);
-        r->readback_buffers[i] = NULL;
     }
     create_staging_buffers(r);
     
@@ -1576,19 +1571,23 @@ const uint8_t* vulkan_renderer_render(
     
     // Read framebuffer from the frame that just completed
     const uint8_t* result = NULL;
+    uint32_t ready_staging_idx = r->frame_staging_buffers[r->current_frame];
+    
     if (r->frame_ready[r->current_frame]) {
         // Invalidate CPU cache before reading from GPU-written staging buffer
         VkMappedMemoryRange range = {.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
-        range.memory = r->staging_buffer_allocs[r->current_frame].memory;
+        range.memory = r->staging_buffer_allocs[ready_staging_idx].memory;
         range.offset = 0;
         range.size = VK_WHOLE_SIZE;
         vkInvalidateMappedMemoryRanges(r->device, 1, &range);
-        size_t frame_size = r->width * r->height * 4;
-        memcpy(r->readback_buffers[r->current_frame], r->staging_buffer_allocs[r->current_frame].mapped, frame_size);
-        result = r->readback_buffers[r->current_frame];
+        result = (const uint8_t*)r->staging_buffer_allocs[ready_staging_idx].mapped;
     }
     
     vkResetFences(r->device, 1, &r->in_flight_fences[r->current_frame]);
+    
+    r->current_staging_buffer = (r->current_staging_buffer + 1) % NUM_STAGING_BUFFERS;
+    uint32_t write_staging_idx = r->current_staging_buffer;
+    r->frame_staging_buffers[r->current_frame] = write_staging_idx;
     
     update_diffuse_texture(r, diffuse_texture);
     update_normal_texture(r, normal_texture);
@@ -1725,14 +1724,14 @@ const uint8_t* vulkan_renderer_render(
     region.imageExtent.height = r->height;
     region.imageExtent.depth = 1;
     
-    vkCmdCopyImageToBuffer(cmd, r->color_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, r->staging_buffers[r->current_frame], 1, &region);
+    vkCmdCopyImageToBuffer(cmd, r->color_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, r->staging_buffers[write_staging_idx], 1, &region);
     
     VkBufferMemoryBarrier buffer_barrier = {.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
     buffer_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     buffer_barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
     buffer_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     buffer_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    buffer_barrier.buffer = r->staging_buffers[r->current_frame];
+    buffer_barrier.buffer = r->staging_buffers[write_staging_idx];
     buffer_barrier.size = VK_WHOLE_SIZE;
     
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, NULL, 1, &buffer_barrier, 0, NULL);
