@@ -1,4 +1,4 @@
-name: CI
+name: build
 
 on:
   push:
@@ -30,11 +30,13 @@ jobs:
             gcc \
             ninja-build \
             libvulkan-dev \
+            vulkan-headers \
             shaderc \
             libassimp-dev \
             libcglm-dev \
             libsixel-dev \
-            meson
+            meson \
+            libvips-dev
 
       - name: Configure
         run: meson setup build --buildtype=${{ matrix.buildtype }} -Duse_sanitizers=false
