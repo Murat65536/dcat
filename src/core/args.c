@@ -5,20 +5,20 @@
 
 void print_usage(void) {
     printf("Usage: dcat [OPTION]... [MODEL]\n\n");
-    printf("  -t, --texture PATH       path to the texture file\n");
-    printf("  -n, --normal-map PATH    path to normal image file\n");
-    printf("      --skydome PATH       path to skydome texture file\n");
-    printf("  -W, --width WIDTH        renderer width\n");
-    printf("  -H, --height HEIGHT      renderer height\n");
-    printf("      --camera-distance DIST  camera distance from origin\n");
-    printf("      --model-scale SCALE  scale multiplier for the model\n");
-    printf("  -f, --fps FPS            target frames per second\n");
-    printf("      --no-lighting        disable lighting calculations\n");
-    printf("      --fps-controls       enable first-person camera controls\n");
-    printf("  -s, --status-bar         show status bar\n");
-    printf("  -S, --sixel              enable Sixel graphics mode\n");
-    printf("  -K, --kitty              enable Kitty graphics protocol mode\n");
-    printf("  -h, --help               display this help and exit\n\n");
+    printf("  -t, --texture PATH         path to the texture file\n");
+    printf("  -n, --normal-map PATH      path to normal image file\n");
+    printf("      --skydome PATH         path to skydome texture file\n");
+    printf("  -W, --width WIDTH          renderer width\n");
+    printf("  -H, --height HEIGHT        renderer height\n");
+    printf("      --camera-distance DIST camera distance from origin\n");
+    printf("      --model-scale SCALE    scale multiplier for the model\n");
+    printf("  -f, --fps FPS              target frames per second\n");
+    printf("      --no-lighting          disable lighting calculations\n");
+    printf("      --keyboard-controls    enable first-person camera controls\n");
+    printf("  -s, --status-bar           show status bar\n");
+    printf("  -S, --sixel                enable Sixel graphics mode\n");
+    printf("  -K, --kitty                enable Kitty graphics protocol mode\n");
+    printf("  -h, --help                 display this help and exit\n\n");
 }
 
 Args parse_args(int argc, char* argv[]) {
@@ -48,7 +48,7 @@ Args parse_args(int argc, char* argv[]) {
             if (++i < argc) args.target_fps = atoi(argv[i]);
         } else if (strcmp(argv[i], "--no-lighting") == 0) {
             args.no_lighting = true;
-        } else if (strcmp(argv[i], "--fps-controls") == 0) {
+        } else if (strcmp(argv[i], "--keyboard-controls") == 0) {
             args.fps_controls = true;
         } else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--status-bar") == 0) {
             args.show_status_bar = true;
