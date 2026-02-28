@@ -56,5 +56,4 @@ dkms.conf
 
 .cache/
 build/
-third_party/
 .vscode/

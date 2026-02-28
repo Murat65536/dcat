@@ -3,7 +3,7 @@ project(
   'c',
   version: '0.1.0',
   default_options: [
-    'c_std=gnu23',
+    'c_std=gnu2x',
     'warning_level=3',
   ],
 )
@@ -34,12 +34,12 @@ vulkan_dep = dependency('vulkan', required: true)
 assimp_dep = dependency('assimp', required: true)
 cglm_dep = dependency('cglm', required: true)
 sixel_dep = dependency('libsixel', required: true)
+vips_dep = dependency('vips', required: true)
 threads_dep = dependency('threads', required: true)
 m_dep = cc.find_library('m', required: true)
 rt_dep = cc.find_library('rt', required: true)
 
 inc_src = include_directories('src')
-inc_stb = include_directories('third_party/stb')
 
 debug_defs = []
 if buildtype == 'debug'
@@ -124,12 +124,13 @@ endforeach
 dcat = executable(
   'dcat',
   sources,
-  include_directories: [inc_stb, inc_src],
+  include_directories: [inc_src],
   dependencies: [
     vulkan_dep,
     assimp_dep,
     cglm_dep,
     sixel_dep,
+    vips_dep,
     threads_dep,
     m_dep,
     rt_dep,

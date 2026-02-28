@@ -6,6 +6,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <vips/vips.h>
+
 #include "core/args.h"
 #include "graphics/camera.h"
 #include "graphics/model.h"
@@ -191,6 +193,11 @@ static void render_frame(const RenderContext* ctx, const AnimationContext* anim_
 }
 
 int main(int argc, char* argv[]) {
+    if (VIPS_INIT(argv[0])) {
+        fprintf(stderr, "Failed to initialize libvips\n");
+        return 1;
+    }
+
     Args args = parse_args(argc, argv);
     if (!validate_args(&args)) {
         return 1;
@@ -384,6 +391,7 @@ int main(int argc, char* argv[]) {
     material_info_free(&material_info);
     input_manager_destroy(input_manager);
     vulkan_renderer_destroy(renderer);
-    
+
+    vips_shutdown();
     return 0;
 }
