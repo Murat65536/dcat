@@ -60,8 +60,9 @@ typedef struct VulkanRenderer {
     VkDevice device;
     VkQueue graphics_queue;
     uint32_t graphics_queue_family;
-    
+
     VkPhysicalDeviceMemoryProperties mem_properties;
+    VkDeviceSize non_coherent_atom_size;
     
     VkCommandPool command_pool;
     VkDescriptorPool descriptor_pool;

@@ -29,6 +29,7 @@ static void cleanup(VulkanRenderer* r);
 
 // Memory helpers
 static uint32_t find_memory_type(VulkanRenderer* r, uint32_t type_filter, VkMemoryPropertyFlags properties);
+static VkDeviceSize align_up(VkDeviceSize size, VkDeviceSize alignment);
 static bool create_buffer(VulkanRenderer* r, VkDeviceSize size, VkBufferUsageFlags usage,
                           VkMemoryPropertyFlags properties, VkBuffer* buffer, VulkanAllocation* alloc);
 static bool create_image(VulkanRenderer* r, uint32_t width, uint32_t height, VkFormat format,
@@ -106,6 +107,10 @@ static uint32_t find_memory_type(VulkanRenderer* r, uint32_t type_filter, VkMemo
     }
     fprintf(stderr, "Failed to find suitable memory type\n");
     return 0;
+}
+
+static VkDeviceSize align_up(VkDeviceSize size, VkDeviceSize alignment) {
+    return (size + alignment - 1) & ~(alignment - 1);
 }
 
 static bool create_buffer(VulkanRenderer* r, VkDeviceSize size, VkBufferUsageFlags usage,
@@ -304,6 +309,9 @@ static bool select_physical_device(VulkanRenderer* r) {
     
     if (r->physical_device != VK_NULL_HANDLE) {
         vkGetPhysicalDeviceMemoryProperties(r->physical_device, &r->mem_properties);
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(r->physical_device, &props);
+        r->non_coherent_atom_size = props.limits.nonCoherentAtomSize;
         return true;
     }
     return false;
@@ -924,7 +932,8 @@ static bool create_framebuffer(VulkanRenderer* r) {
 
 static bool create_staging_buffers(VulkanRenderer* r) {
     VkDeviceSize buffer_size = r->width * r->height * 4;
-    
+    buffer_size = align_up(buffer_size, r->non_coherent_atom_size);
+
     for (int i = 0; i < NUM_STAGING_BUFFERS; i++) {
         // Prefer HOST_CACHED for fast CPU reads; fall back to HOST_COHERENT
         if (!create_buffer(r, buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
