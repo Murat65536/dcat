@@ -35,10 +35,27 @@ char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size
         FILE* f = fopen(path, "rb");
         if (f) {
             fseek(f, 0, SEEK_END);
-            *out_size = ftell(f);
+            long file_size = ftell(f);
             fseek(f, 0, SEEK_SET);
+
+            if (file_size < 0) {
+                fclose(f);
+                return NULL;
+            }
+
+            *out_size = (size_t)file_size;
             char* buffer = malloc(*out_size);
-            fread(buffer, 1, *out_size, f);
+            if (!buffer) {
+                fclose(f);
+                return NULL;
+            }
+
+            if (fread(buffer, 1, *out_size, f) != *out_size) {
+                free(buffer);
+                fclose(f);
+                return NULL;
+            }
+
             fclose(f);
             return buffer;
         }
@@ -56,10 +73,27 @@ char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size
         FILE* f = fopen(path, "rb");
         if (f) {
             fseek(f, 0, SEEK_END);
-            *out_size = ftell(f);
+            long file_size = ftell(f);
             fseek(f, 0, SEEK_SET);
+
+            if (file_size < 0) {
+                fclose(f);
+                continue;
+            }
+
+            *out_size = (size_t)file_size;
             char* buffer = malloc(*out_size);
-            fread(buffer, 1, *out_size, f);
+            if (!buffer) {
+                fclose(f);
+                continue;
+            }
+
+            if (fread(buffer, 1, *out_size, f) != *out_size) {
+                free(buffer);
+                fclose(f);
+                continue;
+            }
+
             fclose(f);
             
             // Cache shader directory
