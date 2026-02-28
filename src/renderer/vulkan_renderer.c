@@ -69,7 +69,6 @@ void vulkan_renderer_destroy(VulkanRenderer* r) {
 }
 
 bool vulkan_renderer_initialize(VulkanRenderer* r) {
-    fprintf(stderr, "Initializing Vulkan renderer...\n");
     if (!create_instance(r)) return false;
     if (!select_physical_device(r)) return false;
     if (!create_logical_device(r)) return false;
@@ -241,7 +240,6 @@ static bool create_instance(VulkanRenderer* r) {
     if (validation_available) {
         create_info.enabledLayerCount = 1;
         create_info.ppEnabledLayerNames = validation_layers;
-        fprintf(stderr, "Debug: Vulkan validation layers enabled\n");
     }
 #endif
     
@@ -545,8 +543,7 @@ static char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* o
                     r->shader_directory[dir_len] = '\0';
                 }
             }
-            
-            fprintf(stderr, "Loaded shader: %s\n", path);
+
             return buffer;
         }
     }
