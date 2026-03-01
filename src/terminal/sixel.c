@@ -3,6 +3,7 @@
 #include <sixel.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static int sixel_write_cb(char *data, int size, void *priv) {
     (void)priv;
@@ -55,4 +56,37 @@ void render_sixel(const uint8_t *buffer, uint32_t width, uint32_t height) {
                             SIXEL_REP_CENTER_BOX, SIXEL_QUALITY_LOW);
 
     sixel_encode(sixel_pixels, width, height, 4, sixel_dith, sixel_out);
+}
+
+bool detect_sixel_support(void) {
+    if (!isatty(STDOUT_FILENO) || !isatty(STDIN_FILENO))
+        return false;
+
+    TermiosState ts;
+    if (!termios_state_init(&ts, STDIN_FILENO))
+        return false;
+    ts.settings.c_lflag &= ~(ICANON | ECHO);
+    ts.settings.c_cc[VMIN] = 0;
+    ts.settings.c_cc[VTIME] = 1; // 100ms timeout
+    if (!termios_state_apply(&ts))
+        return false;
+
+    // XTSMGRAPHICS query: read sixel geometry (item 2).
+    // Response: \x1b[?2;Ps2;...S — Ps2=0 means no error (sixel supported).
+    // More reliable than DA1 attribute 4, which many non-sixel terminals also report.
+    safe_write("\x1b[?2;1;0S", 9);
+
+    char buffer[64];
+    bool found = false;
+
+    ssize_t r = read(STDIN_FILENO, buffer, sizeof(buffer) - 1);
+    if (r > 0) {
+        buffer[r] = '\0';
+        char *p = strstr(buffer, "\x1b[?2;");
+        if (p && atoi(p + 5) == 0)
+            found = true;
+    }
+
+    termios_state_restore(&ts);
+    return found;
 }

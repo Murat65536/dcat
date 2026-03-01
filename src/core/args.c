@@ -88,12 +88,12 @@ bool validate_args(const Args* args) {
         return false;
     }
     
-    if (args->width > 0 && (args->width <= 0 || args->width > 65535)) {
+    if (args->width > 65535) {
         fprintf(stderr, "Invalid width: %d (must be 1-65535)\n", args->width);
         return false;
     }
     
-    if (args->height > 0 && (args->height <= 0 || args->height > 65535)) {
+    if (args->height > 65535) {
         fprintf(stderr, "Invalid height: %d (must be 1-65535)\n", args->height);
         return false;
     }

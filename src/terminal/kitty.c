@@ -98,18 +98,57 @@ bool detect_kitty_support(void) {
     if (!isatty(STDOUT_FILENO) || !isatty(STDIN_FILENO))
         return false;
 
-    static const char *query = "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\";
+    // Test using t=s (shared memory) — the same path render_kitty uses.
+    // Some terminals support t=d (inline base64) but not t=s.
+    static const char *shm_name = "/dcat_detect";
+    static const uint8_t pixel[4] = {0, 0, 0, 0};
+
+    int fd = shm_open(shm_name, O_CREAT | O_RDWR, 0600);
+    if (fd == -1) return false;
+
+    bool ok = ftruncate(fd, 4) == 0;
+    if (ok) {
+        void *ptr = mmap(NULL, 4, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        if (ptr != MAP_FAILED) {
+            memcpy(ptr, pixel, 4);
+            munmap(ptr, 4);
+        } else {
+            ok = false;
+        }
+    }
+    close(fd);
+    if (!ok) {
+        shm_unlink(shm_name);
+        return false;
+    }
+
+    char encoded_name[64];
+    size_t encoded_len = base64_encode((const uint8_t *)shm_name,
+                                       strlen(shm_name), encoded_name);
+
+    char query[256];
+    int qlen = snprintf(query, sizeof(query), "\x1b_Ga=T,t=s,f=32,s=1,v=1,i=31;");
+    memcpy(query + qlen, encoded_name, encoded_len);
+    qlen += (int)encoded_len;
+    memcpy(query + qlen, "\x1b\\", 2);
+    qlen += 2;
+
+    static const char *cleanup = "\x1b_Ga=d,d=i,i=31\x1b\\";
 
     TermiosState ts;
-    if (!termios_state_init(&ts, STDIN_FILENO))
+    if (!termios_state_init(&ts, STDIN_FILENO)) {
+        shm_unlink(shm_name);
         return false;
+    }
     ts.settings.c_lflag &= ~(ICANON | ECHO);
     ts.settings.c_cc[VMIN] = 0;
-    ts.settings.c_cc[VTIME] = 100; // 100ms timeout
-    if (!termios_state_apply(&ts))
+    ts.settings.c_cc[VTIME] = 1; // 100ms timeout
+    if (!termios_state_apply(&ts)) {
+        shm_unlink(shm_name);
         return false;
+    }
 
-    safe_write(query, strlen(query));
+    safe_write(query, (size_t)qlen);
 
     char buffer[32];
     bool found = false;
@@ -117,10 +156,15 @@ bool detect_kitty_support(void) {
     ssize_t r = read(STDIN_FILENO, buffer, sizeof(buffer) - 1);
     if (r > 0) {
         buffer[r] = '\0';
-        if (strstr(buffer, "_Gi=31;OK")) {
+        if (strstr(buffer, "\x1b_Gi=31;OK"))
             found = true;
-        }
     }
+
+    // Safe to unlink after read — terminal has already processed the command
+    shm_unlink(shm_name);
+
+    if (found)
+        safe_write(cleanup, strlen(cleanup));
 
     termios_state_restore(&ts);
     return found;

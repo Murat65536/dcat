@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
-#include <termios.h>
 #include <unistd.h>
 
 void get_terminal_size(uint32_t *cols, uint32_t *rows) {

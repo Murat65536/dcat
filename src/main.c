@@ -204,7 +204,10 @@ int main(int argc, char* argv[]) {
     }
 
     if (!args.use_kitty && !args.use_sixel && !args.use_terminal_pixels) {
-        args.use_kitty = detect_kitty_support();
+        if (detect_kitty_support())
+            args.use_kitty = true;
+        else if (detect_sixel_support())
+            args.use_sixel = true;
     }
     
     signal(SIGINT, signal_handler);
