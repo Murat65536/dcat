@@ -63,7 +63,7 @@ void calculate_render_dimensions(int explicit_width, int explicit_height,
   *out_height = rows * 2;
 }
 
-static struct termios original_termios;
+static TermiosState raw_mode_state;
 static bool raw_mode_enabled = false;
 
 void safe_write(const char *data, size_t size) {
@@ -102,23 +102,40 @@ void draw_status_bar(float fps, float speed, const float *pos,
   }
 }
 
+bool termios_state_init(TermiosState *state, int fd) {
+  state->fd = fd;
+  if (tcgetattr(fd, &state->saved) == -1)
+    return false;
+  state->settings = state->saved;
+  return true;
+}
+
+bool termios_state_apply(TermiosState *state) {
+  return tcsetattr(state->fd, TCSAFLUSH, &state->settings) != -1;
+}
+
+void termios_state_restore(TermiosState *state) {
+  tcsetattr(state->fd, TCSAFLUSH, &state->saved);
+}
+
 void enable_raw_mode(void) {
   if (raw_mode_enabled)
     return;
 
-  tcgetattr(STDIN_FILENO, &original_termios);
-  struct termios raw = original_termios;
-  raw.c_lflag &= ~(ECHO | ICANON);
-  raw.c_cc[VMIN] = 0;
-  raw.c_cc[VTIME] = 0;
-  tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+  if (!termios_state_init(&raw_mode_state, STDIN_FILENO))
+    return;
+  raw_mode_state.settings.c_lflag &= ~(ECHO | ICANON);
+  raw_mode_state.settings.c_cc[VMIN] = 0;
+  raw_mode_state.settings.c_cc[VTIME] = 0;
+  if (!termios_state_apply(&raw_mode_state))
+    return;
   raw_mode_enabled = true;
 }
 
 void disable_raw_mode(void) {
   if (!raw_mode_enabled)
     return;
-  tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_termios);
+  termios_state_restore(&raw_mode_state);
   raw_mode_enabled = false;
 }
 

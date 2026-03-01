@@ -93,3 +93,35 @@ void render_kitty(const uint8_t *buffer, uint32_t width, uint32_t height) {
 
     safe_write(cmd, (size_t)cmd_len);
 }
+
+bool detect_kitty_support(void) {
+    if (!isatty(STDOUT_FILENO) || !isatty(STDIN_FILENO))
+        return false;
+
+    static const char *query = "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\";
+
+    TermiosState ts;
+    if (!termios_state_init(&ts, STDIN_FILENO))
+        return false;
+    ts.settings.c_lflag &= ~(ICANON | ECHO);
+    ts.settings.c_cc[VMIN] = 0;
+    ts.settings.c_cc[VTIME] = 100; // 100ms timeout
+    if (!termios_state_apply(&ts))
+        return false;
+
+    safe_write(query, strlen(query));
+
+    char buffer[32];
+    bool found = false;
+
+    ssize_t r = read(STDIN_FILENO, buffer, sizeof(buffer) - 1);
+    if (r > 0) {
+        buffer[r] = '\0';
+        if (strstr(buffer, "_Gi=31;OK")) {
+            found = true;
+        }
+    }
+
+    termios_state_restore(&ts);
+    return found;
+}

@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <termios.h>
 
 #define DEFAULT_TERM_WIDTH 80
 #define DEFAULT_TERM_HEIGHT 24
@@ -17,11 +18,17 @@ void calculate_render_dimensions(int explicit_width, int explicit_height,
 
 void safe_write(const char *data, size_t size);
 
-void get_terminal_size(uint32_t* cols, uint32_t* rows);
-
-void get_terminal_size_pixels(uint32_t* width, uint32_t* height);
-
 void draw_status_bar(float fps, float speed, const float* pos, const char* animation_name);
+
+typedef struct {
+    int fd;
+    struct termios saved;
+    struct termios settings;
+} TermiosState;
+
+bool termios_state_init(TermiosState *state, int fd);
+bool termios_state_apply(TermiosState *state);
+void termios_state_restore(TermiosState *state);
 
 void enable_raw_mode(void);
 void disable_raw_mode(void);

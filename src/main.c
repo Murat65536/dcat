@@ -202,6 +202,10 @@ int main(int argc, char* argv[]) {
     if (!validate_args(&args)) {
         return 1;
     }
+
+    if (!args.use_kitty && !args.use_sixel && !args.use_terminal_pixels) {
+        args.use_kitty = detect_kitty_support();
+    }
     
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
