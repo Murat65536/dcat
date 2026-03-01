@@ -26,6 +26,8 @@
 static atomic_bool g_running = true;
 static volatile sig_atomic_t g_resize_pending = 1;
 
+static const float TARGET_SIZE = 4.0f;
+
 static void signal_handler(int sig) {
     (void)sig;
     atomic_store(&g_running, false);
@@ -48,7 +50,7 @@ typedef struct RenderContext {
     Texture* diffuse_texture;
     Texture* normal_texture;
     bool enable_lighting;
-    bool has_uvs;
+    bool use_triplanar_mapping;
     AlphaMode alpha_mode;
 } RenderContext;
 
@@ -59,7 +61,6 @@ typedef struct AnimationContext {
 
 static void setup_model_transform(const Mesh* mesh, const CameraSetup* camera_setup,
                                    float model_scale_arg, mat4 out_matrix) {
-    const float TARGET_SIZE = 4.0f;
     float model_scale_factor = 1.0f;
     vec3 model_center;
     glm_vec3_zero(model_center);
@@ -86,7 +87,6 @@ static void setup_model_transform(const Mesh* mesh, const CameraSetup* camera_se
 
 static void setup_camera_position(const CameraSetup* camera_setup, float model_scale_arg,
                                    float camera_distance_arg, vec3 out_position) {
-    const float TARGET_SIZE = 4.0f;
     float model_scale_factor = 1.0f;
     
     if (camera_setup->model_scale > 0.0f) {
@@ -170,7 +170,7 @@ static void render_frame(const RenderContext* ctx, const AnimationContext* anim_
     const uint8_t* framebuffer = vulkan_renderer_render(
         ctx->renderer, mesh, mvp, ctx->model_matrix,
         ctx->diffuse_texture, ctx->normal_texture, ctx->enable_lighting,
-        camera_position, ctx->has_uvs, ctx->alpha_mode,
+        camera_position, ctx->use_triplanar_mapping, ctx->alpha_mode,
         bone_matrix_ptr, bone_count, (const mat4*)&view, (const mat4*)&projection
     );
     
@@ -293,7 +293,6 @@ int main(int argc, char* argv[]) {
     vec3 camera_target;
     glm_vec3_zero(camera_target);
     
-    const float TARGET_SIZE = 4.0f;
     const float MOVE_SPEED_BASE = 0.5f;
     float move_speed = MOVE_SPEED_BASE * TARGET_SIZE;
     double target_frame_time = 1.0 / args.target_fps;
@@ -334,7 +333,7 @@ int main(int argc, char* argv[]) {
         .diffuse_texture = &diffuse_texture,
         .normal_texture = &normal_texture,
         .enable_lighting = !args.no_lighting,
-        .has_uvs = !has_uvs,
+        .use_triplanar_mapping = !has_uvs,
         .alpha_mode = alpha_mode
     };
     glm_mat4_copy(model_matrix, render_ctx.model_matrix);
@@ -360,7 +359,7 @@ int main(int argc, char* argv[]) {
                 height = new_height;
                 vulkan_renderer_resize(renderer, width, height);
                 pthread_mutex_lock(&shared_state_mutex);
-                camera_init(&camera, width, height, camera.position, camera.target, 90.0f);
+                camera_init(&camera, width, height, camera.position, camera.target, 60.0f);
                 camera_view_matrix(&camera, view);
                 camera_projection_matrix(&camera, projection);
                 pthread_mutex_unlock(&shared_state_mutex);

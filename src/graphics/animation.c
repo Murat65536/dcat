@@ -85,43 +85,26 @@ void bone_anim_map_insert(BoneAnimationMap* map, const char* name, int index) {
     bone_map_insert((BoneMap*)map, name, index);
 }
 
-static int find_key_index(const VectorKeyArray* keys, float time) {
-    if (keys->count == 0) return -1;
-    if (keys->count == 1 || time <= keys->data[0].time) return 0;
-    if (time >= keys->data[keys->count - 1].time) return (int)keys->count - 1;
-    
-    int left = 0;
-    int right = (int)keys->count - 1;
-    
-    while (left < right - 1) {
-        int mid = (left + right) / 2;
-        if (keys->data[mid].time <= time) {
-            left = mid;
-        } else {
-            right = mid;
-        }
-    }
-    
-    return left;
-}
+// Binary search for the last key whose time <= the given time.
+// 'data' points to the first element of a key array; each element begins with float time.
+static int find_key_index(const void* data, size_t count, size_t stride, float time) {
+    if (count == 0) return -1;
+    if (count == 1 || time <= *(const float*)data) return 0;
+    if (time >= *(const float*)((const char*)data + (count - 1) * stride)) return (int)count - 1;
 
-static int find_rotation_key_index(const QuaternionKeyArray* keys, float time) {
-    if (keys->count == 0) return -1;
-    if (keys->count == 1 || time <= keys->data[0].time) return 0;
-    if (time >= keys->data[keys->count - 1].time) return (int)keys->count - 1;
-    
     int left = 0;
-    int right = (int)keys->count - 1;
-    
+    int right = (int)count - 1;
+
     while (left < right - 1) {
         int mid = (left + right) / 2;
-        if (keys->data[mid].time <= time) {
+        float mid_time = *(const float*)((const char*)data + mid * stride);
+        if (mid_time <= time) {
             left = mid;
         } else {
             right = mid;
         }
     }
-    
+
     return left;
 }
 
@@ -135,7 +118,7 @@ void interpolate_position(const VectorKeyArray* keys, float time, vec3 out) {
         return;
     }
     
-    int index = find_key_index(keys, time);
+    int index = find_key_index(keys->data, keys->count, sizeof(VectorKey), time);
     int next_index = index + 1;
     
     if (next_index >= (int)keys->count) {
@@ -163,7 +146,7 @@ void interpolate_scale(const VectorKeyArray* keys, float time, vec3 out) {
         return;
     }
     
-    int index = find_key_index(keys, time);
+    int index = find_key_index(keys->data, keys->count, sizeof(VectorKey), time);
     int next_index = index + 1;
     
     if (next_index >= (int)keys->count) {
@@ -191,7 +174,7 @@ void interpolate_rotation(const QuaternionKeyArray* keys, float time, versor out
         return;
     }
     
-    int index = find_rotation_key_index(keys, time);
+    int index = find_key_index(keys->data, keys->count, sizeof(QuaternionKey), time);
     int next_index = index + 1;
     
     if (next_index >= (int)keys->count) {

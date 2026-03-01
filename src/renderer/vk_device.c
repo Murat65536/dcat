@@ -86,6 +86,7 @@ bool select_physical_device(VulkanRenderer* r) {
                     free(queue_families);
                     free(devices);
                     vkGetPhysicalDeviceMemoryProperties(r->physical_device, &r->mem_properties);
+                    r->non_coherent_atom_size = props.limits.nonCoherentAtomSize;
                     return true;
                 }
                 break;
