@@ -2,6 +2,8 @@
 
 A 3d model viewer for the terminal
 
+https://github.com/user-attachments/assets/e7285c3a-b175-4a40-aaba-8159a17ecb31
+
 ## Controls
 
 - `q` - Quit
