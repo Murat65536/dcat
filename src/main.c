@@ -308,6 +308,9 @@ int main(int argc, char* argv[]) {
     hide_cursor();
     enter_alternate_screen();
     enable_raw_mode();
+    if (args.mouse_orbit) {
+        enable_mouse_orbit_tracking();
+    }
     
     Camera camera;
     camera_init(&camera, width, height, camera_position, camera_target, 60.0f);
@@ -322,7 +325,7 @@ int main(int argc, char* argv[]) {
     
     InputThreadData input_data = {
         &camera, renderer, &anim_state, &mesh, &shared_state_mutex, &is_focused, &g_running,
-        args.fps_controls, has_animations
+        args.fps_controls, args.mouse_orbit, args.mouse_sensitivity, has_animations
     };
     pthread_t input_thread;
     pthread_create(&input_thread, NULL, input_thread_func, &input_data);
@@ -409,6 +412,9 @@ int main(int argc, char* argv[]) {
     disable_raw_mode();
     exit_alternate_screen();
     show_cursor();
+    if (args.mouse_orbit) {
+        disable_mouse_orbit_tracking();
+    }
     disable_focus_tracking();
     pthread_mutex_destroy(&shared_state_mutex);
     

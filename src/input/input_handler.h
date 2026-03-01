@@ -18,6 +18,8 @@ typedef struct InputThreadData {
     atomic_bool* is_focused;
     atomic_bool* running;
     bool fps_controls;
+    bool mouse_orbit;
+    float mouse_sensitivity;
     bool has_animations;
 } InputThreadData;
 

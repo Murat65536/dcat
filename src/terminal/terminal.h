@@ -38,5 +38,7 @@ void hide_cursor(void);
 void show_cursor(void);
 void enable_focus_tracking(void);
 void disable_focus_tracking(void);
+void enable_mouse_orbit_tracking(void);
+void disable_mouse_orbit_tracking(void);
 
 #endif // DCAT_TERMINAL_H

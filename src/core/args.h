@@ -16,6 +16,8 @@ typedef struct Args {
     int target_fps;
     bool no_lighting;
     bool fps_controls;
+    bool mouse_orbit;
+    float mouse_sensitivity;
     bool show_status_bar;
     bool show_help;
     bool use_sixel;

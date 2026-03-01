@@ -16,12 +16,14 @@ void print_usage(void) {
     printf("  -f, --fps FPS              target frames per second\n");
     printf("      --no-lighting          disable lighting calculations\n");
     printf("      --keyboard-controls    enable first-person camera controls\n");
+    printf("      --mouse-orbit          enable mouse drag to orbit the model\n");
+    printf("      --mouse-sensitivity S  mouse drag sensitivity\n");
     printf("  -s, --status-bar           show status bar\n");
     printf("  -S, --sixel                enable Sixel graphics mode\n");
     printf("  -K, --kitty                enable Kitty graphics protocol (shared memory)\n");
     printf("      --kitty-direct         enable Kitty graphics protocol (inline)\n");
-    printf("  -T, --truecolor-characters  enable truecolor characters mode\n");
-    printf("  -P, --palette-characters    enable 256-color palette characters mode\n");
+    printf("  -T, --truecolor-characters enable truecolor characters mode\n");
+    printf("  -P, --palette-characters   enable 256-color palette characters mode\n");
     printf("  -h, --help                 display this help and exit\n\n");
 }
 
@@ -31,6 +33,7 @@ Args parse_args(int argc, char* argv[]) {
     args.height = -1;
     args.camera_distance = -1.0f;
     args.model_scale = 1.0f;
+    args.mouse_sensitivity = 0.02f;
     args.target_fps = 60;
     
     for (int i = 1; i < argc; i++) {
@@ -56,6 +59,12 @@ Args parse_args(int argc, char* argv[]) {
             args.no_lighting = true;
         } else if (strcmp(argv[i], "--keyboard-controls") == 0) {
             args.fps_controls = true;
+        } else if (strcmp(argv[i], "--mouse-orbit") == 0) {
+            args.mouse_orbit = true;
+        } else if (strcmp(argv[i], "--mouse-sensitivity") == 0) {
+            if (++i < argc) {
+                args.mouse_sensitivity = atof(argv[i]);
+            }
         } else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--status-bar") == 0) {
             args.show_status_bar = true;
         } else if (strcmp(argv[i], "-S") == 0 || strcmp(argv[i], "--sixel") == 0) {
