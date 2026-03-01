@@ -12,7 +12,8 @@
 #include "graphics/camera.h"
 #include "graphics/model.h"
 #include "terminal/terminal.h"
-#include "terminal/terminal_pixels.h"
+#include "terminal/truecolor_characters.h"
+#include "terminal/palette_characters.h"
 #include "terminal/sixel.h"
 #include "terminal/kitty.h"
 #include "terminal/kitty_shm.h"
@@ -180,8 +181,10 @@ static void render_frame(const RenderContext* ctx, const AnimationContext* anim_
             render_kitty(framebuffer, width, height);
         } else if (args->use_sixel) {
             render_sixel(framebuffer, width, height);
+        } else if (args->use_palette_characters) {
+            render_palette_characters(framebuffer, width, height);
         } else {
-            render_terminal(framebuffer, width, height);
+            render_truecolor_characters(framebuffer, width, height);
         }
         
         if (args->show_status_bar) {
@@ -206,13 +209,18 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (!args.use_kitty && !args.use_kitty_shm && !args.use_sixel && !args.use_terminal_pixels) {
+    if (!args.use_kitty && !args.use_kitty_shm && !args.use_sixel && 
+        !args.use_truecolor_characters && !args.use_palette_characters) {
         if (detect_kitty_shm_support())
             args.use_kitty_shm = true;
         else if (detect_kitty_support())
             args.use_kitty = true;
         else if (detect_sixel_support())
             args.use_sixel = true;
+        else if (detect_truecolor_support())
+            args.use_truecolor_characters = true;
+        else
+            args.use_palette_characters = true;
     }
     
     signal(SIGINT, signal_handler);

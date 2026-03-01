@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -149,3 +150,4 @@ void show_cursor(void) { safe_write("\x1b[?25h", 6); }
 void enable_focus_tracking(void) { safe_write("\x1b[?1004h", 8); }
 
 void disable_focus_tracking(void) { safe_write("\x1b[?1004l", 8); }
+

@@ -1,3 +1,4 @@
+#include "terminal/truecolor_characters.h"
 #include "terminal/terminal.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -29,7 +30,7 @@ static inline void write_u8_3digit(char *p, uint8_t v) {
     memcpy(p, u8_3digit[v], 3);
 }
 
-void render_terminal(const uint8_t *buffer, uint32_t width, uint32_t height) {
+void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t height) {
     uint32_t num_blocks = width * ((height + 1) / 2);
     
     // Detect resize or first run
@@ -101,4 +102,46 @@ void render_terminal(const uint8_t *buffer, uint32_t width, uint32_t height) {
     }
     
     safe_write(render_buf, 12 + num_blocks * 39 + 13);
+}
+
+bool detect_truecolor_support(void) {
+    const char *colorterm = getenv("COLORTERM");
+    if (colorterm && (strcmp(colorterm, "truecolor") == 0 || strcmp(colorterm, "24bit") == 0)) {
+        return true;
+    }
+
+    const char *term = getenv("TERM");
+    if (term && (strstr(term, "iterm") || strstr(term, "konsole") || strstr(term, "st-256color"))) {
+        return true;
+    }
+
+    // Fallback: Query terminal for RGB capability: DCS + q 524742 ST
+    if (!isatty(STDOUT_FILENO) || !isatty(STDIN_FILENO))
+        return false;
+
+    TermiosState ts;
+    if (!termios_state_init(&ts, STDIN_FILENO))
+        return false;
+    ts.settings.c_lflag &= ~(ICANON | ECHO);
+    ts.settings.c_cc[VMIN] = 0;
+    ts.settings.c_cc[VTIME] = 1; // 100ms timeout
+    if (!termios_state_apply(&ts))
+        return false;
+
+    // Query RGB capability (524742 is hex for "RGB")
+    safe_write("\x1bP+q524742\x1b\\", 11);
+
+    char response[128];
+    bool found = false;
+    ssize_t r = read(STDIN_FILENO, response, sizeof(response) - 1);
+    if (r > 0) {
+        response[r] = '\0';
+        // Success response: DCS 1 + r 524742=... ST
+        if (strstr(response, "1+r524742")) {
+            found = true;
+        }
+    }
+
+    termios_state_restore(&ts);
+    return found;
 }

@@ -21,7 +21,8 @@ typedef struct Args {
     bool use_sixel;
     bool use_kitty;
     bool use_kitty_shm;
-    bool use_terminal_pixels;
+    bool use_truecolor_characters;
+    bool use_palette_characters;
 } Args;
 
 // Parse command line arguments
