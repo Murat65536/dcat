@@ -12,6 +12,7 @@ typedef struct Args {
     int height;
     float camera_distance;
     float model_scale;
+    float spin_speed;
     int target_fps;
     bool no_lighting;
     bool fps_controls;

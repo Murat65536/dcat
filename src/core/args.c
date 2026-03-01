@@ -12,6 +12,7 @@ void print_usage(void) {
     printf("  -H, --height HEIGHT        renderer height\n");
     printf("      --camera-distance DIST camera distance from origin\n");
     printf("      --model-scale SCALE    scale multiplier for the model\n");
+    printf("      --spin SPEED           spin the model at specified speed (rad/s)\n");
     printf("  -f, --fps FPS              target frames per second\n");
     printf("      --no-lighting          disable lighting calculations\n");
     printf("      --keyboard-controls    enable first-person camera controls\n");
@@ -44,6 +45,8 @@ Args parse_args(int argc, char* argv[]) {
             if (++i < argc) args.camera_distance = atof(argv[i]);
         } else if (strcmp(argv[i], "--model-scale") == 0) {
             if (++i < argc) args.model_scale = atof(argv[i]);
+        } else if (strcmp(argv[i], "--spin") == 0) {
+            if (++i < argc) args.spin_speed = atof(argv[i]);
         } else if (strcmp(argv[i], "-f") == 0 || strcmp(argv[i], "--fps") == 0) {
             if (++i < argc) args.target_fps = atoi(argv[i]);
         } else if (strcmp(argv[i], "--no-lighting") == 0) {

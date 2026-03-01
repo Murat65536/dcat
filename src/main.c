@@ -322,6 +322,10 @@ int main(int argc, char* argv[]) {
         bone_matrices, has_animations
     };
     
+    float total_spin = 0.0f;
+    mat4 base_model_matrix;
+    glm_mat4_copy(render_ctx.model_matrix, base_model_matrix);
+    
     while (atomic_load(&g_running)) {
         if (g_resize_pending) {
             g_resize_pending = 0;
@@ -346,6 +350,13 @@ int main(int argc, char* argv[]) {
         last_frame_time = frame_start;
         vec3 camera_position_snapshot;
         int current_animation_index_snapshot = -1;
+        
+        if (args.spin_speed != 0.0f && !args.fps_controls) {
+            total_spin += args.spin_speed * delta_time;
+            mat4 rotation_mat;
+            glm_rotate_make(rotation_mat, total_spin, (vec3){0.0f, 1.0f, 0.0f});
+            glm_mat4_mul(rotation_mat, base_model_matrix, render_ctx.model_matrix);
+        }
 
         pthread_mutex_lock(&shared_state_mutex);
         if (input_devices_ready && atomic_load(&is_focused) && args.fps_controls) {
