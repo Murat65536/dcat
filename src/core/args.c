@@ -18,7 +18,8 @@ void print_usage(void) {
     printf("      --keyboard-controls    enable first-person camera controls\n");
     printf("  -s, --status-bar           show status bar\n");
     printf("  -S, --sixel                enable Sixel graphics mode\n");
-    printf("  -K, --kitty                enable Kitty graphics protocol mode\n");
+    printf("  -K, --kitty                enable Kitty graphics protocol (shared memory)\n");
+    printf("      --kitty-direct         enable Kitty graphics protocol (inline)\n");
     printf("  -T, --terminal-pixels      enable terminal pixels mode\n");
     printf("  -h, --help                 display this help and exit\n\n");
 }
@@ -59,6 +60,8 @@ Args parse_args(int argc, char* argv[]) {
         } else if (strcmp(argv[i], "-S") == 0 || strcmp(argv[i], "--sixel") == 0) {
             args.use_sixel = true;
         } else if (strcmp(argv[i], "-K") == 0 || strcmp(argv[i], "--kitty") == 0) {
+            args.use_kitty_shm = true;
+        } else if (strcmp(argv[i], "--kitty-direct") == 0) {
             args.use_kitty = true;
         } else if (strcmp(argv[i], "-T") == 0 || strcmp(argv[i], "--terminal-pixels") == 0) {
             args.use_terminal_pixels = true;

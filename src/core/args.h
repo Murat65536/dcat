@@ -20,6 +20,7 @@ typedef struct Args {
     bool show_help;
     bool use_sixel;
     bool use_kitty;
+    bool use_kitty_shm;
     bool use_terminal_pixels;
 } Args;
 

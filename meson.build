@@ -83,6 +83,7 @@ sources = files(
   'src/terminal/terminal_pixels.c',
   'src/terminal/sixel.c',
   'src/terminal/kitty.c',
+  'src/terminal/kitty_shm.c',
 )
 
 shader_sources = [

@@ -15,6 +15,7 @@
 #include "terminal/terminal_pixels.h"
 #include "terminal/sixel.h"
 #include "terminal/kitty.h"
+#include "terminal/kitty_shm.h"
 #include "graphics/texture_loader.h"
 #include "renderer/vulkan_renderer.h"
 #include "input/input_device.h"
@@ -173,7 +174,9 @@ static void render_frame(const RenderContext* ctx, const AnimationContext* anim_
     );
     
     if (framebuffer) {
-        if (args->use_kitty) {
+        if (args->use_kitty_shm) {
+            render_kitty_shm(framebuffer, width, height);
+        } else if (args->use_kitty) {
             render_kitty(framebuffer, width, height);
         } else if (args->use_sixel) {
             render_sixel(framebuffer, width, height);
@@ -203,8 +206,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (!args.use_kitty && !args.use_sixel && !args.use_terminal_pixels) {
-        if (detect_kitty_support())
+    if (!args.use_kitty && !args.use_kitty_shm && !args.use_sixel && !args.use_terminal_pixels) {
+        if (detect_kitty_shm_support())
+            args.use_kitty_shm = true;
+        else if (detect_kitty_support())
             args.use_kitty = true;
         else if (detect_sixel_support())
             args.use_sixel = true;
@@ -216,8 +221,9 @@ int main(int argc, char* argv[]) {
     enable_focus_tracking();
     
     uint32_t width, height;
-    calculate_render_dimensions(args.width, args.height, args.use_sixel, 
-                                args.use_kitty, args.show_status_bar, &width, &height);
+    calculate_render_dimensions(args.width, args.height, args.use_sixel,
+                                args.use_kitty || args.use_kitty_shm,
+                                args.show_status_bar, &width, &height);
     g_resize_pending = 0;
     
     VulkanRenderer* renderer = vulkan_renderer_create(width, height);
@@ -337,8 +343,9 @@ int main(int argc, char* argv[]) {
         if (g_resize_pending) {
             g_resize_pending = 0;
             uint32_t new_width, new_height;
-            calculate_render_dimensions(args.width, args.height, args.use_sixel, 
-                                       args.use_kitty, args.show_status_bar, 
+            calculate_render_dimensions(args.width, args.height, args.use_sixel,
+                                       args.use_kitty || args.use_kitty_shm,
+                                       args.show_status_bar,
                                        &new_width, &new_height);
             if (new_width != width || new_height != height) {
                 width = new_width;
