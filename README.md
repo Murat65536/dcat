@@ -2,7 +2,7 @@
 
 A 3d model viewer for the terminal
 
-https://github.com/user-attachments/assets/e7285c3a-b175-4a40-aaba-8159a17ecb31
+https://github.com/user-attachments/assets/ca47ea52-6a46-4ac2-8c9f-430fc9ea9865
 
 ## Controls
 
