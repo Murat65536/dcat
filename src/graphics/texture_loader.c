@@ -98,6 +98,7 @@ bool load_skydome(const char* skydome_path, Mesh* skydome_mesh,
     if (!texture_from_file(skydome_texture, skydome_path)) {
         fprintf(stderr, "Warning: Failed to load skydome texture\n");
         mesh_free(skydome_mesh);
+        texture_free(skydome_texture);
         return false;
     }
     

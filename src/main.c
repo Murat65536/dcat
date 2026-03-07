@@ -3,6 +3,7 @@
 #include <signal.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -58,25 +59,209 @@ typedef struct AnimationContext {
     bool has_animations;
 } AnimationContext;
 
+typedef enum OutputMode {
+    OUTPUT_MODE_AUTO = 0,
+    OUTPUT_MODE_KITTY_SHM,
+    OUTPUT_MODE_KITTY_DIRECT,
+    OUTPUT_MODE_SIXEL,
+    OUTPUT_MODE_TRUECOLOR_CHARACTERS,
+    OUTPUT_MODE_PALETTE_CHARACTERS,
+} OutputMode;
+
+typedef struct TerminalSession {
+    bool active;
+    bool mouse_orbit_enabled;
+} TerminalSession;
+
+static float compute_model_scale_factor(const CameraSetup* camera_setup,
+                                        float model_scale_arg) {
+    if (camera_setup->model_scale <= 0.0f) {
+        return 1.0f;
+    }
+
+    return (TARGET_SIZE / camera_setup->model_scale) * model_scale_arg;
+}
+
+static OutputMode output_mode_from_args(const Args* args) {
+    if (args->use_kitty_shm) {
+        return OUTPUT_MODE_KITTY_SHM;
+    }
+    if (args->use_kitty) {
+        return OUTPUT_MODE_KITTY_DIRECT;
+    }
+    if (args->use_sixel) {
+        return OUTPUT_MODE_SIXEL;
+    }
+    if (args->use_truecolor_characters) {
+        return OUTPUT_MODE_TRUECOLOR_CHARACTERS;
+    }
+    if (args->use_palette_characters) {
+        return OUTPUT_MODE_PALETTE_CHARACTERS;
+    }
+    return OUTPUT_MODE_AUTO;
+}
+
+static OutputMode detect_output_mode(void) {
+    if (detect_kitty_shm_support()) {
+        return OUTPUT_MODE_KITTY_SHM;
+    }
+    if (detect_kitty_support()) {
+        return OUTPUT_MODE_KITTY_DIRECT;
+    }
+    if (detect_sixel_support()) {
+        return OUTPUT_MODE_SIXEL;
+    }
+    if (detect_truecolor_support()) {
+        return OUTPUT_MODE_TRUECOLOR_CHARACTERS;
+    }
+    return OUTPUT_MODE_PALETTE_CHARACTERS;
+}
+
+static bool output_mode_uses_kitty(const OutputMode output_mode) {
+    return output_mode == OUTPUT_MODE_KITTY_SHM ||
+           output_mode == OUTPUT_MODE_KITTY_DIRECT;
+}
+
+static void calculate_output_dimensions(const Args* args, OutputMode output_mode,
+                                        uint32_t* width, uint32_t* height) {
+    calculate_render_dimensions(args->width, args->height,
+                                output_mode == OUTPUT_MODE_SIXEL,
+                                output_mode_uses_kitty(output_mode),
+                                args->show_status_bar, width, height);
+}
+
+static void render_output_frame(OutputMode output_mode, const uint8_t* framebuffer,
+                                uint32_t width, uint32_t height) {
+    switch (output_mode) {
+        case OUTPUT_MODE_KITTY_SHM:
+            render_kitty_shm(framebuffer, width, height);
+            break;
+        case OUTPUT_MODE_KITTY_DIRECT:
+            render_kitty(framebuffer, width, height);
+            break;
+        case OUTPUT_MODE_SIXEL:
+            render_sixel(framebuffer, width, height);
+            break;
+        case OUTPUT_MODE_PALETTE_CHARACTERS:
+            render_palette_characters(framebuffer, width, height);
+            break;
+        case OUTPUT_MODE_TRUECOLOR_CHARACTERS:
+        case OUTPUT_MODE_AUTO:
+            render_truecolor_characters(framebuffer, width, height);
+            break;
+    }
+}
+
+static void terminal_session_begin(TerminalSession* session, bool mouse_orbit) {
+    hide_cursor();
+    enter_alternate_screen();
+    enable_raw_mode();
+    enable_kitty_keyboard();
+    if (mouse_orbit) {
+        enable_mouse_orbit_tracking();
+    }
+
+    session->active = true;
+    session->mouse_orbit_enabled = mouse_orbit;
+}
+
+static void terminal_session_end(TerminalSession* session) {
+    if (!session->active) {
+        return;
+    }
+
+    disable_kitty_keyboard();
+    disable_raw_mode();
+    exit_alternate_screen();
+    show_cursor();
+    if (session->mouse_orbit_enabled) {
+        disable_mouse_orbit_tracking();
+    }
+
+    session->active = false;
+    session->mouse_orbit_enabled = false;
+}
+
+static void refresh_camera_matrices(Camera* camera, mat4 view, mat4 projection) {
+    camera_view_matrix(camera, view);
+    camera_projection_matrix(camera, projection);
+}
+
+static bool initialize_bone_matrices(mat4** out_bone_matrices) {
+    *out_bone_matrices = aligned_malloc(MAX_BONES * sizeof(mat4));
+    if (!*out_bone_matrices) {
+        return false;
+    }
+
+    for (int i = 0; i < MAX_BONES; i++) {
+        glm_mat4_identity((*out_bone_matrices)[i]);
+    }
+    return true;
+}
+
+static float calculate_frame_fps(float delta_time) {
+    return delta_time > 0.0f ? 1.0f / delta_time : 0.0f;
+}
+
+static void resize_renderer_if_needed(const Args* args, OutputMode output_mode,
+                                      VulkanRenderer* renderer,
+                                      pthread_mutex_t* shared_state_mutex,
+                                      Camera* camera, uint32_t* width,
+                                      uint32_t* height, mat4 view,
+                                      mat4 projection) {
+    if (!g_resize_pending) {
+        return;
+    }
+
+    g_resize_pending = 0;
+
+    uint32_t new_width = 0;
+    uint32_t new_height = 0;
+    calculate_output_dimensions(args, output_mode, &new_width, &new_height);
+    if (new_width == *width && new_height == *height) {
+        return;
+    }
+
+    *width = new_width;
+    *height = new_height;
+    vulkan_renderer_resize(renderer, *width, *height);
+
+    pthread_mutex_lock(shared_state_mutex);
+    camera_init(camera, *width, *height, camera->position, camera->target, 60.0f);
+    refresh_camera_matrices(camera, view, projection);
+    pthread_mutex_unlock(shared_state_mutex);
+}
+
+static const char* get_animation_name(const AnimationContext* anim_ctx,
+                                      const Mesh* mesh,
+                                      int current_animation_index) {
+    if (!anim_ctx->has_animations || current_animation_index < 0 ||
+        current_animation_index >= (int)mesh->animations.count) {
+        return "";
+    }
+
+    return mesh->animations.data[current_animation_index].name;
+}
+
 static void setup_model_transform(const Mesh* mesh, const CameraSetup* camera_setup,
                                    float model_scale_arg, mat4 out_matrix) {
-    float model_scale_factor = 1.0f;
+    float model_scale_factor = compute_model_scale_factor(camera_setup,
+                                                          model_scale_arg);
     vec3 model_center;
     glm_vec3_zero(model_center);
-    
+
     if (camera_setup->model_scale > 0.0f) {
-        model_scale_factor = (TARGET_SIZE / camera_setup->model_scale) * model_scale_arg;
         glm_vec3_copy((float*)camera_setup->target, model_center);
     }
-    
+
     glm_mat4_identity(out_matrix);
     glm_mat4_mul(out_matrix, (vec4*)mesh->coordinate_system_transform, out_matrix);
-    
+
     mat4 scale_mat;
-    glm_scale_make(scale_mat, (vec3){model_scale_factor, model_scale_factor, 
+    glm_scale_make(scale_mat, (vec3){model_scale_factor, model_scale_factor,
                                       model_scale_factor});
     glm_mat4_mul(out_matrix, scale_mat, out_matrix);
-    
+
     mat4 translate_mat;
     vec3 neg_center;
     glm_vec3_negate_to(model_center, neg_center);
@@ -86,12 +271,8 @@ static void setup_model_transform(const Mesh* mesh, const CameraSetup* camera_se
 
 static void setup_camera_position(const CameraSetup* camera_setup, float model_scale_arg,
                                    float camera_distance_arg, vec3 out_position) {
-    float model_scale_factor = 1.0f;
-    
-    if (camera_setup->model_scale > 0.0f) {
-        model_scale_factor = (TARGET_SIZE / camera_setup->model_scale) * model_scale_arg;
-    }
-    
+    float model_scale_factor = compute_model_scale_factor(camera_setup,
+                                                          model_scale_arg);
     vec3 camera_offset;
     glm_vec3_sub((float*)camera_setup->position, (float*)camera_setup->target, camera_offset);
     glm_vec3_scale(camera_offset, model_scale_factor, camera_offset);
@@ -144,7 +325,8 @@ static void process_input_devices(KeyState* key_state,
 
 static void render_frame(const RenderContext* ctx, const AnimationContext* anim_ctx,
                          const Mesh* mesh, mat4 view, mat4 projection,
-                         const Args* args, uint32_t width, uint32_t height, 
+                         OutputMode output_mode, bool show_status_bar,
+                         uint32_t width, uint32_t height,
                          float fps, float move_speed, const vec3 camera_position,
                          int current_animation_index) {
     mat4 mvp;
@@ -165,94 +347,86 @@ static void render_frame(const RenderContext* ctx, const AnimationContext* anim_
         camera_position, ctx->use_triplanar_mapping, ctx->alpha_mode,
         bone_matrix_ptr, bone_count, (const mat4*)&view, (const mat4*)&projection
     );
-    
+
     if (framebuffer) {
-        if (args->use_kitty_shm) {
-            render_kitty_shm(framebuffer, width, height);
-        } else if (args->use_kitty) {
-            render_kitty(framebuffer, width, height);
-        } else if (args->use_sixel) {
-            render_sixel(framebuffer, width, height);
-        } else if (args->use_palette_characters) {
-            render_palette_characters(framebuffer, width, height);
-        } else {
-            render_truecolor_characters(framebuffer, width, height);
-        }
-        
-        if (args->show_status_bar) {
-            const char* anim_name = "";
-            if (anim_ctx->has_animations && current_animation_index >= 0 &&
-                current_animation_index < (int)mesh->animations.count) {
-                anim_name = mesh->animations.data[current_animation_index].name;
-            }
-            draw_status_bar(fps, move_speed, camera_position, anim_name);
+        render_output_frame(output_mode, framebuffer, width, height);
+
+        if (show_status_bar) {
+            draw_status_bar(fps, move_speed, camera_position,
+                            get_animation_name(anim_ctx, mesh,
+                                               current_animation_index));
         }
     }
 }
 
 int main(int argc, char* argv[]) {
-    if (VIPS_INIT(argv[0])) {
-        fprintf(stderr, "Failed to initialize libvips\n");
-        return 1;
-    }
-
     Args args = parse_args(argc, argv);
     if (!validate_args(&args)) {
         return 1;
     }
 
-    if (!args.use_kitty && !args.use_kitty_shm && !args.use_sixel && 
-        !args.use_truecolor_characters && !args.use_palette_characters) {
-        if (detect_kitty_shm_support())
-            args.use_kitty_shm = true;
-        else if (detect_kitty_support())
-            args.use_kitty = true;
-        else if (detect_sixel_support())
-            args.use_sixel = true;
-        else if (detect_truecolor_support())
-            args.use_truecolor_characters = true;
-        else
-            args.use_palette_characters = true;
+    if (VIPS_INIT(argv[0])) {
+        fprintf(stderr, "Failed to initialize libvips\n");
+        return 1;
     }
-    
+
+    atomic_store(&g_running, true);
+
+    int exit_code = 1;
+    OutputMode output_mode = output_mode_from_args(&args);
+    if (output_mode == OUTPUT_MODE_AUTO) {
+        output_mode = detect_output_mode();
+    }
+
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
     signal(SIGWINCH, resize_handler);
-    
-    uint32_t width, height;
-    calculate_render_dimensions(args.width, args.height, args.use_sixel,
-                                args.use_kitty || args.use_kitty_shm,
-                                args.show_status_bar, &width, &height);
+
+    uint32_t width = 0;
+    uint32_t height = 0;
+    calculate_output_dimensions(&args, output_mode, &width, &height);
     g_resize_pending = 0;
-    
-    VulkanRenderer* renderer = vulkan_renderer_create(width, height);
-    if (!renderer || !vulkan_renderer_initialize(renderer)) {
-        fprintf(stderr, "Failed to initialize Vulkan renderer\n");
-        return 1;
-    }
-    vulkan_renderer_set_light_direction(renderer, (vec3){0.0f, -1.0f, -0.5f});
-    
+
+    VulkanRenderer* renderer = NULL;
     Mesh mesh;
     mesh_init(&mesh);
-    bool has_uvs = false;
     MaterialInfo material_info;
     material_info_init(&material_info);
-    
+    Texture diffuse_texture = {0};
+    Texture normal_texture = {0};
+    Mesh skydome_mesh;
+    mesh_init(&skydome_mesh);
+    Texture skydome_texture = {0};
+    mat4* bone_matrices = NULL;
+    bool has_uvs = false;
+    bool has_animations = false;
+    bool has_skydome = false;
+    pthread_mutex_t shared_state_mutex;
+    bool shared_state_mutex_initialized = false;
+    pthread_t input_thread;
+    bool input_thread_started = false;
+    TerminalSession terminal_session = {0};
+
+    renderer = vulkan_renderer_create(width, height);
+    if (!renderer || !vulkan_renderer_initialize(renderer)) {
+        fprintf(stderr, "Failed to initialize Vulkan renderer\n");
+        goto cleanup;
+    }
+    vulkan_renderer_set_light_direction(renderer, (vec3){0.0f, -1.0f, -0.5f});
+
     if (!load_model(args.model_path, &mesh, &has_uvs, &material_info)) {
         fprintf(stderr, "Failed to load model: %s\n", args.model_path);
-        vulkan_renderer_destroy(renderer);
-        return 1;
+        goto cleanup;
     }
-    
+
     AnimationState anim_state;
     animation_state_init(&anim_state);
-    mat4* bone_matrices = aligned_malloc(MAX_BONES * sizeof(mat4));
-    for (int i = 0; i < MAX_BONES; i++) {
-        glm_mat4_identity(bone_matrices[i]);
+    if (!initialize_bone_matrices(&bone_matrices)) {
+        fprintf(stderr, "Failed to allocate bone matrices\n");
+        goto cleanup;
     }
-    bool has_animations = mesh.has_animations && mesh.animations.count > 0;
-    
-    Texture diffuse_texture, normal_texture;
+    has_animations = mesh.has_animations && mesh.animations.count > 0;
+
     load_diffuse_texture(args.model_path, args.texture_path,
                          &material_info, &diffuse_texture);
     load_normal_texture(args.normal_map_path, &material_info, &normal_texture);
@@ -262,9 +436,7 @@ int main(int argc, char* argv[]) {
         alpha_mode = ALPHA_MODE_BLEND;
     }
     
-    Mesh skydome_mesh;
-    Texture skydome_texture;
-    bool has_skydome = load_skydome(args.skydome_path, &skydome_mesh, &skydome_texture);
+    has_skydome = load_skydome(args.skydome_path, &skydome_mesh, &skydome_texture);
     if (has_skydome) {
         vulkan_renderer_set_skydome(renderer, &skydome_mesh, &skydome_texture);
     }
@@ -285,25 +457,23 @@ int main(int argc, char* argv[]) {
     const float MOVE_SPEED_BASE = 0.5f;
     float move_speed = MOVE_SPEED_BASE * TARGET_SIZE;
     double target_frame_time = 1.0 / args.target_fps;
-    
+
     KeyState key_state = {0};
-    
-    hide_cursor();
-    enter_alternate_screen();
-    enable_raw_mode();
-    enable_kitty_keyboard();
-    if (args.mouse_orbit) {
-        enable_mouse_orbit_tracking();
-    }
-    
+
     Camera camera;
     camera_init(&camera, width, height, camera_position, camera_target, 60.0f);
-    
+
     mat4 view, projection;
-    camera_view_matrix(&camera, view);
-    camera_projection_matrix(&camera, projection);
-    pthread_mutex_t shared_state_mutex = PTHREAD_MUTEX_INITIALIZER;
-    
+    refresh_camera_matrices(&camera, view, projection);
+
+    if (pthread_mutex_init(&shared_state_mutex, NULL) != 0) {
+        fprintf(stderr, "Failed to initialize shared state mutex\n");
+        goto cleanup;
+    }
+    shared_state_mutex_initialized = true;
+
+    terminal_session_begin(&terminal_session, args.mouse_orbit);
+
     double last_frame_time = get_time_seconds();
 
     InputThreadData input_data = {
@@ -311,9 +481,13 @@ int main(int argc, char* argv[]) {
         args.fps_controls, args.mouse_orbit, args.mouse_sensitivity, has_animations,
         &key_state
     };
-    pthread_t input_thread;
-    pthread_create(&input_thread, NULL, input_thread_func, &input_data);
-    
+    int thread_error = pthread_create(&input_thread, NULL, input_thread_func, &input_data);
+    if (thread_error != 0) {
+        fprintf(stderr, "Failed to start input thread: %s\n", strerror(thread_error));
+        goto cleanup;
+    }
+    input_thread_started = true;
+
     RenderContext render_ctx = {
         .renderer = renderer,
         .model_matrix = {{0}},
@@ -332,27 +506,11 @@ int main(int argc, char* argv[]) {
     float total_spin = 0.0f;
     mat4 base_model_matrix;
     glm_mat4_copy(render_ctx.model_matrix, base_model_matrix);
-    
+
     while (atomic_load(&g_running)) {
-        if (g_resize_pending) {
-            g_resize_pending = 0;
-            uint32_t new_width, new_height;
-            calculate_render_dimensions(args.width, args.height, args.use_sixel,
-                                       args.use_kitty || args.use_kitty_shm,
-                                       args.show_status_bar,
-                                       &new_width, &new_height);
-            if (new_width != width || new_height != height) {
-                width = new_width;
-                height = new_height;
-                vulkan_renderer_resize(renderer, width, height);
-                pthread_mutex_lock(&shared_state_mutex);
-                camera_init(&camera, width, height, camera.position, camera.target, 60.0f);
-                camera_view_matrix(&camera, view);
-                camera_projection_matrix(&camera, projection);
-                pthread_mutex_unlock(&shared_state_mutex);
-            }
-        }
-        
+        resize_renderer_if_needed(&args, output_mode, renderer, &shared_state_mutex,
+                                  &camera, &width, &height, view, projection);
+
         double frame_start = get_time_seconds();
         float delta_time = (float)(frame_start - last_frame_time);
         last_frame_time = frame_start;
@@ -369,7 +527,7 @@ int main(int argc, char* argv[]) {
         pthread_mutex_lock(&shared_state_mutex);
         if (args.fps_controls) {
             process_input_devices(&key_state, &camera, delta_time,
-                                &move_speed);
+                                  &move_speed);
         }
         camera_view_matrix(&camera, view);
         glm_vec3_copy(camera.position, camera_position_snapshot);
@@ -378,41 +536,41 @@ int main(int argc, char* argv[]) {
             current_animation_index_snapshot = anim_state.current_animation_index;
         }
         pthread_mutex_unlock(&shared_state_mutex);
-        
-        render_frame(&render_ctx, &anim_ctx, &mesh, view, projection, &args, 
-                    width, height, 1.0f / delta_time, move_speed,
-                    camera_position_snapshot, current_animation_index_snapshot);
-        
+
+        render_frame(&render_ctx, &anim_ctx, &mesh, view, projection, output_mode,
+                     args.show_status_bar, width, height,
+                     calculate_frame_fps(delta_time), move_speed,
+                     camera_position_snapshot, current_animation_index_snapshot);
+
         double frame_end = get_time_seconds();
         double frame_duration = frame_end - frame_start;
         if (frame_duration < target_frame_time) {
             usleep((useconds_t)((target_frame_time - frame_duration) * 1e6));
         }
     }
-    
+
+    exit_code = 0;
+
+cleanup:
+    atomic_store(&g_running, false);
     vulkan_renderer_wait_idle(renderer);
-    pthread_join(input_thread, NULL);
-    
-    disable_kitty_keyboard();
-    disable_raw_mode();
-    exit_alternate_screen();
-    show_cursor();
-    if (args.mouse_orbit) {
-        disable_mouse_orbit_tracking();
+    if (input_thread_started) {
+        pthread_join(input_thread, NULL);
     }
-    pthread_mutex_destroy(&shared_state_mutex);
-    
+    terminal_session_end(&terminal_session);
+    if (shared_state_mutex_initialized) {
+        pthread_mutex_destroy(&shared_state_mutex);
+    }
+
     free(bone_matrices);
     texture_free(&diffuse_texture);
     texture_free(&normal_texture);
-    if (has_skydome) {
-        mesh_free(&skydome_mesh);
-        texture_free(&skydome_texture);
-    }
+    texture_free(&skydome_texture);
+    mesh_free(&skydome_mesh);
     mesh_free(&mesh);
     material_info_free(&material_info);
     vulkan_renderer_destroy(renderer);
 
     vips_shutdown();
-    return 0;
+    return exit_code;
 }

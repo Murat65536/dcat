@@ -6,9 +6,13 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+static bool get_winsize(struct winsize *ws) {
+  return ioctl(STDOUT_FILENO, TIOCGWINSZ, ws) == 0;
+}
+
 void get_terminal_size(uint32_t *cols, uint32_t *rows) {
   struct winsize ws;
-  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0) {
+  if (get_winsize(&ws)) {
     *cols = ws.ws_col;
     *rows = ws.ws_row;
   } else {
@@ -19,8 +23,7 @@ void get_terminal_size(uint32_t *cols, uint32_t *rows) {
 
 void get_terminal_size_pixels(uint32_t *width, uint32_t *height) {
   struct winsize ws;
-  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_xpixel > 0 &&
-      ws.ws_ypixel > 0) {
+  if (get_winsize(&ws) && ws.ws_xpixel > 0 && ws.ws_ypixel > 0) {
     *width = ws.ws_xpixel;
     *height = ws.ws_ypixel;
   } else {
@@ -98,7 +101,11 @@ void draw_status_bar(float fps, float speed, const float *pos,
                      "%.2f | POS: %.2f, %.2f, %.2f%s \x1b[0m\x1b[H\x1b[?2026l",
                      rows, fps, speed, pos[0], pos[1], pos[2], anim_part);
   if (len > 0) {
-    safe_write(buffer, (size_t)len);
+    size_t written = (size_t)len;
+    if (written >= sizeof(buffer)) {
+      written = sizeof(buffer) - 1;
+    }
+    safe_write(buffer, written);
   }
 }
 
