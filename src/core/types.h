@@ -130,6 +130,8 @@ typedef struct MaterialInfo {
     unsigned int uv_channel;        // which UV set the diffuse texture uses
     unsigned char* embedded_diffuse; // raw bytes of embedded diffuse texture (or NULL)
     size_t embedded_diffuse_size;   // byte count of embedded_diffuse
+    unsigned char* embedded_normal; // raw bytes of embedded normal map texture (or NULL)
+    size_t embedded_normal_size;    // byte count of embedded_normal
 } MaterialInfo;
 
 // Camera setup calculated from model bounds

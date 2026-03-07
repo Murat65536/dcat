@@ -31,12 +31,15 @@ void material_info_init(MaterialInfo* info) {
     info->uv_channel = 0;
     info->embedded_diffuse = NULL;
     info->embedded_diffuse_size = 0;
+    info->embedded_normal = NULL;
+    info->embedded_normal_size = 0;
 }
 
 void material_info_free(MaterialInfo* info) {
     free(info->diffuse_path);
     free(info->normal_path);
     free(info->embedded_diffuse);
+    free(info->embedded_normal);
     material_info_init(info);
 }
 
@@ -696,6 +699,21 @@ bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs, MaterialInfo* o
                 if (out_material->embedded_diffuse) {
                     memcpy(out_material->embedded_diffuse, embedded_tex->pcData, embedded_tex->mWidth);
                     out_material->embedded_diffuse_size = embedded_tex->mWidth;
+                }
+            }
+        }
+    }
+
+    // Same for embedded normal map
+    if (out_material->normal_path && out_material->normal_path[0] == '*') {
+        int tex_index = atoi(out_material->normal_path + 1);
+        if (tex_index >= 0 && tex_index < (int)scene->mNumTextures) {
+            const struct aiTexture* embedded_tex = scene->mTextures[tex_index];
+            if (embedded_tex->mHeight == 0) {
+                out_material->embedded_normal = malloc(embedded_tex->mWidth);
+                if (out_material->embedded_normal) {
+                    memcpy(out_material->embedded_normal, embedded_tex->pcData, embedded_tex->mWidth);
+                    out_material->embedded_normal_size = embedded_tex->mWidth;
                 }
             }
         }

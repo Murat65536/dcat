@@ -73,6 +73,15 @@ bool load_normal_texture(const char* normal_arg, const MaterialInfo* material_in
     const char* final_path = normal_arg ? normal_arg : material_info->normal_path;
     
     if (final_path && final_path[0] != '\0') {
+        if (final_path[0] == '*') {
+            if (!normal_arg && material_info->embedded_normal && material_info->embedded_normal_size > 0) {
+                return texture_from_memory(out_texture,
+                                           material_info->embedded_normal,
+                                           material_info->embedded_normal_size);
+            }
+            texture_create_flat_normal_map(out_texture);
+            return true;
+        }
         if (texture_from_file(out_texture, final_path)) {
             return true;
         }
