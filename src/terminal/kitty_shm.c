@@ -26,71 +26,51 @@ static inline size_t base64_encode(const uint8_t *data, size_t len, char *out) {
     return (size_t)(p - out);
 }
 
-#define KITTY_NUM_BUFS 32
-
-static char kitty_shm_names[KITTY_NUM_BUFS][64];
-static bool kitty_shm_active[KITTY_NUM_BUFS];
-
-static void kitty_cleanup(void) {
-    for (int i = 0; i < KITTY_NUM_BUFS; i++) {
-        if (kitty_shm_active[i]) {
-            shm_unlink(kitty_shm_names[i]);
-            kitty_shm_active[i] = false;
-        }
-    }
-}
-
+static char kitty_shm_name[64];
+static char kitty_shm_encoded[128];
+static size_t kitty_shm_encoded_len;
 static bool kitty_initialized = false;
 
-void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height) {
-    static uint32_t buf_idx = 0;
+static void kitty_cleanup(void) {
+    if (kitty_initialized)
+        shm_unlink(kitty_shm_name);
+}
 
+void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height) {
     if (!kitty_initialized) {
-        memset(kitty_shm_active, 0, sizeof(kitty_shm_active));
+        int name_len = snprintf(kitty_shm_name, sizeof(kitty_shm_name),
+                                "/dcat_%d", getpid());
+        kitty_shm_encoded_len = base64_encode(
+            (const uint8_t *)kitty_shm_name, (size_t)name_len,
+            kitty_shm_encoded);
         atexit(kitty_cleanup);
         kitty_initialized = true;
     }
 
-    buf_idx = (buf_idx + 1) % KITTY_NUM_BUFS;
     size_t data_size = (size_t)width * height * 4;
 
-    char shm_name[64];
-    int name_len = snprintf(shm_name, sizeof(shm_name), "/dcat_shm_%d_%u", getpid(), buf_idx);
-
-    char encoded_name[128];
-    size_t encoded_len = base64_encode((const uint8_t *)shm_name, (size_t)name_len, encoded_name);
-
-    int fd = shm_open(shm_name, O_CREAT | O_RDWR, 0600);
+    int fd = shm_open(kitty_shm_name, O_CREAT | O_RDWR, 0600);
     if (fd == -1) return;
 
     if (ftruncate(fd, (off_t)data_size) == -1) {
         close(fd);
-        shm_unlink(shm_name);
         return;
     }
 
     void *ptr = mmap(NULL, data_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     close(fd);
-    if (ptr == MAP_FAILED) {
-        shm_unlink(shm_name);
-        return;
-    }
+    if (ptr == MAP_FAILED) return;
 
     memcpy(ptr, buffer, data_size);
     munmap(ptr, data_size);
 
-    // Track for cleanup
-    memcpy(kitty_shm_names[buf_idx], shm_name, (size_t)(name_len + 1));
-    kitty_shm_active[buf_idx] = true;
-
     char cmd[512];
     int cmd_len = snprintf(cmd, sizeof(cmd),
-        "\x1b_Ga=T,f=32,s=%u,v=%u,t=s,i=1,C=1,q=1;", width, height);
-    memcpy(cmd + cmd_len, encoded_name, encoded_len);
-    cmd_len += (int)encoded_len;
+        "\x1b[H\x1b_Gf=32,a=T,s=%u,v=%u,t=s,C=1;", width, height);
+    memcpy(cmd + cmd_len, kitty_shm_encoded, kitty_shm_encoded_len);
+    cmd_len += (int)kitty_shm_encoded_len;
     memcpy(cmd + cmd_len, "\x1b\\", 2);
     cmd_len += 2;
-
     safe_write(cmd, (size_t)cmd_len);
 }
 
@@ -98,8 +78,6 @@ bool detect_kitty_shm_support(void) {
     if (!isatty(STDOUT_FILENO) || !isatty(STDIN_FILENO))
         return false;
 
-    // Test using t=s (shared memory) — the same path render_kitty uses.
-    // Some terminals support t=d (inline base64) but not t=s.
     static const char *shm_name = "/dcat_detect";
     static const uint8_t pixel[4] = {0, 0, 0, 0};
 
@@ -150,17 +128,16 @@ bool detect_kitty_shm_support(void) {
 
     safe_write(query, (size_t)qlen);
 
-    char buffer[32];
+    char buf[32];
     bool found = false;
 
-    ssize_t r = read(STDIN_FILENO, buffer, sizeof(buffer) - 1);
+    ssize_t r = read(STDIN_FILENO, buf, sizeof(buf) - 1);
     if (r > 0) {
-        buffer[r] = '\0';
-        if (strstr(buffer, "\x1b_Gi=31;OK"))
+        buf[r] = '\0';
+        if (strstr(buf, "\x1b_Gi=31;OK"))
             found = true;
     }
 
-    // Safe to unlink after read — terminal has already processed the command
     shm_unlink(shm_name);
 
     if (found)
