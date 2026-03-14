@@ -162,6 +162,27 @@ void camera_zoom(Camera* cam, float delta) {
     glm_vec3_sub(cam->target, offset, cam->position);
 }
 
+void camera_pan(Camera* cam, float dx, float dy) {
+    float dist = glm_vec3_distance(cam->position, cam->target);
+    vec3 forward, right, up;
+    glm_vec3_sub(cam->target, cam->position, forward);
+    glm_vec3_normalize(forward);
+    
+    glm_vec3_cross(forward, cam->up, right);
+    glm_vec3_normalize(right);
+    
+    glm_vec3_cross(right, forward, up);
+    glm_vec3_normalize(up);
+    
+    vec3 move_x, move_y, move;
+    glm_vec3_scale(right, -dx * dist, move_x);
+    glm_vec3_scale(up, dy * dist, move_y);
+    glm_vec3_add(move_x, move_y, move);
+    
+    glm_vec3_add(cam->position, move, cam->position);
+    glm_vec3_add(cam->target, move, cam->target);
+}
+
 void camera_forward_direction(const Camera* cam, vec3 out) {
     out[0] = cosf(cam->yaw) * cosf(cam->pitch);
     out[1] = sinf(cam->pitch);

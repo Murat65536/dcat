@@ -9,6 +9,17 @@
 #include "../renderer/vulkan_renderer.h"
 #include "../graphics/model.h"
 
+typedef enum MouseButton {
+    MOUSE_BUTTON_LEFT = 0,
+    MOUSE_BUTTON_MIDDLE = 1,
+    MOUSE_BUTTON_RIGHT = 2,
+    MOUSE_BUTTON_DRAG_LEFT = 32,
+    MOUSE_BUTTON_DRAG_MIDDLE = 33,
+    MOUSE_BUTTON_DRAG_RIGHT = 34,
+    MOUSE_BUTTON_SCROLL_UP = 64,
+    MOUSE_BUTTON_SCROLL_DOWN = 65
+} MouseButton;
+
 // Key state tracking
 typedef struct KeyState {
     bool w, a, s, d;

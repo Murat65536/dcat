@@ -96,7 +96,6 @@ void* input_thread_func(void* arg) {
     InputThreadData* data = (InputThreadData*)arg;
     char buffer[512];
     ssize_t carry = 0;
-    bool mouse_dragging = false;
     int last_mouse_x = 0, last_mouse_y = 0;
 
     while (atomic_load(data->running)) {
@@ -162,26 +161,47 @@ void* input_thread_func(void* arg) {
                     my = my * 10 + (buffer[p++] - '0');
 
                 if (data->mouse_orbit) {
-                    if (buffer[j] == 'm') {
-                        mouse_dragging = false;
-                    } else if (btn == 0) {
-                        mouse_dragging = true;
-                        last_mouse_x = mx;
-                        last_mouse_y = my;
-                    } else if (btn == 32 && mouse_dragging) {
-                        int dx = mx - last_mouse_x;
-                        int dy = my - last_mouse_y;
-                        last_mouse_x = mx;
-                        last_mouse_y = my;
-                        if (dx != 0 || dy != 0) {
-                            camera_orbit(data->camera,
-                                         (float)dx * data->mouse_sensitivity,
-                                         -(float)dy * data->mouse_sensitivity);
+                    if (buffer[j] == 'M') {
+                        switch (btn) {
+                            case MOUSE_BUTTON_LEFT:
+                            case MOUSE_BUTTON_MIDDLE:
+                            case MOUSE_BUTTON_RIGHT:
+                                last_mouse_x = mx;
+                                last_mouse_y = my;
+                                break;
+                            case MOUSE_BUTTON_DRAG_LEFT: {
+                                int dx = mx - last_mouse_x;
+                                int dy = my - last_mouse_y;
+                                last_mouse_x = mx;
+                                last_mouse_y = my;
+                                if (dx != 0 || dy != 0) {
+                                    camera_orbit(data->camera,
+                                                 (float)dx * data->mouse_sensitivity,
+                                                 -(float)dy * data->mouse_sensitivity);
+                                }
+                                break;
+                            }
+                            case MOUSE_BUTTON_DRAG_RIGHT:
+                            case MOUSE_BUTTON_DRAG_MIDDLE: {
+                                int dx = mx - last_mouse_x;
+                                int dy = my - last_mouse_y;
+                                last_mouse_x = mx;
+                                last_mouse_y = my;
+                                if (dx != 0 || dy != 0) {
+                                    float pan_speed = data->mouse_sensitivity * 0.1f;
+                                    camera_pan(data->camera, (float)dx * pan_speed, (float)dy * pan_speed);
+                                }
+                                break;
+                            }
+                            case MOUSE_BUTTON_SCROLL_UP:
+                                camera_zoom(data->camera, ZOOM_AMOUNT);
+                                break;
+                            case MOUSE_BUTTON_SCROLL_DOWN:
+                                camera_zoom(data->camera, -ZOOM_AMOUNT);
+                                break;
+                            default:
+                                break;
                         }
-                    } else if (btn == 64) {
-                        camera_zoom(data->camera, ZOOM_AMOUNT);
-                    } else if (btn == 65) {
-                        camera_zoom(data->camera, -ZOOM_AMOUNT);
                     }
                 }
 

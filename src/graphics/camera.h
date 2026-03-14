@@ -41,6 +41,7 @@ void camera_rotate(Camera* cam, float yaw_delta, float pitch_delta);
 // Camera orbit around target
 void camera_orbit(Camera* cam, float yaw_delta, float pitch_delta);
 void camera_zoom(Camera* cam, float delta);
+void camera_pan(Camera* cam, float dx, float dy);
 
 // Get camera forward direction vector
 void camera_forward_direction(const Camera* cam, vec3 out);
