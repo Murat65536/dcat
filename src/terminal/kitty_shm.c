@@ -66,11 +66,12 @@ void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height) {
 
     char cmd[512];
     int cmd_len = snprintf(cmd, sizeof(cmd),
-        "\x1b[H\x1b_Gf=32,a=T,s=%u,v=%u,t=s,C=1;", width, height);
+        "\x1b[?2026h\x1b[H\x1b_Gf=32,a=T,s=%u,v=%u,t=s,C=1,q=1;",
+        width, height);
     memcpy(cmd + cmd_len, kitty_shm_encoded, kitty_shm_encoded_len);
     cmd_len += (int)kitty_shm_encoded_len;
-    memcpy(cmd + cmd_len, "\x1b\\", 2);
-    cmd_len += 2;
+    memcpy(cmd + cmd_len, "\x1b\\\x1b[?2026l", 10);
+    cmd_len += 10;
     safe_write(cmd, (size_t)cmd_len);
 }
 
