@@ -1,0 +1,40 @@
+name: 'Setup'
+description: 'Installs dependencies and builds the project with Meson'
+inputs:
+  buildtype:
+    description: 'Meson build type (e.g., release, debug)'
+    required: true
+    default: 'release'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Add LunarG Vulkan SDK repository
+      shell: bash
+      run: |
+        wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
+        sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-noble.list https://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list
+        sudo apt-get update
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        sudo apt-get install -y \
+          gcc \
+          ninja-build \
+          libvulkan-dev \
+          vulkan-headers \
+          shaderc \
+          libassimp-dev \
+          libcglm-dev \
+          libsixel-dev \
+          meson \
+          libvips-dev
+
+    - name: Configure
+      shell: bash
+      run: meson setup build --buildtype=${{ inputs.buildtype }} -Duse_sanitizers=false
+
+    - name: Build
+      shell: bash
+      run: meson compile -C build

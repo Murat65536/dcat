@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        uses: ./.github/actions/setup
+        with:
+          buildtype: 'release'
+
+      - name: Prepare Release Artifacts
+        run: |
+          mkdir -p dcat-linux/shaders
+          cp build/dcat dcat-linux/
+          cp build/*.spv dcat-linux/shaders/
+          cp LICENSE dcat-linux/
+          cp README.md dcat-linux/
+          tar -czvf dcat-linux-x86_64.tar.gz dcat-linux
+
+      - name: Publish Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+            gh release create "$TAG_NAME" dcat-linux-x86_64.tar.gz \
+              --title "Release $TAG_NAME" \
+              --notes "Release $TAG_NAME"
+          else
+            gh release delete nightly --yes || true
+            git push origin :nightly || true
+            gh release create nightly dcat-linux-x86_64.tar.gz \
+              --prerelease \
+              --title "Nightly Build" \
+              --notes "Automated nightly build of the latest main branch." \
+              --target main
+          fi
