@@ -4,6 +4,8 @@
 #include <cglm/cam.h>
 #include <cglm/vec3.h>
 
+static const float DISTANCE_SCALING_POWER = 1.25f;
+
 void camera_init(Camera* cam, uint32_t width, uint32_t height,
                  vec3 pos, vec3 tgt, float fov_degrees) {
     glm_vec3_copy(pos, cam->position);
@@ -143,7 +145,7 @@ void camera_orbit(Camera* cam, float yaw_delta, float pitch_delta) {
 
 void camera_zoom(Camera* cam, float delta) {
     float dist = glm_vec3_distance(cam->position, cam->target);
-    dist -= delta;
+    dist -= delta * powf(dist, DISTANCE_SCALING_POWER);
     if (dist < 0.1f) dist = 0.1f;
     
     float cos_yaw = cosf(cam->yaw);
@@ -164,6 +166,7 @@ void camera_zoom(Camera* cam, float delta) {
 
 void camera_pan(Camera* cam, float dx, float dy) {
     float dist = glm_vec3_distance(cam->position, cam->target);
+    float scale = powf(dist, DISTANCE_SCALING_POWER);
     vec3 forward, right, up;
     glm_vec3_sub(cam->target, cam->position, forward);
     glm_vec3_normalize(forward);
@@ -175,8 +178,8 @@ void camera_pan(Camera* cam, float dx, float dy) {
     glm_vec3_normalize(up);
     
     vec3 move_x, move_y, move;
-    glm_vec3_scale(right, -dx * dist, move_x);
-    glm_vec3_scale(up, dy * dist, move_y);
+    glm_vec3_scale(right, -dx * scale, move_x);
+    glm_vec3_scale(up, dy * scale, move_y);
     glm_vec3_add(move_x, move_y, move);
     
     glm_vec3_add(cam->position, move, cam->position);

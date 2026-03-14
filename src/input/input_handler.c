@@ -5,7 +5,7 @@
 #include <cglm/cglm.h>
 
 static const float ROTATION_AMOUNT = GLM_PI / 8.0f;
-static const float ZOOM_AMOUNT = 0.25f;
+static const float ZOOM_AMOUNT = 0.05f;
 
 // Kitty keyboard protocol key codes for modifier keys
 #define KITTY_LEFT_SHIFT   57441
@@ -188,7 +188,7 @@ void* input_thread_func(void* arg) {
                                 last_mouse_x = mx;
                                 last_mouse_y = my;
                                 if (dx != 0 || dy != 0) {
-                                    float pan_speed = data->mouse_sensitivity * 0.1f;
+                                    float pan_speed = data->mouse_sensitivity * 0.2f;
                                     camera_pan(data->camera, (float)dx * pan_speed, (float)dy * pan_speed);
                                 }
                                 break;
