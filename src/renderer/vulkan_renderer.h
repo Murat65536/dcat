@@ -101,6 +101,7 @@ typedef struct VulkanRenderer {
     VkPipelineLayout pipeline_layout;
     VkRenderPass render_pass;
     VkPipeline graphics_pipeline;
+    VkPipeline blend_pipeline;
     VkPipeline wireframe_pipeline;
     atomic_bool wireframe_mode;
 

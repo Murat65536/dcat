@@ -212,7 +212,7 @@ bool create_graphics_pipeline(VulkanRenderer* r) {
     color_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     color_blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
     color_blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     color_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
     
     VkPipelineColorBlendStateCreateInfo color_blending = {.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
@@ -247,10 +247,22 @@ bool create_graphics_pipeline(VulkanRenderer* r) {
         return false;
     }
     
+    // Create blend pipeline (depth writes disabled for correct transparency)
+    depth_stencil.depthWriteEnable = VK_FALSE;
+    if (vkCreateGraphicsPipelines(r->device, VK_NULL_HANDLE, 1, &pipeline_info, NULL, &r->blend_pipeline) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create blend pipeline\n");
+        vkDestroyPipeline(r->device, r->graphics_pipeline, NULL);
+        vkDestroyShaderModule(r->device, vert_module, NULL);
+        vkDestroyShaderModule(r->device, frag_module, NULL);
+        return false;
+    }
+
     // Create wireframe pipeline
+    depth_stencil.depthWriteEnable = VK_TRUE;
     rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
     if (vkCreateGraphicsPipelines(r->device, VK_NULL_HANDLE, 1, &pipeline_info, NULL, &r->wireframe_pipeline) != VK_SUCCESS) {
         fprintf(stderr, "Failed to create wireframe pipeline\n");
+        vkDestroyPipeline(r->device, r->blend_pipeline, NULL);
         vkDestroyPipeline(r->device, r->graphics_pipeline, NULL);
         vkDestroyShaderModule(r->device, vert_module, NULL);
         vkDestroyShaderModule(r->device, frag_module, NULL);

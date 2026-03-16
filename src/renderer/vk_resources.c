@@ -288,6 +288,9 @@ void cleanup(VulkanRenderer* r) {
         if (r->graphics_pipeline != VK_NULL_HANDLE) {
             vkDestroyPipeline(r->device, r->graphics_pipeline, NULL);
         }
+        if (r->blend_pipeline != VK_NULL_HANDLE) {
+            vkDestroyPipeline(r->device, r->blend_pipeline, NULL);
+        }
         if (r->wireframe_pipeline != VK_NULL_HANDLE) {
             vkDestroyPipeline(r->device, r->wireframe_pipeline, NULL);
         }

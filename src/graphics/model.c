@@ -745,6 +745,33 @@ bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs,
             }
         }
 
+        // Fallback: check standard material opacity
+        if (mats[i].alpha_mode == ALPHA_MODE_OPAQUE) {
+            float opacity = 1.0f;
+            if (aiGetMaterialFloat(material, AI_MATKEY_OPACITY, &opacity) == aiReturn_SUCCESS) {
+                if (opacity < 1.0f) {
+                    mats[i].alpha_mode = ALPHA_MODE_BLEND;
+                }
+            }
+        }
+
+        // Check if diffuse texture has an opacity channel (e.g. PNG with alpha)
+        if (mats[i].alpha_mode == ALPHA_MODE_OPAQUE) {
+            unsigned int flags = 0;
+            if (aiGetMaterialInteger(material, "$tex.file.flags", aiTextureType_DIFFUSE, 0, (int*)&flags) == aiReturn_SUCCESS) {
+                if (flags & aiTextureFlags_UseAlpha) {
+                    mats[i].alpha_mode = ALPHA_MODE_BLEND;
+                }
+            }
+        }
+
+        // Check if there is a separate opacity texture
+        if (mats[i].alpha_mode == ALPHA_MODE_OPAQUE) {
+            if (aiGetMaterialTexture(material, aiTextureType_OPACITY, 0, &str, NULL, NULL, NULL, NULL, NULL, NULL) == aiReturn_SUCCESS) {
+                mats[i].alpha_mode = ALPHA_MODE_BLEND;
+            }
+        }
+
         // Pre-cache embedded texture bytes
         extract_embedded_texture(scene, &mats[i], true);
         extract_embedded_texture(scene, &mats[i], false);

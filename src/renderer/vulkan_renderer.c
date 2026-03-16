@@ -343,19 +343,33 @@ const uint8_t* vulkan_renderer_render(
     vkCmdBindIndexBuffer(cmd, r->index_buffer, 0, VK_INDEX_TYPE_UINT32);
 
     if (mesh->submeshes.count > 0) {
-        // Draw opaque/mask submeshes first, then blend
-        for (int pass = 0; pass < 2; pass++) {
-            for (size_t i = 0; i < mesh->submeshes.count; i++) {
-                const SubMesh* sm = &mesh->submeshes.data[i];
-                uint32_t mat_idx = sm->material_index < material_count ? sm->material_index : 0;
+        for (size_t i = 0; i < mesh->submeshes.count; i++) {
+            const SubMesh* sm = &mesh->submeshes.data[i];
+            uint32_t mat_idx = sm->material_index < material_count ? sm->material_index : 0;
+            if (materials[mat_idx].alpha_mode == ALPHA_MODE_BLEND) continue;
 
-                bool is_blend = (materials[mat_idx].alpha_mode == ALPHA_MODE_BLEND);
-                if ((pass == 0 && is_blend) || (pass == 1 && !is_blend)) continue;
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->pipeline_layout, 0, 1,
+                                   &r->material_gpu[mat_idx].descriptor_sets[r->current_frame], 0, NULL);
+            vkCmdDrawIndexed(cmd, sm->index_count, 1, sm->index_offset, 0, 0);
+        }
 
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->pipeline_layout, 0, 1,
-                                       &r->material_gpu[mat_idx].descriptor_sets[r->current_frame], 0, NULL);
-                vkCmdDrawIndexed(cmd, sm->index_count, 1, sm->index_offset, 0, 0);
+        bool has_blend = false;
+        for (size_t i = 0; i < mesh->submeshes.count; i++) {
+            const SubMesh* sm = &mesh->submeshes.data[i];
+            uint32_t mat_idx = sm->material_index < material_count ? sm->material_index : 0;
+            if (materials[mat_idx].alpha_mode != ALPHA_MODE_BLEND) continue;
+
+            if (!has_blend) {
+                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->blend_pipeline);
+                vkCmdPushConstants(cmd, r->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &push_constants);
+                vkCmdBindVertexBuffers(cmd, 0, 1, vbs, vb_offsets);
+                vkCmdBindIndexBuffer(cmd, r->index_buffer, 0, VK_INDEX_TYPE_UINT32);
+                has_blend = true;
             }
+
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->pipeline_layout, 0, 1,
+                                   &r->material_gpu[mat_idx].descriptor_sets[r->current_frame], 0, NULL);
+            vkCmdDrawIndexed(cmd, sm->index_count, 1, sm->index_offset, 0, 0);
         }
     } else {
         // Fallback: single draw for the whole mesh
