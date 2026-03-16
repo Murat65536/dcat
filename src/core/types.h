@@ -115,6 +115,19 @@ typedef struct Mat4Array {
     size_t capacity;
 } Mat4Array;
 
+// Sub-mesh: a range of indices sharing one material
+typedef struct SubMesh {
+    uint32_t index_offset;
+    uint32_t index_count;
+    uint32_t material_index;
+} SubMesh;
+
+typedef struct SubMeshArray {
+    SubMesh* data;
+    size_t count;
+    size_t capacity;
+} SubMeshArray;
+
 // Alpha blending modes
 typedef enum AlphaMode {
     ALPHA_MODE_OPAQUE,

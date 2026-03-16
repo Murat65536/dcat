@@ -19,9 +19,18 @@ void mesh_init(Mesh* mesh) {
 void mesh_free(Mesh* mesh) {
     free(mesh->vertices.data);
     free(mesh->indices.data);
+    free(mesh->submeshes.data);
     skeleton_free(&mesh->skeleton);
     animation_array_free(&mesh->animations);
     mesh_init(mesh);
+}
+
+void materials_free(MaterialInfo* materials, size_t count) {
+    if (!materials) return;
+    for (size_t i = 0; i < count; i++) {
+        material_info_free(&materials[i]);
+    }
+    free(materials);
 }
 
 void material_info_init(MaterialInfo* info) {
@@ -103,8 +112,8 @@ static inline void ai_quat_to_glm(const struct aiQuaternion* q, versor out) {
 }
 
 static void process_node(const struct aiNode* node, const struct aiScene* scene, mat4 parent_transform,
-                         VertexArray* vertices, Uint32Array* indices, bool* out_has_uvs, bool flip_uv_y,
-                         unsigned int uv_channel) {
+                         VertexArray* vertices, Uint32Array* indices, SubMeshArray* submeshes,
+                         bool* out_has_uvs, bool flip_uv_y, unsigned int uv_channel) {
     mat4 node_transform, combined;
     ai_matrix_to_glm(&node->mTransformation, node_transform);
     glm_mat4_mul(parent_transform, node_transform, combined);
@@ -167,6 +176,7 @@ static void process_node(const struct aiNode* node, const struct aiScene* scene,
         }
         
         // Process indices
+        uint32_t index_start = (uint32_t)indices->count;
         for (unsigned int j = 0; j < mesh->mNumFaces; j++) {
             const struct aiFace* face = &mesh->mFaces[j];
             for (unsigned int k = 0; k < face->mNumIndices; k++) {
@@ -174,16 +184,23 @@ static void process_node(const struct aiNode* node, const struct aiScene* scene,
                 ARRAY_PUSH(*indices, idx);
             }
         }
+
+        SubMesh submesh;
+        submesh.index_offset = index_start;
+        submesh.index_count = (uint32_t)indices->count - index_start;
+        submesh.material_index = mesh->mMaterialIndex;
+        ARRAY_PUSH(*submeshes, submesh);
     }
-    
+
     for (unsigned int i = 0; i < node->mNumChildren; i++) {
-        process_node(node->mChildren[i], scene, combined, vertices, indices, out_has_uvs, flip_uv_y, uv_channel);
+        process_node(node->mChildren[i], scene, combined, vertices, indices, submeshes, out_has_uvs, flip_uv_y, uv_channel);
     }
 }
 
 // Process node for animated models (no transform baking)
 static void process_node_animated(const struct aiNode* node, const struct aiScene* scene,
                                   VertexArray* vertices, Uint32Array* indices,
+                                  SubMeshArray* submeshes,
                                   bool* out_has_uvs, Skeleton* skeleton, bool flip_uv_y,
                                   unsigned int uv_channel) {
     for (unsigned int i = 0; i < node->mNumMeshes; i++) {
@@ -297,6 +314,7 @@ static void process_node_animated(const struct aiNode* node, const struct aiScen
         }
         
         // Process indices
+        uint32_t index_start = (uint32_t)indices->count;
         for (unsigned int j = 0; j < mesh->mNumFaces; j++) {
             const struct aiFace* face = &mesh->mFaces[j];
             for (unsigned int k = 0; k < face->mNumIndices; k++) {
@@ -304,10 +322,16 @@ static void process_node_animated(const struct aiNode* node, const struct aiScen
                 ARRAY_PUSH(*indices, idx);
             }
         }
+
+        SubMesh submesh;
+        submesh.index_offset = index_start;
+        submesh.index_count = (uint32_t)indices->count - index_start;
+        submesh.material_index = mesh->mMaterialIndex;
+        ARRAY_PUSH(*submeshes, submesh);
     }
-    
+
     for (unsigned int i = 0; i < node->mNumChildren; i++) {
-        process_node_animated(node->mChildren[i], scene, vertices, indices, out_has_uvs, skeleton, flip_uv_y, uv_channel);
+        process_node_animated(node->mChildren[i], scene, vertices, indices, submeshes, out_has_uvs, skeleton, flip_uv_y, uv_channel);
     }
 }
 
@@ -550,7 +574,31 @@ static char* resolve_texture_path(const char* model_path, const char* texture_pa
     return clean_path;
 }
 
-bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs, MaterialInfo* out_material) {
+static void extract_embedded_texture(const struct aiScene* scene, MaterialInfo* mat, bool is_diffuse) {
+    const char* tex_path = is_diffuse ? mat->diffuse_path : mat->normal_path;
+    if (!tex_path || tex_path[0] != '*') return;
+
+    int tex_index = atoi(tex_path + 1);
+    if (tex_index < 0 || tex_index >= (int)scene->mNumTextures) return;
+
+    const struct aiTexture* embedded_tex = scene->mTextures[tex_index];
+    if (embedded_tex->mHeight != 0) return; // uncompressed raw — not handled here
+
+    unsigned char* copy = malloc(embedded_tex->mWidth);
+    if (!copy) return;
+    memcpy(copy, embedded_tex->pcData, embedded_tex->mWidth);
+
+    if (is_diffuse) {
+        mat->embedded_diffuse = copy;
+        mat->embedded_diffuse_size = embedded_tex->mWidth;
+    } else {
+        mat->embedded_normal = copy;
+        mat->embedded_normal_size = embedded_tex->mWidth;
+    }
+}
+
+bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs,
+                MaterialInfo** out_materials, size_t* out_material_count) {
     const struct aiScene* scene = aiImportFile(path,
         aiProcess_Triangulate |
         aiProcess_GenNormals |
@@ -558,12 +606,12 @@ bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs, MaterialInfo* o
         aiProcess_JoinIdenticalVertices |
         aiProcess_SortByPType
     );
-    
+
     if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode) {
         fprintf(stderr, "Error loading model: %s\n", aiGetErrorString());
         return false;
     }
-    
+
     // GLTF/GLB uses Y=0 at top-left (matching Vulkan texture convention), so no flip needed.
     // FBX and other formats use Y=0 at bottom-left, requiring a flip for correct Vulkan sampling.
     bool flip_uv_y = true;
@@ -573,15 +621,15 @@ bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs, MaterialInfo* o
             flip_uv_y = false;
         }
     }
-    
+
     // Check coordinate system metadata
     int up_axis = 1;  // Default Y-up
     int up_axis_sign = 1;
-    
+
     if (scene->mMetaData) {
         const struct aiMetadata* meta = scene->mMetaData;
         for (unsigned int i = 0; i < meta->mNumProperties; i++) {
-            if (strcmp(meta->mKeys[i].data, "UpAxis") == 0 && 
+            if (strcmp(meta->mKeys[i].data, "UpAxis") == 0 &&
                 meta->mValues[i].mType == AI_INT32) {
                 up_axis = *(int*)meta->mValues[i].mData;
             } else if (strcmp(meta->mKeys[i].data, "UpAxisSign") == 0 &&
@@ -590,27 +638,23 @@ bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs, MaterialInfo* o
             }
         }
     }
-    
+
     mat4 coordinate_conversion;
     glm_mat4_identity(coordinate_conversion);
-    
+
     if (up_axis == 2 && up_axis_sign == 1) {
-        // Z-up to Y-up
         glm_rotate_make(coordinate_conversion, glm_rad(-90.0f), (vec3){1.0f, 0.0f, 0.0f});
     } else if (up_axis == 0 && up_axis_sign == 1) {
-        // X-up to Y-up
         glm_rotate_make(coordinate_conversion, glm_rad(90.0f), (vec3){0.0f, 0.0f, 1.0f});
     }
-    
+
     *out_has_uvs = false;
     mesh_free(mesh);
     mesh_init(mesh);
     mesh->generation = 1;
     glm_mat4_copy(coordinate_conversion, mesh->coordinate_system_transform);
-    material_info_init(out_material);
-    
+
     // Determine which UV channel the diffuse texture uses (pre-pass over materials).
-    // Some formats (e.g. GLTF) store tiling UVs in a higher-numbered channel.
     unsigned int uv_channel = 0;
     for (unsigned int i = 0; i < scene->mNumMaterials; i++) {
         const struct aiMaterial* material = scene->mMaterials[i];
@@ -626,100 +670,75 @@ bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs, MaterialInfo* o
             }
         }
     }
-    out_material->uv_channel = uv_channel;
-    
+
     // Check if model has animations
     mesh->has_animations = (scene->mNumAnimations > 0);
-    
+
     if (mesh->has_animations) {
-        // Process animated model
         bone_map_init(&mesh->skeleton.bone_map);
         ARRAY_INIT(mesh->skeleton.bones);
         ARRAY_INIT(mesh->skeleton.bone_hierarchy);
-        
+
         process_node_animated(scene->mRootNode, scene, &mesh->vertices, &mesh->indices,
-                             out_has_uvs, &mesh->skeleton, flip_uv_y, uv_channel);
+                             &mesh->submeshes, out_has_uvs, &mesh->skeleton, flip_uv_y, uv_channel);
         build_bone_hierarchy(scene->mRootNode, &mesh->skeleton, -1);
         load_animations(scene, &mesh->animations);
-        
+
         mat4 root_transform;
         ai_matrix_to_glm(&scene->mRootNode->mTransformation, root_transform);
         glm_mat4_inv(root_transform, mesh->skeleton.global_inverse_transform);
     } else {
         mat4 identity;
         glm_mat4_identity(identity);
-        process_node(scene->mRootNode, scene, identity, &mesh->vertices, &mesh->indices, out_has_uvs, flip_uv_y, uv_channel);
+        process_node(scene->mRootNode, scene, identity, &mesh->vertices, &mesh->indices,
+                     &mesh->submeshes, out_has_uvs, flip_uv_y, uv_channel);
     }
-    
-    // Extract material info
+
+    // Extract all materials
+    size_t mat_count = scene->mNumMaterials;
+    if (mat_count == 0) mat_count = 1;
+
+    MaterialInfo* mats = calloc(mat_count, sizeof(MaterialInfo));
+    for (size_t i = 0; i < mat_count; i++) {
+        material_info_init(&mats[i]);
+        mats[i].uv_channel = uv_channel;
+    }
+
     for (unsigned int i = 0; i < scene->mNumMaterials; i++) {
         const struct aiMaterial* material = scene->mMaterials[i];
         struct aiString str;
-        
-        if (!out_material->diffuse_path) {
-            if (aiGetMaterialTexture(material, aiTextureType_DIFFUSE, 0, &str, NULL, NULL, NULL, NULL, NULL, NULL) == aiReturn_SUCCESS) {
-                out_material->diffuse_path = resolve_texture_path(path, str.data, scene);
-            } else if (aiGetMaterialTexture(material, aiTextureType_BASE_COLOR, 0, &str, NULL, NULL, NULL, NULL, NULL, NULL) == aiReturn_SUCCESS) {
-                out_material->diffuse_path = resolve_texture_path(path, str.data, scene);
-            }
+
+        // Diffuse / base color texture
+        if (aiGetMaterialTexture(material, aiTextureType_DIFFUSE, 0, &str, NULL, NULL, NULL, NULL, NULL, NULL) == aiReturn_SUCCESS
+            || aiGetMaterialTexture(material, aiTextureType_BASE_COLOR, 0, &str, NULL, NULL, NULL, NULL, NULL, NULL) == aiReturn_SUCCESS) {
+            mats[i].diffuse_path = resolve_texture_path(path, str.data, scene);
         }
-        
-        if (!out_material->normal_path) {
-            if (aiGetMaterialTexture(material, aiTextureType_NORMALS, 0, &str, NULL, NULL, NULL, NULL, NULL, NULL) == aiReturn_SUCCESS) {
-                out_material->normal_path = resolve_texture_path(path, str.data, scene);
-            } else if (aiGetMaterialTexture(material, aiTextureType_HEIGHT, 0, &str, NULL, NULL, NULL, NULL, NULL, NULL) == aiReturn_SUCCESS) {
-                out_material->normal_path = resolve_texture_path(path, str.data, scene);
-            }
+
+        // Normal / height texture
+        if (aiGetMaterialTexture(material, aiTextureType_NORMALS, 0, &str, NULL, NULL, NULL, NULL, NULL, NULL) == aiReturn_SUCCESS
+            || aiGetMaterialTexture(material, aiTextureType_HEIGHT, 0, &str, NULL, NULL, NULL, NULL, NULL, NULL) == aiReturn_SUCCESS) {
+            mats[i].normal_path = resolve_texture_path(path, str.data, scene);
         }
-        
-        // Check alpha mode (GLTF specific - AI_MATKEY_GLTF_ALPHAMODE)
+
+        // Alpha mode (GLTF specific)
         struct aiString alpha_mode_str;
         if (aiGetMaterialString(material, "$mat.gltf.alphaMode", 0, 0, &alpha_mode_str) == aiReturn_SUCCESS) {
             if (strcmp(alpha_mode_str.data, "MASK") == 0) {
-                out_material->alpha_mode = ALPHA_MODE_MASK;
+                mats[i].alpha_mode = ALPHA_MODE_MASK;
             } else if (strcmp(alpha_mode_str.data, "BLEND") == 0) {
-                out_material->alpha_mode = ALPHA_MODE_BLEND;
+                mats[i].alpha_mode = ALPHA_MODE_BLEND;
             }
         }
-        
-        if (out_material->diffuse_path && out_material->normal_path) {
-            break;
-        }
-    }
-    
-    // If the diffuse texture is embedded, copy its bytes now while the scene is loaded
-    // so the texture loader doesn't need to re-parse the file.
-    if (out_material->diffuse_path && out_material->diffuse_path[0] == '*') {
-        int tex_index = atoi(out_material->diffuse_path + 1);
-        if (tex_index >= 0 && tex_index < (int)scene->mNumTextures) {
-            const struct aiTexture* embedded_tex = scene->mTextures[tex_index];
-            if (embedded_tex->mHeight == 0) {
-                // Compressed format (PNG/JPG etc.) — mWidth holds byte count
-                out_material->embedded_diffuse = malloc(embedded_tex->mWidth);
-                if (out_material->embedded_diffuse) {
-                    memcpy(out_material->embedded_diffuse, embedded_tex->pcData, embedded_tex->mWidth);
-                    out_material->embedded_diffuse_size = embedded_tex->mWidth;
-                }
-            }
-        }
+
+        // Pre-cache embedded texture bytes
+        extract_embedded_texture(scene, &mats[i], true);
+        extract_embedded_texture(scene, &mats[i], false);
     }
 
-    // Same for embedded normal map
-    if (out_material->normal_path && out_material->normal_path[0] == '*') {
-        int tex_index = atoi(out_material->normal_path + 1);
-        if (tex_index >= 0 && tex_index < (int)scene->mNumTextures) {
-            const struct aiTexture* embedded_tex = scene->mTextures[tex_index];
-            if (embedded_tex->mHeight == 0) {
-                out_material->embedded_normal = malloc(embedded_tex->mWidth);
-                if (out_material->embedded_normal) {
-                    memcpy(out_material->embedded_normal, embedded_tex->pcData, embedded_tex->mWidth);
-                    out_material->embedded_normal_size = embedded_tex->mWidth;
-                }
-            }
-        }
-    }
-    
+    *out_materials = mats;
+    *out_material_count = mat_count;
+
     aiReleaseImport(scene);
-    
+
     return mesh->vertices.count > 0;
 }

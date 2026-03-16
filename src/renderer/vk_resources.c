@@ -15,16 +15,18 @@ bool create_command_pool(VulkanRenderer* r) {
 }
 
 bool create_descriptor_pool(VulkanRenderer* r) {
+    // Pool sized for up to MAX_MATERIALS per-material descriptor sets + skydome
     VkDescriptorPoolSize pool_sizes[2] = {
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         2 * MAX_FRAMES_IN_FLIGHT},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 * MAX_FRAMES_IN_FLIGHT},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         (1 + MAX_MATERIALS) * MAX_FRAMES_IN_FLIGHT},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (2 * MAX_MATERIALS + 1) * MAX_FRAMES_IN_FLIGHT},
     };
-    
+
     VkDescriptorPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     pool_info.poolSizeCount = 2;
     pool_info.pPoolSizes = pool_sizes;
-    pool_info.maxSets = 8 * MAX_FRAMES_IN_FLIGHT;
-    
+    pool_info.maxSets = (MAX_MATERIALS + 2) * MAX_FRAMES_IN_FLIGHT;
+
     if (vkCreateDescriptorPool(r->device, &pool_info, NULL, &r->descriptor_pool) != VK_SUCCESS) {
         fprintf(stderr, "Failed to create descriptor pool. This might be due to requesting too many descriptors or memory limits.\n");
         return false;
@@ -96,12 +98,6 @@ bool create_uniform_buffers(VulkanRenderer* r) {
                            &r->uniform_buffers[i], &r->uniform_buffer_allocs[i])) {
             return false;
         }
-        
-        if (!create_buffer(r, sizeof(FragmentUniforms), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                           &r->fragment_uniform_buffers[i], &r->fragment_uniform_buffer_allocs[i])) {
-            return false;
-        }
     }
     return true;
 }
@@ -150,21 +146,8 @@ bool create_sync_objects(VulkanRenderer* r) {
 }
 
 bool create_descriptor_sets(VulkanRenderer* r) {
-    VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        layouts[i] = r->descriptor_set_layout;
-        r->descriptor_sets_dirty[i] = true;
-    }
-    
-    VkDescriptorSetAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-    alloc_info.descriptorPool = r->descriptor_pool;
-    alloc_info.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
-    alloc_info.pSetLayouts = layouts;
-    
-    if (vkAllocateDescriptorSets(r->device, &alloc_info, r->descriptor_sets) != VK_SUCCESS) {
-        fprintf(stderr, "Failed to allocate descriptor sets\n");
-        return false;
-    }
+    // Material descriptor sets are allocated lazily in the render function
+    (void)r;
     return true;
 }
 
@@ -193,16 +176,48 @@ void cleanup_render_targets(VulkanRenderer* r) {
     }
 }
 
+static void cleanup_material_gpu(VulkanRenderer* r, MaterialGPUData* m) {
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        if (m->fragment_uniform_buffers[i] != VK_NULL_HANDLE) {
+            vkDestroyBuffer(r->device, m->fragment_uniform_buffers[i], NULL);
+            if (m->fragment_uniform_buffer_allocs[i].memory != VK_NULL_HANDLE) {
+                vkFreeMemory(r->device, m->fragment_uniform_buffer_allocs[i].memory, NULL);
+            }
+        }
+        if (m->descriptor_sets[i] != VK_NULL_HANDLE) {
+            vkFreeDescriptorSets(r->device, r->descriptor_pool, 1, &m->descriptor_sets[i]);
+        }
+    }
+    if (m->diffuse_image_view != VK_NULL_HANDLE) {
+        vkDestroyImageView(r->device, m->diffuse_image_view, NULL);
+    }
+    if (m->diffuse_image != VK_NULL_HANDLE) {
+        vkDestroyImage(r->device, m->diffuse_image, NULL);
+        if (m->diffuse_image_alloc.memory != VK_NULL_HANDLE) {
+            vkFreeMemory(r->device, m->diffuse_image_alloc.memory, NULL);
+        }
+    }
+    if (m->normal_image_view != VK_NULL_HANDLE) {
+        vkDestroyImageView(r->device, m->normal_image_view, NULL);
+    }
+    if (m->normal_image != VK_NULL_HANDLE) {
+        vkDestroyImage(r->device, m->normal_image, NULL);
+        if (m->normal_image_alloc.memory != VK_NULL_HANDLE) {
+            vkFreeMemory(r->device, m->normal_image_alloc.memory, NULL);
+        }
+    }
+}
+
 void cleanup(VulkanRenderer* r) {
     if (r->device != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(r->device);
     }
-    
+
     if (r->device != VK_NULL_HANDLE) {
         if (r->sampler != VK_NULL_HANDLE) {
             vkDestroySampler(r->device, r->sampler, NULL);
         }
-        
+
         for (int i = 0; i < NUM_STAGING_BUFFERS; i++) {
             if (r->staging_buffers[i] != VK_NULL_HANDLE) {
                 vkDestroyBuffer(r->device, r->staging_buffers[i], NULL);
@@ -218,16 +233,18 @@ void cleanup(VulkanRenderer* r) {
                     vkFreeMemory(r->device, r->uniform_buffer_allocs[i].memory, NULL);
                 }
             }
-            if (r->fragment_uniform_buffers[i] != VK_NULL_HANDLE) {
-                vkDestroyBuffer(r->device, r->fragment_uniform_buffers[i], NULL);
-                if (r->fragment_uniform_buffer_allocs[i].memory != VK_NULL_HANDLE) {
-                    vkFreeMemory(r->device, r->fragment_uniform_buffer_allocs[i].memory, NULL);
-                }
-            }
             if (r->in_flight_fences[i] != VK_NULL_HANDLE) {
                 vkDestroyFence(r->device, r->in_flight_fences[i], NULL);
             }
         }
+
+        // Clean up per-material GPU resources
+        for (uint32_t i = 0; i < r->material_gpu_count; i++) {
+            cleanup_material_gpu(r, &r->material_gpu[i]);
+        }
+        free(r->material_gpu);
+        r->material_gpu = NULL;
+        r->material_gpu_count = 0;
 
         if (r->vertex_buffer != VK_NULL_HANDLE) {
             vkDestroyBuffer(r->device, r->vertex_buffer, NULL);
@@ -253,25 +270,7 @@ void cleanup(VulkanRenderer* r) {
                 vkFreeMemory(r->device, r->skydome_index_buffer_alloc.memory, NULL);
             }
         }
-        
-        if (r->diffuse_image != VK_NULL_HANDLE) {
-            if (r->diffuse_image_view != VK_NULL_HANDLE) {
-                vkDestroyImageView(r->device, r->diffuse_image_view, NULL);
-            }
-            vkDestroyImage(r->device, r->diffuse_image, NULL);
-            if (r->diffuse_image_alloc.memory != VK_NULL_HANDLE) {
-                vkFreeMemory(r->device, r->diffuse_image_alloc.memory, NULL);
-            }
-        }
-        if (r->normal_image != VK_NULL_HANDLE) {
-            if (r->normal_image_view != VK_NULL_HANDLE) {
-                vkDestroyImageView(r->device, r->normal_image_view, NULL);
-            }
-            vkDestroyImage(r->device, r->normal_image, NULL);
-            if (r->normal_image_alloc.memory != VK_NULL_HANDLE) {
-                vkFreeMemory(r->device, r->normal_image_alloc.memory, NULL);
-            }
-        }
+
         if (r->skydome_image != VK_NULL_HANDLE) {
             if (r->skydome_image_view != VK_NULL_HANDLE) {
                 vkDestroyImageView(r->device, r->skydome_image_view, NULL);
@@ -282,9 +281,9 @@ void cleanup(VulkanRenderer* r) {
             }
         }
     }
-    
+
     cleanup_render_targets(r);
-    
+
     if (r->device != VK_NULL_HANDLE) {
         if (r->graphics_pipeline != VK_NULL_HANDLE) {
             vkDestroyPipeline(r->device, r->graphics_pipeline, NULL);
@@ -295,7 +294,7 @@ void cleanup(VulkanRenderer* r) {
         if (r->pipeline_layout != VK_NULL_HANDLE) {
             vkDestroyPipelineLayout(r->device, r->pipeline_layout, NULL);
         }
-        
+
         if (r->skydome_pipeline != VK_NULL_HANDLE) {
             vkDestroyPipeline(r->device, r->skydome_pipeline, NULL);
         }
@@ -305,7 +304,7 @@ void cleanup(VulkanRenderer* r) {
         if (r->skydome_descriptor_set_layout != VK_NULL_HANDLE) {
             vkDestroyDescriptorSetLayout(r->device, r->skydome_descriptor_set_layout, NULL);
         }
-        
+
         if (r->render_pass != VK_NULL_HANDLE) {
             vkDestroyRenderPass(r->device, r->render_pass, NULL);
         }
@@ -318,10 +317,10 @@ void cleanup(VulkanRenderer* r) {
         if (r->command_pool != VK_NULL_HANDLE) {
             vkDestroyCommandPool(r->device, r->command_pool, NULL);
         }
-        
+
         vkDestroyDevice(r->device, NULL);
     }
-    
+
     if (r->instance != VK_NULL_HANDLE) {
         vkDestroyInstance(r->instance, NULL);
     }

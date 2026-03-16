@@ -47,11 +47,10 @@ static inline double get_time_seconds(void) {
 typedef struct RenderContext {
     VulkanRenderer* renderer;
     mat4 model_matrix;
-    Texture* diffuse_texture;
-    Texture* normal_texture;
+    RenderMaterial* materials;
+    uint32_t material_count;
     bool enable_lighting;
     bool use_triplanar_mapping;
-    AlphaMode alpha_mode;
 } RenderContext;
 
 typedef struct AnimationContext {
@@ -276,16 +275,16 @@ static void setup_camera_position(const CameraSetup* camera_setup, float model_s
     vec3 camera_offset;
     glm_vec3_sub((float*)camera_setup->position, (float*)camera_setup->target, camera_offset);
     glm_vec3_scale(camera_offset, model_scale_factor, camera_offset);
-    
+
     vec3 camera_target;
     glm_vec3_zero(camera_target);
-    
+
     if (camera_distance_arg > 0) {
         vec3 direction;
         glm_vec3_normalize_to(camera_offset, direction);
         glm_vec3_scale(direction, camera_distance_arg, camera_offset);
     }
-    
+
     glm_vec3_add(camera_target, camera_offset, out_position);
 }
 
@@ -295,27 +294,27 @@ static void process_input_devices(KeyState* key_state,
         atomic_store(&g_running, false);
         return;
     }
-    
+
     if (key_state->v) *move_speed /= (1.0f + delta_time);
     if (key_state->b) *move_speed *= (1.0f + delta_time);
-    
+
     float speed = (*move_speed) * delta_time;
     if (key_state->ctrl) speed *= 0.25f;
-    
+
     if (key_state->w) camera_move_forward(camera, speed);
     if (key_state->s) camera_move_backward(camera, speed);
     if (key_state->a) camera_move_left(camera, speed);
     if (key_state->d) camera_move_right(camera, speed);
     if (key_state->space) camera_move_up(camera, speed);
     if (key_state->shift) camera_move_down(camera, speed);
-    
+
     if (key_state->mouse_dx != 0 || key_state->mouse_dy != 0) {
         const float ROTATION_SENSITIVITY = 2.0f;
         float sensitivity = ROTATION_SENSITIVITY * 0.001f;
         camera_rotate(camera, key_state->mouse_dx * sensitivity,
                      -key_state->mouse_dy * sensitivity);
     }
-    
+
     float rot_speed = 2.0f * delta_time;
     if (key_state->i) camera_rotate(camera, 0.0f, rot_speed);
     if (key_state->k) camera_rotate(camera, 0.0f, -rot_speed);
@@ -332,19 +331,20 @@ static void render_frame(const RenderContext* ctx, const AnimationContext* anim_
     mat4 mvp;
     glm_mat4_mul((vec4*)projection, (vec4*)view, mvp);
     glm_mat4_mul(mvp, (vec4*)ctx->model_matrix, mvp);
-    
+
     const mat4* bone_matrix_ptr = NULL;
     uint32_t bone_count = 0;
-    
+
     if (anim_ctx->has_animations) {
         bone_matrix_ptr = (const mat4*)anim_ctx->bone_matrices;
         bone_count = (uint32_t)mesh->skeleton.bones.count;
     }
-    
+
     const uint8_t* framebuffer = vulkan_renderer_render(
         ctx->renderer, mesh, mvp, ctx->model_matrix,
-        ctx->diffuse_texture, ctx->normal_texture, ctx->enable_lighting,
-        camera_position, ctx->use_triplanar_mapping, ctx->alpha_mode,
+        ctx->materials, ctx->material_count,
+        ctx->enable_lighting,
+        camera_position, ctx->use_triplanar_mapping,
         bone_matrix_ptr, bone_count, (const mat4*)&view, (const mat4*)&projection
     );
 
@@ -390,10 +390,11 @@ int main(int argc, char* argv[]) {
     VulkanRenderer* renderer = NULL;
     Mesh mesh;
     mesh_init(&mesh);
-    MaterialInfo material_info;
-    material_info_init(&material_info);
-    Texture diffuse_texture = {0};
-    Texture normal_texture = {0};
+    MaterialInfo* model_materials = NULL;
+    size_t model_material_count = 0;
+    Texture* diffuse_textures = NULL;
+    Texture* normal_textures = NULL;
+    RenderMaterial* render_materials = NULL;
     Mesh skydome_mesh;
     mesh_init(&skydome_mesh);
     Texture skydome_texture = {0};
@@ -414,7 +415,7 @@ int main(int argc, char* argv[]) {
     }
     vulkan_renderer_set_light_direction(renderer, (vec3){0.0f, -1.0f, -0.5f});
 
-    if (!load_model(args.model_path, &mesh, &has_uvs, &material_info)) {
+    if (!load_model(args.model_path, &mesh, &has_uvs, &model_materials, &model_material_count)) {
         fprintf(stderr, "Failed to load model: %s\n", args.model_path);
         goto cleanup;
     }
@@ -427,33 +428,42 @@ int main(int argc, char* argv[]) {
     }
     has_animations = mesh.has_animations && mesh.animations.count > 0;
 
-    load_diffuse_texture(args.model_path, args.texture_path,
-                         &material_info, &diffuse_texture);
-    load_normal_texture(args.normal_map_path, &material_info, &normal_texture);
+    // Load textures for each material
+    diffuse_textures = calloc(model_material_count, sizeof(Texture));
+    normal_textures = calloc(model_material_count, sizeof(Texture));
+    render_materials = calloc(model_material_count, sizeof(RenderMaterial));
 
-    AlphaMode alpha_mode = material_info.alpha_mode;
-    if (alpha_mode == ALPHA_MODE_OPAQUE && diffuse_texture.has_transparency) {
-        alpha_mode = ALPHA_MODE_BLEND;
+    for (size_t i = 0; i < model_material_count; i++) {
+        load_diffuse_texture(args.model_path, args.texture_path,
+                             &model_materials[i], &diffuse_textures[i]);
+        load_normal_texture(args.normal_map_path, &model_materials[i], &normal_textures[i]);
+
+        render_materials[i].diffuse = &diffuse_textures[i];
+        render_materials[i].normal = &normal_textures[i];
+        render_materials[i].alpha_mode = model_materials[i].alpha_mode;
+        if (render_materials[i].alpha_mode == ALPHA_MODE_OPAQUE && diffuse_textures[i].has_transparency) {
+            render_materials[i].alpha_mode = ALPHA_MODE_BLEND;
+        }
     }
-    
+
     has_skydome = load_skydome(args.skydome_path, &skydome_mesh, &skydome_texture);
     if (has_skydome) {
         vulkan_renderer_set_skydome(renderer, &skydome_mesh, &skydome_texture);
     }
-    
+
     CameraSetup camera_setup;
     calculate_camera_setup(&mesh.vertices, &camera_setup);
-    
+
     mat4 model_matrix;
     setup_model_transform(&mesh, &camera_setup, args.model_scale, model_matrix);
-    
+
     vec3 camera_position;
-    setup_camera_position(&camera_setup, args.model_scale, args.camera_distance, 
+    setup_camera_position(&camera_setup, args.model_scale, args.camera_distance,
                           camera_position);
-    
+
     vec3 camera_target;
     glm_vec3_zero(camera_target);
-    
+
     const float MOVE_SPEED_BASE = 0.5f;
     float move_speed = MOVE_SPEED_BASE * TARGET_SIZE;
     double target_frame_time = 1.0 / args.target_fps;
@@ -491,18 +501,17 @@ int main(int argc, char* argv[]) {
     RenderContext render_ctx = {
         .renderer = renderer,
         .model_matrix = {{0}},
-        .diffuse_texture = &diffuse_texture,
-        .normal_texture = &normal_texture,
+        .materials = render_materials,
+        .material_count = (uint32_t)model_material_count,
         .enable_lighting = !args.no_lighting,
         .use_triplanar_mapping = !has_uvs,
-        .alpha_mode = alpha_mode
     };
     glm_mat4_copy(model_matrix, render_ctx.model_matrix);
-    
+
     AnimationContext anim_ctx = {
         bone_matrices, has_animations
     };
-    
+
     float total_spin = 0.0f;
     mat4 base_model_matrix;
     glm_mat4_copy(render_ctx.model_matrix, base_model_matrix);
@@ -516,7 +525,7 @@ int main(int argc, char* argv[]) {
         last_frame_time = frame_start;
         vec3 camera_position_snapshot;
         int current_animation_index_snapshot = -1;
-        
+
         if (args.spin_speed != 0.0f && !args.fps_controls) {
             total_spin += args.spin_speed * delta_time;
             mat4 rotation_mat;
@@ -563,12 +572,23 @@ cleanup:
     }
 
     free(bone_matrices);
-    texture_free(&diffuse_texture);
-    texture_free(&normal_texture);
+    if (diffuse_textures) {
+        for (size_t i = 0; i < model_material_count; i++) {
+            texture_free(&diffuse_textures[i]);
+        }
+        free(diffuse_textures);
+    }
+    if (normal_textures) {
+        for (size_t i = 0; i < model_material_count; i++) {
+            texture_free(&normal_textures[i]);
+        }
+        free(normal_textures);
+    }
+    free(render_materials);
     texture_free(&skydome_texture);
     mesh_free(&skydome_mesh);
     mesh_free(&mesh);
-    material_info_free(&material_info);
+    materials_free(model_materials, model_material_count);
     vulkan_renderer_destroy(renderer);
 
     vips_shutdown();

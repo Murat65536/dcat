@@ -13,6 +13,7 @@
 
 #define MAX_FRAMES_IN_FLIGHT 3
 #define NUM_STAGING_BUFFERS (MAX_FRAMES_IN_FLIGHT + 1)
+#define MAX_MATERIALS 32
 
 // Push constants for vertex shader
 typedef struct PushConstants {
@@ -41,6 +42,13 @@ typedef struct FragmentUniforms {
     float padding;
 } FragmentUniforms;
 
+// Per-material render data passed from main to renderer
+typedef struct RenderMaterial {
+    const Texture* diffuse;
+    const Texture* normal;
+    AlphaMode alpha_mode;
+} RenderMaterial;
+
 // Memory allocation helper
 typedef struct VulkanAllocation {
     VkDeviceMemory memory;
@@ -49,12 +57,35 @@ typedef struct VulkanAllocation {
     void* mapped;
 } VulkanAllocation;
 
+// Per-material GPU resources
+typedef struct MaterialGPUData {
+    VkImage diffuse_image;
+    VulkanAllocation diffuse_image_alloc;
+    VkImageView diffuse_image_view;
+    uint32_t cached_diffuse_width;
+    uint32_t cached_diffuse_height;
+    const void* cached_diffuse_data_ptr;
+
+    VkImage normal_image;
+    VulkanAllocation normal_image_alloc;
+    VkImageView normal_image_view;
+    uint32_t cached_normal_width;
+    uint32_t cached_normal_height;
+    const void* cached_normal_data_ptr;
+
+    VkDescriptorSet descriptor_sets[MAX_FRAMES_IN_FLIGHT];
+    bool descriptor_sets_dirty[MAX_FRAMES_IN_FLIGHT];
+
+    VkBuffer fragment_uniform_buffers[MAX_FRAMES_IN_FLIGHT];
+    VulkanAllocation fragment_uniform_buffer_allocs[MAX_FRAMES_IN_FLIGHT];
+} MaterialGPUData;
+
 // Vulkan Renderer struct
 typedef struct VulkanRenderer {
     uint32_t width;
     uint32_t height;
     vec3 normalized_light_dir;
-    
+
     VkInstance instance;
     VkPhysicalDevice physical_device;
     VkDevice device;
@@ -63,7 +94,7 @@ typedef struct VulkanRenderer {
 
     VkPhysicalDeviceMemoryProperties mem_properties;
     VkDeviceSize non_coherent_atom_size;
-    
+
     VkCommandPool command_pool;
     VkDescriptorPool descriptor_pool;
     VkDescriptorSetLayout descriptor_set_layout;
@@ -72,7 +103,7 @@ typedef struct VulkanRenderer {
     VkPipeline graphics_pipeline;
     VkPipeline wireframe_pipeline;
     atomic_bool wireframe_mode;
-    
+
     // Skydome
     VkDescriptorSetLayout skydome_descriptor_set_layout;
     VkPipelineLayout skydome_pipeline_layout;
@@ -80,79 +111,61 @@ typedef struct VulkanRenderer {
     VkDescriptorSet skydome_descriptor_sets[MAX_FRAMES_IN_FLIGHT];
     const Mesh* skydome_mesh;
     const Texture* skydome_texture;
-    
+
     VkImage skydome_image;
     VulkanAllocation skydome_image_alloc;
     VkImageView skydome_image_view;
     const void* cached_skydome_data_ptr;
-    
+
     // Command buffers and sync
     VkCommandBuffer command_buffers[MAX_FRAMES_IN_FLIGHT];
     VkFence in_flight_fences[MAX_FRAMES_IN_FLIGHT];
-    
+
     // Render targets
     VkImage color_image;
     VulkanAllocation color_image_alloc;
     VkImageView color_image_view;
-    
+
     VkImage depth_image;
     VulkanAllocation depth_image_alloc;
     VkImageView depth_image_view;
-    
+
     VkFramebuffer framebuffer;
-    
+
     // Staging buffers
     VkBuffer staging_buffers[NUM_STAGING_BUFFERS];
     VulkanAllocation staging_buffer_allocs[NUM_STAGING_BUFFERS];
     bool frame_ready[MAX_FRAMES_IN_FLIGHT];
     uint32_t current_staging_buffer;
     uint32_t frame_staging_buffers[MAX_FRAMES_IN_FLIGHT];
-    
-    // Uniform buffers
+
+    // Uniform buffers (shared vertex uniforms — bone matrices)
     VkBuffer uniform_buffers[MAX_FRAMES_IN_FLIGHT];
     VulkanAllocation uniform_buffer_allocs[MAX_FRAMES_IN_FLIGHT];
-    
-    VkBuffer fragment_uniform_buffers[MAX_FRAMES_IN_FLIGHT];
-    VulkanAllocation fragment_uniform_buffer_allocs[MAX_FRAMES_IN_FLIGHT];
-    
-    // Descriptor sets
-    VkDescriptorSet descriptor_sets[MAX_FRAMES_IN_FLIGHT];
-    bool descriptor_sets_dirty[MAX_FRAMES_IN_FLIGHT];
-    
-    // Textures
-    VkImage diffuse_image;
-    VulkanAllocation diffuse_image_alloc;
-    VkImageView diffuse_image_view;
-    uint32_t cached_diffuse_width;
-    uint32_t cached_diffuse_height;
-    
-    VkImage normal_image;
-    VulkanAllocation normal_image_alloc;
-    VkImageView normal_image_view;
-    uint32_t cached_normal_width;
-    uint32_t cached_normal_height;
-    
+
+    // Per-material GPU data
+    MaterialGPUData* material_gpu;
+    uint32_t material_gpu_count;
+
     VkSampler sampler;
-    
+
     // Vertex/index buffers
     VkBuffer vertex_buffer;
     VulkanAllocation vertex_buffer_alloc;
     size_t cached_vertex_count;
-    
+
     VkBuffer index_buffer;
     VulkanAllocation index_buffer_alloc;
     size_t cached_index_count;
-    
+
     // Skydome buffers
     VkBuffer skydome_vertex_buffer;
     VulkanAllocation skydome_vertex_buffer_alloc;
     VkBuffer skydome_index_buffer;
     VulkanAllocation skydome_index_buffer_alloc;
-    
+
     // Cache
     uint64_t cached_mesh_generation;
-    const void* cached_diffuse_data_ptr;
-    const void* cached_normal_data_ptr;
 
     char shader_directory[256];
     uint32_t current_frame;
@@ -181,12 +194,11 @@ const uint8_t* vulkan_renderer_render(
     const Mesh* mesh,
     const mat4 mvp,
     const mat4 model,
-    const Texture* diffuse_texture,
-    const Texture* normal_texture,
+    const RenderMaterial* materials,
+    uint32_t material_count,
     bool enable_lighting,
     const vec3 camera_pos,
     bool use_triplanar_mapping,
-    AlphaMode alpha_mode,
     const mat4* bone_matrices,
     uint32_t bone_count,
     const mat4* view,

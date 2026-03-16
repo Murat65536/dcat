@@ -3,8 +3,8 @@
 
 #include "vulkan_renderer.h"
 
-void update_diffuse_texture(VulkanRenderer* r, const Texture* texture);
-void update_normal_texture(VulkanRenderer* r, const Texture* texture);
+void update_material_texture(VulkanRenderer* r, MaterialGPUData* mat,
+                             const Texture* diffuse, const Texture* normal);
 void update_skydome_texture(VulkanRenderer* r, const Texture* texture);
 void update_vertex_buffer(VulkanRenderer* r, const VertexArray* vertices);
 void update_index_buffer(VulkanRenderer* r, const Uint32Array* indices);
