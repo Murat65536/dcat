@@ -75,7 +75,7 @@ void update_material_texture(VulkanRenderer* r, MaterialGPUData* mat,
         bool size_changed = (mat->cached_normal_width != normal->width ||
                              mat->cached_normal_height != normal->height ||
                              mat->normal_image == VK_NULL_HANDLE);
-        upload_texture_image(r, normal, VK_FORMAT_R8G8B8A8_SRGB,
+        upload_texture_image(r, normal, VK_FORMAT_R8G8B8A8_UNORM,
                              &mat->normal_image, &mat->normal_image_alloc,
                              &mat->normal_image_view,
                              &mat->cached_normal_width, &mat->cached_normal_height);
