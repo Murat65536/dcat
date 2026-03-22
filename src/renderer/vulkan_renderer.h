@@ -169,6 +169,8 @@ typedef struct VulkanRenderer {
     uint64_t cached_mesh_generation;
 
     char shader_directory[256];
+    VkResult last_error_code;
+    char last_error_message[256];
     uint32_t current_frame;
 } VulkanRenderer;
 
@@ -178,9 +180,14 @@ void vulkan_renderer_destroy(VulkanRenderer* r);
 
 // Initialize
 bool vulkan_renderer_initialize(VulkanRenderer* r);
+void vulkan_renderer_clear_error(VulkanRenderer* r);
+void vulkan_renderer_set_error(VulkanRenderer* r, VkResult result,
+                               const char* operation, const char* format, ...);
+const char* vulkan_renderer_get_last_error(const VulkanRenderer* r);
+VkResult vulkan_renderer_get_last_error_code(const VulkanRenderer* r);
 
 // Resize
-void vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height);
+bool vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height);
 
 // Set light direction
 void vulkan_renderer_set_light_direction(VulkanRenderer* r, const float* direction);
@@ -190,7 +197,7 @@ void vulkan_renderer_set_wireframe_mode(VulkanRenderer* r, bool enabled);
 bool vulkan_renderer_get_wireframe_mode(const VulkanRenderer* r);
 
 // Render and return framebuffer
-const uint8_t* vulkan_renderer_render(
+bool vulkan_renderer_render(
     VulkanRenderer* r,
     const Mesh* mesh,
     const mat4 mvp,
@@ -203,11 +210,12 @@ const uint8_t* vulkan_renderer_render(
     const mat4* bone_matrices,
     uint32_t bone_count,
     const mat4* view,
-    const mat4* projection
+    const mat4* projection,
+    const uint8_t** out_framebuffer
 );
 
 // Set skydome
-void vulkan_renderer_set_skydome(VulkanRenderer* r, const Mesh* mesh, const Texture* texture);
+bool vulkan_renderer_set_skydome(VulkanRenderer* r, const Mesh* mesh, const Texture* texture);
 
 // Wait for idle
 void vulkan_renderer_wait_idle(VulkanRenderer* r);

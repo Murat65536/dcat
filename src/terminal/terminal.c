@@ -6,6 +6,15 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+static const char TERMINAL_RECOVERY_SEQUENCE[] =
+    "\x1b[<u"
+    "\x1b[?1016l"
+    "\x1b[?1002l"
+    "\x1b[?1006l"
+    "\x1b[0m"
+    "\x1b[?25h"
+    "\x1b[?1049l";
+
 static bool get_winsize(struct winsize *ws) {
   return ioctl(STDOUT_FILENO, TIOCGWINSZ, ws) == 0;
 }
@@ -144,4 +153,29 @@ void disable_raw_mode(void) {
     return;
   termios_state_restore(&raw_mode_state);
   raw_mode_enabled = false;
+}
+
+void write_terminal_recovery_sequence(int fd) {
+  const char *data = TERMINAL_RECOVERY_SEQUENCE;
+  size_t remaining = sizeof(TERMINAL_RECOVERY_SEQUENCE) - 1;
+  while (remaining > 0) {
+    ssize_t written = write(fd, data, remaining);
+    if (written < 0) {
+      if (errno == EINTR)
+        continue;
+      break;
+    }
+    data += written;
+    remaining -= (size_t)written;
+  }
+}
+
+void terminal_restore_default_state(void) {
+  disable_raw_mode();
+  write_terminal_recovery_sequence(STDOUT_FILENO);
+}
+
+void terminal_restore_after_crash(void) {
+  disable_raw_mode();
+  write_terminal_recovery_sequence(STDOUT_FILENO);
 }

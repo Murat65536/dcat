@@ -4,8 +4,67 @@
 #include "vk_pipeline.h"
 #include "vk_resources.h"
 #include "vk_upload.h"
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static const char* vk_result_name(VkResult result) {
+    switch (result) {
+        case VK_SUCCESS: return "VK_SUCCESS";
+        case VK_NOT_READY: return "VK_NOT_READY";
+        case VK_TIMEOUT: return "VK_TIMEOUT";
+        case VK_EVENT_SET: return "VK_EVENT_SET";
+        case VK_EVENT_RESET: return "VK_EVENT_RESET";
+        case VK_INCOMPLETE: return "VK_INCOMPLETE";
+        case VK_ERROR_OUT_OF_HOST_MEMORY: return "VK_ERROR_OUT_OF_HOST_MEMORY";
+        case VK_ERROR_OUT_OF_DEVICE_MEMORY: return "VK_ERROR_OUT_OF_DEVICE_MEMORY";
+        case VK_ERROR_INITIALIZATION_FAILED: return "VK_ERROR_INITIALIZATION_FAILED";
+        case VK_ERROR_DEVICE_LOST: return "VK_ERROR_DEVICE_LOST";
+        case VK_ERROR_MEMORY_MAP_FAILED: return "VK_ERROR_MEMORY_MAP_FAILED";
+        case VK_ERROR_LAYER_NOT_PRESENT: return "VK_ERROR_LAYER_NOT_PRESENT";
+        case VK_ERROR_EXTENSION_NOT_PRESENT: return "VK_ERROR_EXTENSION_NOT_PRESENT";
+        case VK_ERROR_FEATURE_NOT_PRESENT: return "VK_ERROR_FEATURE_NOT_PRESENT";
+        case VK_ERROR_INCOMPATIBLE_DRIVER: return "VK_ERROR_INCOMPATIBLE_DRIVER";
+        case VK_ERROR_TOO_MANY_OBJECTS: return "VK_ERROR_TOO_MANY_OBJECTS";
+        case VK_ERROR_FORMAT_NOT_SUPPORTED: return "VK_ERROR_FORMAT_NOT_SUPPORTED";
+        case VK_ERROR_SURFACE_LOST_KHR: return "VK_ERROR_SURFACE_LOST_KHR";
+        default: return "VK_ERROR_UNKNOWN";
+    }
+}
+
+void vulkan_renderer_clear_error(VulkanRenderer* r) {
+    if (!r) return;
+
+    r->last_error_code = VK_SUCCESS;
+    r->last_error_message[0] = '\0';
+}
+
+void vulkan_renderer_set_error(VulkanRenderer* r, VkResult result,
+                               const char* operation, const char* format, ...) {
+    if (!r || r->last_error_message[0] != '\0') {
+        return;
+    }
+
+    r->last_error_code = result;
+
+    char detail[160] = "";
+    va_list args;
+    va_start(args, format);
+    vsnprintf(detail, sizeof(detail), format, args);
+    va_end(args);
+
+    snprintf(r->last_error_message, sizeof(r->last_error_message),
+             "%s: %s (%s, %d)", operation, detail, vk_result_name(result), result);
+}
+
+const char* vulkan_renderer_get_last_error(const VulkanRenderer* r) {
+    return (r && r->last_error_message[0] != '\0') ? r->last_error_message : NULL;
+}
+
+VkResult vulkan_renderer_get_last_error_code(const VulkanRenderer* r) {
+    return r ? r->last_error_code : VK_SUCCESS;
+}
 
 VulkanRenderer* vulkan_renderer_create(uint32_t width, uint32_t height) {
     VulkanRenderer* r = calloc(1, sizeof(VulkanRenderer));
@@ -25,6 +84,7 @@ void vulkan_renderer_destroy(VulkanRenderer* r) {
 }
 
 bool vulkan_renderer_initialize(VulkanRenderer* r) {
+    vulkan_renderer_clear_error(r);
     if (!create_instance(r)) return false;
     if (!select_physical_device(r)) return false;
     if (!create_logical_device(r)) return false;
@@ -65,15 +125,23 @@ bool vulkan_renderer_get_wireframe_mode(const VulkanRenderer* r) {
     return atomic_load(&r->wireframe_mode);
 }
 
-void vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height) {
-    vkDeviceWaitIdle(r->device);
+bool vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height) {
+    vulkan_renderer_clear_error(r);
+
+    VkResult result = vkDeviceWaitIdle(r->device);
+    if (result != VK_SUCCESS) {
+        vulkan_renderer_set_error(r, result, "vkDeviceWaitIdle",
+                                  "Failed to wait for device idle during resize");
+        return false;
+    }
 
     r->width = width;
     r->height = height;
 
     cleanup_render_targets(r);
-    create_render_targets(r);
-    create_framebuffer(r);
+    if (!create_render_targets(r) || !create_framebuffer(r)) {
+        return false;
+    }
 
     // Recreate staging buffers
     for (int i = 0; i < NUM_STAGING_BUFFERS; i++) {
@@ -82,12 +150,16 @@ void vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height) 
             vkFreeMemory(r->device, r->staging_buffer_allocs[i].memory, NULL);
         }
     }
-    create_staging_buffers(r);
+    if (!create_staging_buffers(r)) {
+        return false;
+    }
 
     // Reset frame tracking
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         r->frame_ready[i] = false;
     }
+
+    return true;
 }
 
 void vulkan_renderer_wait_idle(VulkanRenderer* r) {
@@ -96,7 +168,8 @@ void vulkan_renderer_wait_idle(VulkanRenderer* r) {
     }
 }
 
-void vulkan_renderer_set_skydome(VulkanRenderer* r, const Mesh* mesh, const Texture* texture) {
+bool vulkan_renderer_set_skydome(VulkanRenderer* r, const Mesh* mesh, const Texture* texture) {
+    vulkan_renderer_clear_error(r);
     r->skydome_mesh = mesh;
     r->skydome_texture = texture;
 
@@ -113,23 +186,38 @@ void vulkan_renderer_set_skydome(VulkanRenderer* r, const Mesh* mesh, const Text
         VkDeviceSize vertex_size = sizeof(Vertex) * mesh->vertices.count;
         VkDeviceSize index_size = sizeof(uint32_t) * mesh->indices.count;
 
-        upload_buffer_via_staging(r, mesh->vertices.data, vertex_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                                  &r->skydome_vertex_buffer, &r->skydome_vertex_buffer_alloc);
-        upload_buffer_via_staging(r, mesh->indices.data, index_size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                                  &r->skydome_index_buffer, &r->skydome_index_buffer_alloc);
+        if (!upload_buffer_via_staging(r, mesh->vertices.data, vertex_size,
+                                       VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                                       &r->skydome_vertex_buffer,
+                                       &r->skydome_vertex_buffer_alloc) ||
+            !upload_buffer_via_staging(r, mesh->indices.data, index_size,
+                                       VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                                       &r->skydome_index_buffer,
+                                       &r->skydome_index_buffer_alloc)) {
+            return false;
+        }
     }
 
     if (texture && texture->data_size > 0) {
-        update_skydome_texture(r, texture);
+        if (!update_skydome_texture(r, texture)) {
+            return false;
+        }
     }
+
+    return true;
 }
 
 // Ensure per-material GPU resources are allocated for the given material count
-static void ensure_material_gpu(VulkanRenderer* r, uint32_t material_count) {
-    if (r->material_gpu_count >= material_count) return;
+static bool ensure_material_gpu(VulkanRenderer* r, uint32_t material_count) {
+    if (r->material_gpu_count >= material_count) return true;
 
     // Grow the array
     MaterialGPUData* new_mats = calloc(material_count, sizeof(MaterialGPUData));
+    if (!new_mats) {
+        vulkan_renderer_set_error(r, VK_ERROR_OUT_OF_HOST_MEMORY, "calloc",
+                                  "Failed to allocate material GPU data");
+        return false;
+    }
     if (r->material_gpu) {
         memcpy(new_mats, r->material_gpu, r->material_gpu_count * sizeof(MaterialGPUData));
         free(r->material_gpu);
@@ -151,25 +239,35 @@ static void ensure_material_gpu(VulkanRenderer* r, uint32_t material_count) {
         alloc_info.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
         alloc_info.pSetLayouts = layouts;
 
-        if (vkAllocateDescriptorSets(r->device, &alloc_info, mat->descriptor_sets) != VK_SUCCESS) {
-            fprintf(stderr, "Failed to allocate material descriptor sets\n");
-            return;
+        VkResult result = vkAllocateDescriptorSets(r->device, &alloc_info,
+                                                   mat->descriptor_sets);
+        if (result != VK_SUCCESS) {
+            vulkan_renderer_set_error(r, result, "vkAllocateDescriptorSets",
+                                      "Failed to allocate material descriptor sets");
+            r->material_gpu_count = material_count;
+            return false;
         }
 
         // Create fragment uniform buffers
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             mat->descriptor_sets_dirty[i] = true;
-            create_buffer(r, sizeof(FragmentUniforms), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                          &mat->fragment_uniform_buffers[i],
-                          &mat->fragment_uniform_buffer_allocs[i]);
+            if (!create_buffer(r, sizeof(FragmentUniforms),
+                               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                               &mat->fragment_uniform_buffers[i],
+                               &mat->fragment_uniform_buffer_allocs[i])) {
+                r->material_gpu_count = material_count;
+                return false;
+            }
         }
     }
 
     r->material_gpu_count = material_count;
+    return true;
 }
 
-const uint8_t* vulkan_renderer_render(
+bool vulkan_renderer_render(
     VulkanRenderer* r,
     const Mesh* mesh,
     const mat4 mvp,
@@ -182,9 +280,20 @@ const uint8_t* vulkan_renderer_render(
     const mat4* bone_matrices,
     uint32_t bone_count,
     const mat4* view,
-    const mat4* projection
+    const mat4* projection,
+    const uint8_t** out_framebuffer
 ) {
-    vkWaitForFences(r->device, 1, &r->in_flight_fences[r->current_frame], VK_TRUE, UINT64_MAX);
+    vulkan_renderer_clear_error(r);
+    *out_framebuffer = NULL;
+
+    VkResult vk_result = vkWaitForFences(r->device, 1,
+                                         &r->in_flight_fences[r->current_frame],
+                                         VK_TRUE, UINT64_MAX);
+    if (vk_result != VK_SUCCESS) {
+        vulkan_renderer_set_error(r, vk_result, "vkWaitForFences",
+                                  "Failed to wait for in-flight fence");
+        return false;
+    }
 
     // Read framebuffer from the frame that just completed
     const uint8_t* result = NULL;
@@ -195,11 +304,23 @@ const uint8_t* vulkan_renderer_render(
         range.memory = r->staging_buffer_allocs[ready_staging_idx].memory;
         range.offset = 0;
         range.size = VK_WHOLE_SIZE;
-        vkInvalidateMappedMemoryRanges(r->device, 1, &range);
+        vk_result = vkInvalidateMappedMemoryRanges(r->device, 1, &range);
+        if (vk_result != VK_SUCCESS) {
+            vulkan_renderer_set_error(r, vk_result,
+                                      "vkInvalidateMappedMemoryRanges",
+                                      "Failed to invalidate staging buffer memory");
+            return false;
+        }
         result = (const uint8_t*)r->staging_buffer_allocs[ready_staging_idx].mapped;
     }
 
-    vkResetFences(r->device, 1, &r->in_flight_fences[r->current_frame]);
+    vk_result = vkResetFences(r->device, 1,
+                              &r->in_flight_fences[r->current_frame]);
+    if (vk_result != VK_SUCCESS) {
+        vulkan_renderer_set_error(r, vk_result, "vkResetFences",
+                                  "Failed to reset in-flight fence");
+        return false;
+    }
 
     r->current_staging_buffer = (r->current_staging_buffer + 1) % NUM_STAGING_BUFFERS;
     uint32_t write_staging_idx = r->current_staging_buffer;
@@ -207,17 +328,25 @@ const uint8_t* vulkan_renderer_render(
 
     // Ensure material GPU resources
     if (material_count == 0) material_count = 1;
-    ensure_material_gpu(r, material_count);
+    if (!ensure_material_gpu(r, material_count)) {
+        return false;
+    }
 
     // Upload textures for each material
     for (uint32_t m = 0; m < material_count; m++) {
-        update_material_texture(r, &r->material_gpu[m], materials[m].diffuse, materials[m].normal);
+        if (!update_material_texture(r, &r->material_gpu[m],
+                                     materials[m].diffuse,
+                                     materials[m].normal)) {
+            return false;
+        }
     }
 
     // Update vertex/index buffers
     if (r->cached_mesh_generation != mesh->generation || r->vertex_buffer == VK_NULL_HANDLE) {
-        update_vertex_buffer(r, &mesh->vertices);
-        update_index_buffer(r, &mesh->indices);
+        if (!update_vertex_buffer(r, &mesh->vertices) ||
+            !update_index_buffer(r, &mesh->indices)) {
+            return false;
+        }
         r->cached_mesh_generation = mesh->generation;
     }
 
@@ -288,10 +417,20 @@ const uint8_t* vulkan_renderer_render(
     }
 
     VkCommandBuffer cmd = r->command_buffers[r->current_frame];
-    vkResetCommandBuffer(cmd, 0);
+    vk_result = vkResetCommandBuffer(cmd, 0);
+    if (vk_result != VK_SUCCESS) {
+        vulkan_renderer_set_error(r, vk_result, "vkResetCommandBuffer",
+                                  "Failed to reset render command buffer");
+        return false;
+    }
 
     VkCommandBufferBeginInfo begin_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    vkBeginCommandBuffer(cmd, &begin_info);
+    vk_result = vkBeginCommandBuffer(cmd, &begin_info);
+    if (vk_result != VK_SUCCESS) {
+        vulkan_renderer_set_error(r, vk_result, "vkBeginCommandBuffer",
+                                  "Failed to begin render command buffer");
+        return false;
+    }
 
     VkClearValue clear_values[2] = {{{{0, 0, 0, 1}}}, {{{0.0f, 0}}}};
 
@@ -400,16 +539,28 @@ const uint8_t* vulkan_renderer_render(
 
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, NULL, 1, &buffer_barrier, 0, NULL);
 
-    vkEndCommandBuffer(cmd);
+    vk_result = vkEndCommandBuffer(cmd);
+    if (vk_result != VK_SUCCESS) {
+        vulkan_renderer_set_error(r, vk_result, "vkEndCommandBuffer",
+                                  "Failed to end render command buffer");
+        return false;
+    }
 
     VkSubmitInfo submit_info = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &cmd;
 
-    vkQueueSubmit(r->graphics_queue, 1, &submit_info, r->in_flight_fences[r->current_frame]);
+    vk_result = vkQueueSubmit(r->graphics_queue, 1, &submit_info,
+                              r->in_flight_fences[r->current_frame]);
+    if (vk_result != VK_SUCCESS) {
+        vulkan_renderer_set_error(r, vk_result, "vkQueueSubmit",
+                                  "Failed to submit render command buffer");
+        return false;
+    }
 
     r->frame_ready[r->current_frame] = true;
     r->current_frame = (r->current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
-    return result;
+    *out_framebuffer = result;
+    return true;
 }

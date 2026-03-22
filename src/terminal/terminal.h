@@ -32,6 +32,9 @@ void termios_state_restore(TermiosState *state);
 
 void enable_raw_mode(void);
 void disable_raw_mode(void);
+void write_terminal_recovery_sequence(int fd);
+void terminal_restore_default_state(void);
+void terminal_restore_after_crash(void);
 
 static inline void enter_alternate_screen(void) { safe_write("\x1b[?1049h", 8); }
 static inline void exit_alternate_screen(void) { safe_write("\x1b[?1049l", 8); }

@@ -42,14 +42,23 @@ bool create_render_targets(VulkanRenderer* r) {
         return false;
     }
     r->color_image_view = create_image_view(r, r->color_image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+    if (r->color_image_view == VK_NULL_HANDLE) {
+        cleanup_render_targets(r);
+        return false;
+    }
     
     // Depth image
     if (!create_image(r, r->width, r->height, VK_FORMAT_D32_SFLOAT,
                       VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
                       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &r->depth_image, &r->depth_image_alloc)) {
+        cleanup_render_targets(r);
         return false;
     }
     r->depth_image_view = create_image_view(r, r->depth_image, VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT);
+    if (r->depth_image_view == VK_NULL_HANDLE) {
+        cleanup_render_targets(r);
+        return false;
+    }
     
     return true;
 }
@@ -65,8 +74,10 @@ bool create_framebuffer(VulkanRenderer* r) {
     fb_info.height = r->height;
     fb_info.layers = 1;
     
-    if (vkCreateFramebuffer(r->device, &fb_info, NULL, &r->framebuffer) != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create framebuffer\n");
+    VkResult result = vkCreateFramebuffer(r->device, &fb_info, NULL, &r->framebuffer);
+    if (result != VK_SUCCESS) {
+        vulkan_renderer_set_error(r, result, "vkCreateFramebuffer",
+                                  "Failed to create framebuffer");
         return false;
     }
     return true;

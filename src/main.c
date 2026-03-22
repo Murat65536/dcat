@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <signal.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <stdarg.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -25,8 +27,14 @@
 // Global state for signal handlers
 static atomic_bool g_running = true;
 static volatile sig_atomic_t g_resize_pending = 1;
+static volatile sig_atomic_t g_terminal_session_active = 0;
 
 static const float TARGET_SIZE = 4.0f;
+
+typedef struct FatalReport {
+    bool active;
+    char message[512];
+} FatalReport;
 
 static void signal_handler(int sig) {
     (void)sig;
@@ -36,6 +44,72 @@ static void signal_handler(int sig) {
 static void resize_handler(int sig) {
     (void)sig;
     g_resize_pending = 1;
+}
+
+static void write_signal_literal(int fd, const char* data, size_t size) {
+    while (size > 0) {
+        ssize_t written = write(fd, data, size);
+        if (written < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            break;
+        }
+        data += written;
+        size -= (size_t)written;
+    }
+}
+
+static void write_signal_name(int sig) {
+    switch (sig) {
+        case SIGABRT:
+            write_signal_literal(STDERR_FILENO, "SIGABRT", 7);
+            break;
+        case SIGBUS:
+            write_signal_literal(STDERR_FILENO, "SIGBUS", 6);
+            break;
+        case SIGFPE:
+            write_signal_literal(STDERR_FILENO, "SIGFPE", 6);
+            break;
+        case SIGILL:
+            write_signal_literal(STDERR_FILENO, "SIGILL", 6);
+            break;
+        case SIGSEGV:
+            write_signal_literal(STDERR_FILENO, "SIGSEGV", 7);
+            break;
+        default:
+            write_signal_literal(STDERR_FILENO, "unknown", 7);
+            break;
+    }
+}
+
+static void fatal_signal_handler(int sig) {
+    static const char prefix[] = "\r\nFatal signal: ";
+    static const char suffix[] =
+        " while rendering. Terminal recovery was attempted.\r\n";
+
+    if (g_terminal_session_active) {
+        terminal_restore_after_crash();
+        g_terminal_session_active = 0;
+    }
+
+    write_signal_literal(STDERR_FILENO, prefix, sizeof(prefix) - 1);
+    write_signal_name(sig);
+    write_signal_literal(STDERR_FILENO, suffix, sizeof(suffix) - 1);
+    _exit(128 + sig);
+}
+
+static void record_fatal_report(FatalReport* report, const char* format, ...) {
+    if (report->active) {
+        return;
+    }
+
+    report->active = true;
+
+    va_list args;
+    va_start(args, format);
+    vsnprintf(report->message, sizeof(report->message), format, args);
+    va_end(args);
 }
 
 static inline double get_time_seconds(void) {
@@ -160,6 +234,7 @@ static void terminal_session_begin(TerminalSession* session, bool mouse_orbit) {
         enable_mouse_orbit_tracking();
     }
 
+    g_terminal_session_active = 1;
     session->active = true;
     session->mouse_orbit_enabled = mouse_orbit;
 }
@@ -169,14 +244,8 @@ static void terminal_session_end(TerminalSession* session) {
         return;
     }
 
-    disable_kitty_keyboard();
-    disable_raw_mode();
-    exit_alternate_screen();
-    show_cursor();
-    if (session->mouse_orbit_enabled) {
-        disable_mouse_orbit_tracking();
-    }
-
+    g_terminal_session_active = 0;
+    terminal_restore_default_state();
     session->active = false;
     session->mouse_orbit_enabled = false;
 }
@@ -202,14 +271,14 @@ static float calculate_frame_fps(float delta_time) {
     return delta_time > 0.0f ? 1.0f / delta_time : 0.0f;
 }
 
-static void resize_renderer_if_needed(const Args* args, OutputMode output_mode,
+static bool resize_renderer_if_needed(const Args* args, OutputMode output_mode,
                                       VulkanRenderer* renderer,
                                       pthread_mutex_t* shared_state_mutex,
                                       Camera* camera, uint32_t* width,
                                       uint32_t* height, mat4 view,
                                       mat4 projection) {
     if (!g_resize_pending) {
-        return;
+        return true;
     }
 
     g_resize_pending = 0;
@@ -218,17 +287,20 @@ static void resize_renderer_if_needed(const Args* args, OutputMode output_mode,
     uint32_t new_height = 0;
     calculate_output_dimensions(args, output_mode, &new_width, &new_height);
     if (new_width == *width && new_height == *height) {
-        return;
+        return true;
     }
 
     *width = new_width;
     *height = new_height;
-    vulkan_renderer_resize(renderer, *width, *height);
+    if (!vulkan_renderer_resize(renderer, *width, *height)) {
+        return false;
+    }
 
     pthread_mutex_lock(shared_state_mutex);
     camera_init(camera, *width, *height, camera->position, camera->target, 60.0f);
     refresh_camera_matrices(camera, view, projection);
     pthread_mutex_unlock(shared_state_mutex);
+    return true;
 }
 
 static const char* get_animation_name(const AnimationContext* anim_ctx,
@@ -322,7 +394,7 @@ static void process_input_devices(KeyState* key_state,
     if (key_state->l) camera_rotate(camera, rot_speed, 0.0f);
 }
 
-static void render_frame(const RenderContext* ctx, const AnimationContext* anim_ctx,
+static bool render_frame(const RenderContext* ctx, const AnimationContext* anim_ctx,
                          const Mesh* mesh, mat4 view, mat4 projection,
                          OutputMode output_mode, bool show_status_bar,
                          uint32_t width, uint32_t height,
@@ -332,6 +404,7 @@ static void render_frame(const RenderContext* ctx, const AnimationContext* anim_
     glm_mat4_mul((vec4*)projection, (vec4*)view, mvp);
     glm_mat4_mul(mvp, (vec4*)ctx->model_matrix, mvp);
 
+    const uint8_t* framebuffer = NULL;
     const mat4* bone_matrix_ptr = NULL;
     uint32_t bone_count = 0;
 
@@ -340,13 +413,16 @@ static void render_frame(const RenderContext* ctx, const AnimationContext* anim_
         bone_count = (uint32_t)mesh->skeleton.bones.count;
     }
 
-    const uint8_t* framebuffer = vulkan_renderer_render(
+    if (!vulkan_renderer_render(
         ctx->renderer, mesh, mvp, ctx->model_matrix,
         ctx->materials, ctx->material_count,
         ctx->enable_lighting,
         camera_position, ctx->use_triplanar_mapping,
-        bone_matrix_ptr, bone_count, (const mat4*)&view, (const mat4*)&projection
-    );
+        bone_matrix_ptr, bone_count, (const mat4*)&view, (const mat4*)&projection,
+        &framebuffer
+    )) {
+        return false;
+    }
 
     if (framebuffer) {
         render_output_frame(output_mode, framebuffer, width, height);
@@ -357,6 +433,8 @@ static void render_frame(const RenderContext* ctx, const AnimationContext* anim_
                                                current_animation_index));
         }
     }
+
+    return true;
 }
 
 int main(int argc, char* argv[]) {
@@ -381,6 +459,15 @@ int main(int argc, char* argv[]) {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
     signal(SIGWINCH, resize_handler);
+
+    struct sigaction fatal_action = {0};
+    fatal_action.sa_handler = fatal_signal_handler;
+    sigemptyset(&fatal_action.sa_mask);
+    sigaction(SIGABRT, &fatal_action, NULL);
+    sigaction(SIGBUS, &fatal_action, NULL);
+    sigaction(SIGFPE, &fatal_action, NULL);
+    sigaction(SIGILL, &fatal_action, NULL);
+    sigaction(SIGSEGV, &fatal_action, NULL);
 
     uint32_t width = 0;
     uint32_t height = 0;
@@ -407,10 +494,13 @@ int main(int argc, char* argv[]) {
     pthread_t input_thread;
     bool input_thread_started = false;
     TerminalSession terminal_session = {0};
+    FatalReport fatal_report = {0};
 
     renderer = vulkan_renderer_create(width, height);
     if (!renderer || !vulkan_renderer_initialize(renderer)) {
-        fprintf(stderr, "Failed to initialize Vulkan renderer\n");
+        const char* renderer_error = renderer ? vulkan_renderer_get_last_error(renderer) : NULL;
+        fprintf(stderr, "%s\n", renderer_error ? renderer_error
+                                              : "Failed to initialize Vulkan renderer");
         goto cleanup;
     }
     vulkan_renderer_set_light_direction(renderer, (vec3){0.0f, -1.0f, -0.5f});
@@ -448,7 +538,12 @@ int main(int argc, char* argv[]) {
 
     has_skydome = load_skydome(args.skydome_path, &skydome_mesh, &skydome_texture);
     if (has_skydome) {
-        vulkan_renderer_set_skydome(renderer, &skydome_mesh, &skydome_texture);
+        if (!vulkan_renderer_set_skydome(renderer, &skydome_mesh, &skydome_texture)) {
+            const char* renderer_error = vulkan_renderer_get_last_error(renderer);
+            fprintf(stderr, "%s\n", renderer_error ? renderer_error
+                                                  : "Failed to upload skydome resources");
+            goto cleanup;
+        }
     }
 
     CameraSetup camera_setup;
@@ -493,7 +588,8 @@ int main(int argc, char* argv[]) {
     };
     int thread_error = pthread_create(&input_thread, NULL, input_thread_func, &input_data);
     if (thread_error != 0) {
-        fprintf(stderr, "Failed to start input thread: %s\n", strerror(thread_error));
+        record_fatal_report(&fatal_report, "Failed to start input thread: %s",
+                            strerror(thread_error));
         goto cleanup;
     }
     input_thread_started = true;
@@ -517,8 +613,15 @@ int main(int argc, char* argv[]) {
     glm_mat4_copy(render_ctx.model_matrix, base_model_matrix);
 
     while (atomic_load(&g_running)) {
-        resize_renderer_if_needed(&args, output_mode, renderer, &shared_state_mutex,
-                                  &camera, &width, &height, view, projection);
+        if (!resize_renderer_if_needed(&args, output_mode, renderer,
+                                       &shared_state_mutex, &camera,
+                                       &width, &height, view, projection)) {
+            const char* renderer_error = vulkan_renderer_get_last_error(renderer);
+            record_fatal_report(&fatal_report, "%s",
+                                renderer_error ? renderer_error
+                                               : "Failed to resize Vulkan renderer");
+            goto cleanup;
+        }
 
         double frame_start = get_time_seconds();
         float delta_time = (float)(frame_start - last_frame_time);
@@ -546,10 +649,17 @@ int main(int argc, char* argv[]) {
         }
         pthread_mutex_unlock(&shared_state_mutex);
 
-        render_frame(&render_ctx, &anim_ctx, &mesh, view, projection, output_mode,
-                     args.show_status_bar, width, height,
-                     calculate_frame_fps(delta_time), move_speed,
-                     camera_position_snapshot, current_animation_index_snapshot);
+        if (!render_frame(&render_ctx, &anim_ctx, &mesh, view, projection,
+                          output_mode, args.show_status_bar, width, height,
+                          calculate_frame_fps(delta_time), move_speed,
+                          camera_position_snapshot,
+                          current_animation_index_snapshot)) {
+            const char* renderer_error = vulkan_renderer_get_last_error(renderer);
+            record_fatal_report(&fatal_report, "%s",
+                                renderer_error ? renderer_error
+                                               : "Rendering failed");
+            goto cleanup;
+        }
 
         double frame_end = get_time_seconds();
         double frame_duration = frame_end - frame_start;
@@ -562,11 +672,14 @@ int main(int argc, char* argv[]) {
 
 cleanup:
     atomic_store(&g_running, false);
-    vulkan_renderer_wait_idle(renderer);
     if (input_thread_started) {
         pthread_join(input_thread, NULL);
     }
     terminal_session_end(&terminal_session);
+    if (fatal_report.active) {
+        fprintf(stderr, "%s\n", fatal_report.message);
+    }
+    vulkan_renderer_wait_idle(renderer);
     if (shared_state_mutex_initialized) {
         pthread_mutex_destroy(&shared_state_mutex);
     }

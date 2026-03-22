@@ -3,7 +3,9 @@
 
 #include "vulkan_renderer.h"
 
-uint32_t find_memory_type(VulkanRenderer* r, uint32_t type_filter, VkMemoryPropertyFlags properties);
+bool find_memory_type(VulkanRenderer* r, uint32_t type_filter,
+                      VkMemoryPropertyFlags properties,
+                      uint32_t* out_memory_type);
 
 static inline VkDeviceSize align_up(VkDeviceSize size, VkDeviceSize alignment) {
     return (size + alignment - 1) & ~(alignment - 1);
@@ -18,13 +20,17 @@ bool create_image(VulkanRenderer* r, uint32_t width, uint32_t height, VkFormat f
 
 VkImageView create_image_view(VulkanRenderer* r, VkImage image, VkFormat format, VkImageAspectFlags aspect_flags);
 
-VkCommandBuffer begin_single_time_commands(VulkanRenderer* r);
-void end_single_time_commands(VulkanRenderer* r, VkCommandBuffer cmd);
+bool begin_single_time_commands(VulkanRenderer* r, VkCommandBuffer* out_cmd);
+bool end_single_time_commands(VulkanRenderer* r, VkCommandBuffer cmd);
 
-void transition_image_layout(VulkanRenderer* r, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout);
-void copy_buffer_to_image(VulkanRenderer* r, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
+bool transition_image_layout(VulkanRenderer* r, VkImage image,
+                             VkImageLayout old_layout,
+                             VkImageLayout new_layout);
+bool copy_buffer_to_image(VulkanRenderer* r, VkBuffer buffer, VkImage image,
+                          uint32_t width, uint32_t height);
 
-void upload_buffer_via_staging(VulkanRenderer* r, const void* data, VkDeviceSize size,
-                                VkBufferUsageFlagBits usage_bit, VkBuffer* buffer, VulkanAllocation* alloc);
+bool upload_buffer_via_staging(VulkanRenderer* r, const void* data, VkDeviceSize size,
+                               VkBufferUsageFlagBits usage_bit, VkBuffer* buffer,
+                               VulkanAllocation* alloc);
 
 #endif // DCAT_VK_MEMORY_H
