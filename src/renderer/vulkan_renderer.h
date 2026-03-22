@@ -13,7 +13,7 @@
 
 #define MAX_FRAMES_IN_FLIGHT 3
 #define NUM_STAGING_BUFFERS (MAX_FRAMES_IN_FLIGHT + 1)
-#define MAX_MATERIALS 32
+#define INITIAL_MATERIAL_DESCRIPTOR_CAPACITY 32
 
 // Push constants for vertex shader
 typedef struct PushConstants {
@@ -97,6 +97,7 @@ typedef struct VulkanRenderer {
 
     VkCommandPool command_pool;
     VkDescriptorPool descriptor_pool;
+    uint32_t descriptor_pool_material_capacity;
     VkDescriptorSetLayout descriptor_set_layout;
     VkPipelineLayout pipeline_layout;
     VkRenderPass render_pass;

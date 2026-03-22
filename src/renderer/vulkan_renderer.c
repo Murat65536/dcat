@@ -29,6 +29,12 @@ static const char* vk_result_name(VkResult result) {
         case VK_ERROR_TOO_MANY_OBJECTS: return "VK_ERROR_TOO_MANY_OBJECTS";
         case VK_ERROR_FORMAT_NOT_SUPPORTED: return "VK_ERROR_FORMAT_NOT_SUPPORTED";
         case VK_ERROR_SURFACE_LOST_KHR: return "VK_ERROR_SURFACE_LOST_KHR";
+#ifdef VK_ERROR_FRAGMENTED_POOL
+        case VK_ERROR_FRAGMENTED_POOL: return "VK_ERROR_FRAGMENTED_POOL";
+#endif
+#ifdef VK_ERROR_OUT_OF_POOL_MEMORY
+        case VK_ERROR_OUT_OF_POOL_MEMORY: return "VK_ERROR_OUT_OF_POOL_MEMORY";
+#endif
         default: return "VK_ERROR_UNKNOWN";
     }
 }
@@ -72,6 +78,7 @@ VulkanRenderer* vulkan_renderer_create(uint32_t width, uint32_t height) {
 
     r->width = width;
     r->height = height;
+    r->descriptor_pool_material_capacity = INITIAL_MATERIAL_DESCRIPTOR_CAPACITY;
     glm_vec3_normalize_to((vec3){0.0f, -1.0f, -0.5f}, r->normalized_light_dir);
 
     return r;
@@ -207,9 +214,137 @@ bool vulkan_renderer_set_skydome(VulkanRenderer* r, const Mesh* mesh, const Text
     return true;
 }
 
+static void cleanup_material_fragment_uniform_buffers(VulkanRenderer* r, MaterialGPUData* mat) {
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        if (mat->fragment_uniform_buffers[i] != VK_NULL_HANDLE) {
+            vkDestroyBuffer(r->device, mat->fragment_uniform_buffers[i], NULL);
+            mat->fragment_uniform_buffers[i] = VK_NULL_HANDLE;
+        }
+        if (mat->fragment_uniform_buffer_allocs[i].memory != VK_NULL_HANDLE) {
+            vkFreeMemory(r->device, mat->fragment_uniform_buffer_allocs[i].memory, NULL);
+            memset(&mat->fragment_uniform_buffer_allocs[i], 0,
+                   sizeof(mat->fragment_uniform_buffer_allocs[i]));
+        }
+    }
+}
+
+static bool allocate_descriptor_sets_from_pool(VulkanRenderer* r, VkDescriptorPool descriptor_pool,
+                                               VkDescriptorSetLayout layout,
+                                               VkDescriptorSet* descriptor_sets,
+                                               const char* detail) {
+    VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        layouts[i] = layout;
+    }
+
+    VkDescriptorSetAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
+    };
+    alloc_info.descriptorPool = descriptor_pool;
+    alloc_info.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
+    alloc_info.pSetLayouts = layouts;
+
+    VkResult result = vkAllocateDescriptorSets(r->device, &alloc_info, descriptor_sets);
+    if (result != VK_SUCCESS) {
+        vulkan_renderer_set_error(r, result, "vkAllocateDescriptorSets", "%s", detail);
+        return false;
+    }
+
+    return true;
+}
+
+static uint32_t next_material_descriptor_capacity(uint32_t current_capacity,
+                                                  uint32_t required_materials) {
+    uint32_t capacity = current_capacity;
+    if (capacity < INITIAL_MATERIAL_DESCRIPTOR_CAPACITY) {
+        capacity = INITIAL_MATERIAL_DESCRIPTOR_CAPACITY;
+    }
+
+    while (capacity < required_materials) {
+        capacity *= 2;
+    }
+
+    return capacity;
+}
+
+static bool rebuild_material_descriptor_pool(VulkanRenderer* r, uint32_t material_count,
+                                             uint32_t material_capacity) {
+    VkResult result = vkDeviceWaitIdle(r->device);
+    if (result != VK_SUCCESS) {
+        vulkan_renderer_set_error(r, result, "vkDeviceWaitIdle",
+                                  "Failed to wait for device idle before growing descriptors");
+        return false;
+    }
+
+    VkDescriptorPool new_pool = VK_NULL_HANDLE;
+    if (!create_descriptor_pool_with_capacity(r, material_capacity, &new_pool)) {
+        return false;
+    }
+
+    VkDescriptorSet new_skydome_sets[MAX_FRAMES_IN_FLIGHT] = {VK_NULL_HANDLE};
+    if (r->skydome_descriptor_set_layout != VK_NULL_HANDLE &&
+        !allocate_descriptor_sets_from_pool(r, new_pool, r->skydome_descriptor_set_layout,
+                                            new_skydome_sets,
+                                            "Failed to allocate skydome descriptor sets")) {
+        vkDestroyDescriptorPool(r->device, new_pool, NULL);
+        return false;
+    }
+
+    VkDescriptorSet* new_material_sets = NULL;
+    if (material_count > 0) {
+        size_t total_sets = (size_t)material_count * MAX_FRAMES_IN_FLIGHT;
+        new_material_sets = calloc(total_sets, sizeof(*new_material_sets));
+        if (!new_material_sets) {
+            vkDestroyDescriptorPool(r->device, new_pool, NULL);
+            vulkan_renderer_set_error(r, VK_ERROR_OUT_OF_HOST_MEMORY, "calloc",
+                                      "Failed to allocate descriptor set handles");
+            return false;
+        }
+
+        for (uint32_t m = 0; m < material_count; m++) {
+            if (!allocate_descriptor_sets_from_pool(r, new_pool, r->descriptor_set_layout,
+                                                    &new_material_sets[m * MAX_FRAMES_IN_FLIGHT],
+                                                    "Failed to allocate material descriptor sets")) {
+                free(new_material_sets);
+                vkDestroyDescriptorPool(r->device, new_pool, NULL);
+                return false;
+            }
+        }
+    }
+
+    VkDescriptorPool old_pool = r->descriptor_pool;
+    r->descriptor_pool = new_pool;
+    r->descriptor_pool_material_capacity = material_capacity;
+
+    if (r->skydome_descriptor_set_layout != VK_NULL_HANDLE) {
+        memcpy(r->skydome_descriptor_sets, new_skydome_sets, sizeof(new_skydome_sets));
+        update_skydome_descriptor_sets(r, r->skydome_descriptor_sets);
+    } else {
+        memset(r->skydome_descriptor_sets, 0, sizeof(r->skydome_descriptor_sets));
+    }
+
+    for (uint32_t m = 0; m < material_count; m++) {
+        memcpy(r->material_gpu[m].descriptor_sets,
+               &new_material_sets[m * MAX_FRAMES_IN_FLIGHT],
+               sizeof(r->material_gpu[m].descriptor_sets));
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            r->material_gpu[m].descriptor_sets_dirty[i] = true;
+        }
+    }
+
+    free(new_material_sets);
+    if (old_pool != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(r->device, old_pool, NULL);
+    }
+
+    return true;
+}
+
 // Ensure per-material GPU resources are allocated for the given material count
 static bool ensure_material_gpu(VulkanRenderer* r, uint32_t material_count) {
     if (r->material_gpu_count >= material_count) return true;
+
+    uint32_t old_material_count = r->material_gpu_count;
 
     // Grow the array
     MaterialGPUData* new_mats = calloc(material_count, sizeof(MaterialGPUData));
@@ -219,36 +354,15 @@ static bool ensure_material_gpu(VulkanRenderer* r, uint32_t material_count) {
         return false;
     }
     if (r->material_gpu) {
-        memcpy(new_mats, r->material_gpu, r->material_gpu_count * sizeof(MaterialGPUData));
+        memcpy(new_mats, r->material_gpu, old_material_count * sizeof(MaterialGPUData));
         free(r->material_gpu);
     }
     r->material_gpu = new_mats;
 
-    // Allocate descriptor sets and fragment UBOs for new materials
-    for (uint32_t m = r->material_gpu_count; m < material_count; m++) {
+    // Allocate fragment UBOs for new materials before rebuilding descriptor sets.
+    for (uint32_t m = old_material_count; m < material_count; m++) {
         MaterialGPUData* mat = &r->material_gpu[m];
 
-        // Allocate descriptor sets
-        VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
-        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            layouts[i] = r->descriptor_set_layout;
-        }
-
-        VkDescriptorSetAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-        alloc_info.descriptorPool = r->descriptor_pool;
-        alloc_info.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
-        alloc_info.pSetLayouts = layouts;
-
-        VkResult result = vkAllocateDescriptorSets(r->device, &alloc_info,
-                                                   mat->descriptor_sets);
-        if (result != VK_SUCCESS) {
-            vulkan_renderer_set_error(r, result, "vkAllocateDescriptorSets",
-                                      "Failed to allocate material descriptor sets");
-            r->material_gpu_count = material_count;
-            return false;
-        }
-
-        // Create fragment uniform buffers
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             mat->descriptor_sets_dirty[i] = true;
             if (!create_buffer(r, sizeof(FragmentUniforms),
@@ -257,10 +371,21 @@ static bool ensure_material_gpu(VulkanRenderer* r, uint32_t material_count) {
                                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                                &mat->fragment_uniform_buffers[i],
                                &mat->fragment_uniform_buffer_allocs[i])) {
-                r->material_gpu_count = material_count;
+                for (uint32_t cleanup_idx = old_material_count; cleanup_idx <= m; cleanup_idx++) {
+                    cleanup_material_fragment_uniform_buffers(r, &r->material_gpu[cleanup_idx]);
+                }
                 return false;
             }
         }
+    }
+
+    uint32_t new_capacity = next_material_descriptor_capacity(
+        r->descriptor_pool_material_capacity, material_count);
+    if (!rebuild_material_descriptor_pool(r, material_count, new_capacity)) {
+        for (uint32_t m = old_material_count; m < material_count; m++) {
+            cleanup_material_fragment_uniform_buffers(r, &r->material_gpu[m]);
+        }
+        return false;
     }
 
     r->material_gpu_count = material_count;

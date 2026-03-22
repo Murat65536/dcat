@@ -14,23 +14,41 @@ bool create_command_pool(VulkanRenderer* r) {
     return true;
 }
 
-bool create_descriptor_pool(VulkanRenderer* r) {
-    // Pool sized for up to MAX_MATERIALS per-material descriptor sets + skydome
+bool create_descriptor_pool_with_capacity(VulkanRenderer* r, uint32_t material_capacity,
+                                          VkDescriptorPool* out_pool) {
+    // Pool sized for per-material descriptor sets plus skydome.
     VkDescriptorPoolSize pool_sizes[2] = {
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         (1 + MAX_MATERIALS) * MAX_FRAMES_IN_FLIGHT},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (2 * MAX_MATERIALS + 1) * MAX_FRAMES_IN_FLIGHT},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         (1 + material_capacity) * MAX_FRAMES_IN_FLIGHT},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (2 * material_capacity + 1) * MAX_FRAMES_IN_FLIGHT},
     };
 
     VkDescriptorPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     pool_info.poolSizeCount = 2;
     pool_info.pPoolSizes = pool_sizes;
-    pool_info.maxSets = (MAX_MATERIALS + 2) * MAX_FRAMES_IN_FLIGHT;
+    pool_info.maxSets = (material_capacity + 2) * MAX_FRAMES_IN_FLIGHT;
 
-    if (vkCreateDescriptorPool(r->device, &pool_info, NULL, &r->descriptor_pool) != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create descriptor pool. This might be due to requesting too many descriptors or memory limits.\n");
+    VkResult result = vkCreateDescriptorPool(r->device, &pool_info, NULL, out_pool);
+    if (result != VK_SUCCESS) {
+        vulkan_renderer_set_error(r, result, "vkCreateDescriptorPool",
+                                  "Failed to create descriptor pool for %u materials",
+                                  material_capacity);
         return false;
     }
+    return true;
+}
+
+bool create_descriptor_pool(VulkanRenderer* r) {
+    uint32_t material_capacity = r->descriptor_pool_material_capacity;
+    if (material_capacity < INITIAL_MATERIAL_DESCRIPTOR_CAPACITY) {
+        material_capacity = INITIAL_MATERIAL_DESCRIPTOR_CAPACITY;
+    }
+
+    if (!create_descriptor_pool_with_capacity(r, material_capacity, &r->descriptor_pool)) {
+        return false;
+    }
+
+    r->descriptor_pool_material_capacity = material_capacity;
     return true;
 }
 

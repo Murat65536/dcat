@@ -108,6 +108,28 @@ bool update_material_texture(VulkanRenderer* r, MaterialGPUData* mat,
     return true;
 }
 
+void update_skydome_descriptor_sets(VulkanRenderer* r, const VkDescriptorSet* descriptor_sets) {
+    if (r->skydome_image_view == VK_NULL_HANDLE) {
+        return;
+    }
+
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VkDescriptorImageInfo image_info = {0};
+        image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        image_info.imageView = r->skydome_image_view;
+        image_info.sampler = r->sampler;
+
+        VkWriteDescriptorSet write = {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        write.dstSet = descriptor_sets[i];
+        write.dstBinding = 0;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write.descriptorCount = 1;
+        write.pImageInfo = &image_info;
+
+        vkUpdateDescriptorSets(r->device, 1, &write, 0, NULL);
+    }
+}
+
 bool update_skydome_texture(VulkanRenderer* r, const Texture* texture) {
     if (!texture->data || texture->data_size == 0) return true;
 
@@ -163,24 +185,7 @@ bool update_skydome_texture(VulkanRenderer* r, const Texture* texture) {
     }
 
     r->cached_skydome_data_ptr = texture->data;
-
-    // Update descriptor sets
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        VkDescriptorImageInfo image_info = {0};
-        image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        image_info.imageView = r->skydome_image_view;
-        image_info.sampler = r->sampler;
-
-        VkWriteDescriptorSet write = {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-        write.dstSet = r->skydome_descriptor_sets[i];
-        write.dstBinding = 0;
-        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        write.descriptorCount = 1;
-        write.pImageInfo = &image_info;
-
-        vkUpdateDescriptorSets(r->device, 1, &write, 0, NULL);
-    }
-
+    update_skydome_descriptor_sets(r, r->skydome_descriptor_sets);
     return true;
 }
 
