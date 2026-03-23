@@ -531,9 +531,11 @@ int main(int argc, char* argv[]) {
         render_materials[i].diffuse = &diffuse_textures[i];
         render_materials[i].normal = &normal_textures[i];
         render_materials[i].alpha_mode = model_materials[i].alpha_mode;
-        if (render_materials[i].alpha_mode == ALPHA_MODE_OPAQUE && diffuse_textures[i].has_transparency) {
-            render_materials[i].alpha_mode = ALPHA_MODE_BLEND;
-        }
+        render_materials[i].specular_strength = model_materials[i].specular_strength;
+        render_materials[i].shininess = model_materials[i].shininess;
+        render_materials[i].use_diffuse_alpha_as_luster =
+            render_materials[i].alpha_mode == ALPHA_MODE_OPAQUE &&
+            diffuse_textures[i].has_transparency;
     }
 
     has_skydome = load_skydome(args.skydome_path, &skydome_mesh, &skydome_texture);

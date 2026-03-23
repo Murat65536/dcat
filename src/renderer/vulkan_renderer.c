@@ -530,6 +530,10 @@ bool vulkan_renderer_render(
         frag_uniforms.fog_end = 10.0f;
         frag_uniforms.use_triplanar_mapping = use_triplanar_mapping ? 1 : 0;
         frag_uniforms.alpha_cutoff = 0.5f;
+        frag_uniforms.specular_strength = materials[m].specular_strength;
+        frag_uniforms.shininess = materials[m].shininess;
+        frag_uniforms.use_diffuse_alpha_as_luster =
+            materials[m].use_diffuse_alpha_as_luster ? 1 : 0;
 
         switch (materials[m].alpha_mode) {
             case ALPHA_MODE_MASK: frag_uniforms.alpha_mode = 1; break;

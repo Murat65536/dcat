@@ -13,6 +13,9 @@ layout(set = 0, binding = 3) uniform FragmentUniforms {
     uint useTriplanarMapping;
     uint alphaMode;    // 0: OPAQUE, 1: MASK, 2: BLEND
     float alphaCutoff;
+    float specularStrength;
+    float shininess;
+    uint useDiffuseAlphaAsLuster;
 } fragUniforms;
 
 layout(location = 0) in vec2 fragTexCoord;
@@ -45,6 +48,8 @@ void main() {
         diffuseColor = texture(diffuseTexture, fragTexCoord);
     }
     
+    float sampledAlpha = diffuseColor.a;
+
     // Alpha handling
     if (fragUniforms.alphaMode == 0u) { // OPAQUE
         diffuseColor.a = 1.0;
@@ -75,19 +80,33 @@ void main() {
     );
     
     // Calculate both diffuse and ambient lighting
-    float diffuseIntensity = max(dot(perturbedNormal, fragUniforms.lightDir), 0.0);
-    float ambientIntensity = 0.5;
-    float totalIntensity = diffuseIntensity + ambientIntensity;
+    vec3 lightDir = normalize(fragUniforms.lightDir);
+    vec3 viewDir = normalize(fragUniforms.cameraPos - fragWorldPos);
+    float diffuseIntensity = max(dot(perturbedNormal, lightDir), 0.0);
+    float ambientIntensity = 0.45;
+    float totalIntensity = min(diffuseIntensity + ambientIntensity, 1.0);
 
-    // Clamp to prevent over-brightening
-    totalIntensity = min(totalIntensity, 1.0);
+    float specularStrength = clamp(fragUniforms.specularStrength, 0.0, 1.0);
+    float specularShininess = clamp(fragUniforms.shininess, 8.0, 256.0);
+    if (fragUniforms.useDiffuseAlphaAsLuster != 0u) {
+        specularStrength = max(specularStrength, sampledAlpha);
+        specularShininess = max(specularShininess, mix(12.0, 160.0, sampledAlpha));
+    }
 
-    vec3 finalColor = diffuseColor.rgb * totalIntensity;
+    float specularIntensity = 0.0;
+    if (diffuseIntensity > 0.0 && specularStrength > 0.0) {
+        vec3 halfVector = normalize(lightDir + viewDir);
+        float specAngle = max(dot(perturbedNormal, halfVector), 0.0);
+        float fresnel = pow(1.0 - max(dot(perturbedNormal, viewDir), 0.0), 5.0);
+        specularIntensity = pow(specAngle, specularShininess) * specularStrength * (0.08 + 0.92 * fresnel);
+    }
+
+    vec3 finalColor = diffuseColor.rgb * totalIntensity + vec3(specularIntensity);
 
     // Calculate fog
     float dist = distance(fragWorldPos, fragUniforms.cameraPos);
     float fogFactor = clamp((dist - fragUniforms.fogStart) / (fragUniforms.fogEnd - fragUniforms.fogStart), 0.0, 1.0);
     finalColor = mix(finalColor, fragUniforms.fogColor, fogFactor);
 
-    outColor = vec4(finalColor, diffuseColor.a);
+    outColor = vec4(clamp(finalColor, vec3(0.0), vec3(1.0)), diffuseColor.a);
 }

@@ -39,7 +39,10 @@ typedef struct FragmentUniforms {
     uint32_t use_triplanar_mapping;
     uint32_t alpha_mode;
     float alpha_cutoff;
-    float padding;
+    float specular_strength;
+    float shininess;
+    uint32_t use_diffuse_alpha_as_luster;
+    uint32_t padding[2];
 } FragmentUniforms;
 
 // Per-material render data passed from main to renderer
@@ -47,6 +50,9 @@ typedef struct RenderMaterial {
     const Texture* diffuse;
     const Texture* normal;
     AlphaMode alpha_mode;
+    float specular_strength;
+    float shininess;
+    bool use_diffuse_alpha_as_luster;
 } RenderMaterial;
 
 // Memory allocation helper

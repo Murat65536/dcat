@@ -37,6 +37,8 @@ void material_info_init(MaterialInfo* info) {
     info->diffuse_path = NULL;
     info->normal_path = NULL;
     info->alpha_mode = ALPHA_MODE_OPAQUE;
+    info->specular_strength = 0.0f;
+    info->shininess = 32.0f;
     info->uv_channel = 0;
     info->embedded_diffuse = NULL;
     info->embedded_diffuse_size = 0;
@@ -755,21 +757,52 @@ bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs,
             }
         }
 
-        // Check if diffuse texture has an opacity channel (e.g. PNG with alpha)
-        if (mats[i].alpha_mode == ALPHA_MODE_OPAQUE) {
-            unsigned int flags = 0;
-            if (aiGetMaterialInteger(material, "$tex.file.flags", aiTextureType_DIFFUSE, 0, (int*)&flags) == aiReturn_SUCCESS) {
-                if (flags & aiTextureFlags_UseAlpha) {
-                    mats[i].alpha_mode = ALPHA_MODE_BLEND;
-                }
-            }
-        }
-
         // Check if there is a separate opacity texture
         if (mats[i].alpha_mode == ALPHA_MODE_OPAQUE) {
             if (aiGetMaterialTexture(material, aiTextureType_OPACITY, 0, &str, NULL, NULL, NULL, NULL, NULL, NULL) == aiReturn_SUCCESS) {
                 mats[i].alpha_mode = ALPHA_MODE_BLEND;
             }
+        }
+
+        float shininess = 0.0f;
+        if (aiGetMaterialFloat(material, AI_MATKEY_SHININESS, &shininess) == aiReturn_SUCCESS &&
+            shininess > 0.0f) {
+            mats[i].shininess = clampf(shininess, 8.0f, 256.0f);
+            mats[i].specular_strength = fmaxf(mats[i].specular_strength, 0.2f);
+        }
+
+        float shininess_strength = 0.0f;
+        if (aiGetMaterialFloat(material, AI_MATKEY_SHININESS_STRENGTH, &shininess_strength) == aiReturn_SUCCESS) {
+            mats[i].specular_strength = fmaxf(mats[i].specular_strength,
+                                              clampf(shininess_strength, 0.0f, 1.0f));
+        }
+
+        float reflectivity = 0.0f;
+        if (aiGetMaterialFloat(material, AI_MATKEY_REFLECTIVITY, &reflectivity) == aiReturn_SUCCESS) {
+            mats[i].specular_strength = fmaxf(mats[i].specular_strength,
+                                              clampf(reflectivity, 0.0f, 1.0f));
+        }
+
+        struct aiColor4D specular_color = {0};
+        if (aiGetMaterialColor(material, AI_MATKEY_COLOR_SPECULAR, &specular_color) == aiReturn_SUCCESS) {
+            float color_strength = fmaxf(specular_color.r,
+                                         fmaxf(specular_color.g, specular_color.b));
+            mats[i].specular_strength = fmaxf(mats[i].specular_strength,
+                                              clampf(color_strength, 0.0f, 1.0f));
+        }
+
+        float metallic = 0.0f;
+        if (aiGetMaterialFloat(material, AI_MATKEY_METALLIC_FACTOR, &metallic) == aiReturn_SUCCESS) {
+            mats[i].specular_strength = fmaxf(mats[i].specular_strength,
+                                              clampf(metallic, 0.0f, 1.0f));
+        }
+
+        float roughness = 1.0f;
+        if (aiGetMaterialFloat(material, AI_MATKEY_ROUGHNESS_FACTOR, &roughness) == aiReturn_SUCCESS) {
+            float clamped_roughness = clampf(roughness, 0.0f, 1.0f);
+            mats[i].shininess = clampf((1.0f - clamped_roughness) * 120.0f + 8.0f, 8.0f, 256.0f);
+            mats[i].specular_strength = fmaxf(mats[i].specular_strength,
+                                              (1.0f - clamped_roughness) * 0.35f);
         }
 
         // Pre-cache embedded texture bytes
