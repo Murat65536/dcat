@@ -226,6 +226,11 @@ static void render_output_frame(OutputMode output_mode, const uint8_t* framebuff
 }
 
 static void terminal_session_begin(TerminalSession* session, bool mouse_orbit) {
+    session->active = true;
+    session->mouse_orbit_enabled = mouse_orbit;
+    g_terminal_session_active = 1;
+    terminal_arm_recovery();
+
     hide_cursor();
     enter_alternate_screen();
     enable_raw_mode();
@@ -233,10 +238,6 @@ static void terminal_session_begin(TerminalSession* session, bool mouse_orbit) {
     if (mouse_orbit) {
         enable_mouse_orbit_tracking();
     }
-
-    g_terminal_session_active = 1;
-    session->active = true;
-    session->mouse_orbit_enabled = mouse_orbit;
 }
 
 static void terminal_session_end(TerminalSession* session) {
@@ -244,8 +245,8 @@ static void terminal_session_end(TerminalSession* session) {
         return;
     }
 
-    g_terminal_session_active = 0;
     terminal_restore_default_state();
+    g_terminal_session_active = 0;
     session->active = false;
     session->mouse_orbit_enabled = false;
 }

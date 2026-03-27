@@ -1,5 +1,7 @@
 #include "terminal.h"
 #include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,10 +9,16 @@
 #include <unistd.h>
 
 static const char TERMINAL_RECOVERY_SEQUENCE[] =
+    "\x1b[?2026l"
     "\x1b[<u"
-    "\x1b[?1016l"
+    "\x1b[?1000l"
     "\x1b[?1002l"
+    "\x1b[?1003l"
+    "\x1b[?1004l"
+    "\x1b[?1005l"
     "\x1b[?1006l"
+    "\x1b[?1015l"
+    "\x1b[?1016l"
     "\x1b[0m"
     "\x1b[?25h"
     "\x1b[?1049l";
@@ -77,19 +85,68 @@ void calculate_render_dimensions(int explicit_width, int explicit_height,
 
 static TermiosState raw_mode_state;
 static bool raw_mode_enabled = false;
+static bool terminal_recovery_registered = false;
+static volatile sig_atomic_t terminal_recovery_armed = 0;
+static int terminal_recovery_fd = STDOUT_FILENO;
+static bool terminal_sanitizer_callback_installed = false;
+static void terminal_write_fd(int fd, const char *data, size_t size);
+extern void __sanitizer_set_death_callback(void (*callback)(void))
+    __attribute__((weak));
 
-void safe_write(const char *data, size_t size) {
+static int choose_terminal_recovery_fd(void) {
+  if (isatty(STDOUT_FILENO)) {
+    return STDOUT_FILENO;
+  }
+  if (isatty(STDERR_FILENO)) {
+    return STDERR_FILENO;
+  }
+
+#ifdef O_CLOEXEC
+  int tty_fd = open("/dev/tty", O_WRONLY | O_CLOEXEC);
+#else
+  int tty_fd = open("/dev/tty", O_WRONLY);
+#endif
+  if (tty_fd >= 0) {
+    return tty_fd;
+  }
+
+  return STDOUT_FILENO;
+}
+
+static void terminal_atexit_restore(void) {
+  if (terminal_recovery_armed) {
+    terminal_restore_after_crash();
+  }
+}
+
+static void terminal_sanitizer_death_callback(void) {
+  if (terminal_recovery_armed) {
+    terminal_restore_after_crash();
+  }
+}
+
+void __asan_on_error(void) {
+  if (terminal_recovery_armed) {
+    terminal_restore_after_crash();
+  }
+}
+
+static void terminal_write_fd(int fd, const char *data, size_t size) {
   size_t remaining = size;
   while (remaining > 0) {
-    ssize_t written = write(STDOUT_FILENO, data, remaining);
+    ssize_t written = write(fd, data, remaining);
     if (written < 0) {
       if (errno == EINTR)
         continue;
       break;
     }
     data += written;
-    remaining -= written;
+    remaining -= (size_t)written;
   }
+}
+
+void safe_write(const char *data, size_t size) {
+  terminal_write_fd(STDOUT_FILENO, data, size);
 }
 
 void draw_status_bar(float fps, float speed, const float *pos,
@@ -155,27 +212,37 @@ void disable_raw_mode(void) {
   raw_mode_enabled = false;
 }
 
-void write_terminal_recovery_sequence(int fd) {
-  const char *data = TERMINAL_RECOVERY_SEQUENCE;
-  size_t remaining = sizeof(TERMINAL_RECOVERY_SEQUENCE) - 1;
-  while (remaining > 0) {
-    ssize_t written = write(fd, data, remaining);
-    if (written < 0) {
-      if (errno == EINTR)
-        continue;
-      break;
-    }
-    data += written;
-    remaining -= (size_t)written;
+void terminal_arm_recovery(void) {
+  terminal_recovery_fd = choose_terminal_recovery_fd();
+  terminal_recovery_armed = 1;
+  if (!terminal_sanitizer_callback_installed &&
+      __sanitizer_set_death_callback != NULL) {
+    __sanitizer_set_death_callback(terminal_sanitizer_death_callback);
+    terminal_sanitizer_callback_installed = true;
+  }
+  if (!terminal_recovery_registered) {
+    atexit(terminal_atexit_restore);
+    terminal_recovery_registered = true;
   }
 }
 
+void terminal_disarm_recovery(void) {
+  terminal_recovery_armed = 0;
+}
+
+void write_terminal_recovery_sequence(int fd) {
+  terminal_write_fd(fd, TERMINAL_RECOVERY_SEQUENCE,
+                    sizeof(TERMINAL_RECOVERY_SEQUENCE) - 1);
+}
+
 void terminal_restore_default_state(void) {
+  terminal_disarm_recovery();
   disable_raw_mode();
-  write_terminal_recovery_sequence(STDOUT_FILENO);
+  write_terminal_recovery_sequence(terminal_recovery_fd);
 }
 
 void terminal_restore_after_crash(void) {
+  terminal_disarm_recovery();
   disable_raw_mode();
-  write_terminal_recovery_sequence(STDOUT_FILENO);
+  write_terminal_recovery_sequence(terminal_recovery_fd);
 }
