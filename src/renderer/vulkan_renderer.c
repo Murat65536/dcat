@@ -395,8 +395,8 @@ static bool ensure_material_gpu(VulkanRenderer* r, uint32_t material_count) {
 bool vulkan_renderer_render(
     VulkanRenderer* r,
     const Mesh* mesh,
-    const mat4 mvp,
-    const mat4 model,
+    mat4* mvp,
+    mat4* model,
     const RenderMaterial* materials,
     uint32_t material_count,
     bool enable_lighting,
@@ -404,8 +404,8 @@ bool vulkan_renderer_render(
     bool use_triplanar_mapping,
     const mat4* bone_matrices,
     uint32_t bone_count,
-    const mat4* view,
-    const mat4* projection,
+    mat4* view,
+    mat4* projection,
     const uint8_t** out_framebuffer
 ) {
     vulkan_renderer_clear_error(r);
@@ -498,8 +498,8 @@ bool vulkan_renderer_render(
 
     // Prepare push constants
     PushConstants push_constants;
-    glm_mat4_copy((float(*)[4])mvp, push_constants.mvp);
-    glm_mat4_copy((float(*)[4])model, push_constants.model);
+    glm_mat4_copy(*mvp, push_constants.mvp);
+    glm_mat4_copy(*model, push_constants.model);
 
     // Prepare vertex uniform buffer (bone matrices — shared across all materials)
     Uniforms uniforms = {0};
@@ -586,11 +586,11 @@ bool vulkan_renderer_render(
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->skydome_pipeline_layout, 0, 1, &r->skydome_descriptor_sets[r->current_frame], 0, NULL);
 
         mat4 sky_view;
-        glm_mat4_copy((float(*)[4])*view, sky_view);
+        glm_mat4_copy(*view, sky_view);
         sky_view[3][0] = sky_view[3][1] = sky_view[3][2] = 0.0f;
 
         mat4 sky_mvp;
-        glm_mat4_mul((float(*)[4])*projection, sky_view, sky_mvp);
+        glm_mat4_mul(*projection, sky_view, sky_mvp);
         vkCmdPushConstants(cmd, r->skydome_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), sky_mvp);
 
         VkBuffer vb[] = {r->skydome_vertex_buffer};

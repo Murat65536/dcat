@@ -207,8 +207,8 @@ bool vulkan_renderer_get_wireframe_mode(const VulkanRenderer* r);
 bool vulkan_renderer_render(
     VulkanRenderer* r,
     const Mesh* mesh,
-    const mat4 mvp,
-    const mat4 model,
+    mat4* mvp,
+    mat4* model,
     const RenderMaterial* materials,
     uint32_t material_count,
     bool enable_lighting,
@@ -216,8 +216,8 @@ bool vulkan_renderer_render(
     bool use_triplanar_mapping,
     const mat4* bone_matrices,
     uint32_t bone_count,
-    const mat4* view,
-    const mat4* projection,
+    mat4* view,
+    mat4* projection,
     const uint8_t** out_framebuffer
 );
 

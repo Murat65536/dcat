@@ -395,15 +395,15 @@ static void process_input_devices(KeyState* key_state,
     if (key_state->l) camera_rotate(camera, rot_speed, 0.0f);
 }
 
-static bool render_frame(const RenderContext* ctx, const AnimationContext* anim_ctx,
-                         const Mesh* mesh, mat4 view, mat4 projection,
+static bool render_frame(RenderContext* ctx, const AnimationContext* anim_ctx,
+                         const Mesh* mesh, mat4* view, mat4* projection,
                          OutputMode output_mode, bool show_status_bar,
                          uint32_t width, uint32_t height,
                          float fps, float move_speed, const vec3 camera_position,
                          int current_animation_index) {
     mat4 mvp;
-    glm_mat4_mul((vec4*)projection, (vec4*)view, mvp);
-    glm_mat4_mul(mvp, (vec4*)ctx->model_matrix, mvp);
+    glm_mat4_mul(*projection, *view, mvp);
+    glm_mat4_mul(mvp, ctx->model_matrix, mvp);
 
     const uint8_t* framebuffer = NULL;
     const mat4* bone_matrix_ptr = NULL;
@@ -415,11 +415,11 @@ static bool render_frame(const RenderContext* ctx, const AnimationContext* anim_
     }
 
     if (!vulkan_renderer_render(
-        ctx->renderer, mesh, mvp, ctx->model_matrix,
+        ctx->renderer, mesh, &mvp, &ctx->model_matrix,
         ctx->materials, ctx->material_count,
         ctx->enable_lighting,
         camera_position, ctx->use_triplanar_mapping,
-        bone_matrix_ptr, bone_count, (const mat4*)&view, (const mat4*)&projection,
+        bone_matrix_ptr, bone_count, view, projection,
         &framebuffer
     )) {
         return false;
@@ -652,7 +652,7 @@ int main(int argc, char* argv[]) {
         }
         pthread_mutex_unlock(&shared_state_mutex);
 
-        if (!render_frame(&render_ctx, &anim_ctx, &mesh, view, projection,
+        if (!render_frame(&render_ctx, &anim_ctx, &mesh, &view, &projection,
                           output_mode, args.show_status_bar, width, height,
                           calculate_frame_fps(delta_time), move_speed,
                           camera_position_snapshot,
