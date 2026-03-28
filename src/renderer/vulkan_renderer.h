@@ -33,9 +33,6 @@ typedef struct FragmentUniforms {
     vec3 light_dir;
     uint32_t enable_lighting;
     vec3 camera_pos;
-    float fog_start;
-    vec3 fog_color;
-    float fog_end;
     uint32_t use_triplanar_mapping;
     uint32_t alpha_mode;
     float alpha_cutoff;

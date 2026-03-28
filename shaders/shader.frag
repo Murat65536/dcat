@@ -7,9 +7,6 @@ layout(set = 0, binding = 3) uniform FragmentUniforms {
     vec3 lightDir;
     uint enableLighting;
     vec3 cameraPos;
-    float fogStart;
-    vec3 fogColor;
-    float fogEnd;
     uint useTriplanarMapping;
     uint alphaMode;    // 0: OPAQUE, 1: MASK, 2: BLEND
     float alphaCutoff;
@@ -102,11 +99,6 @@ void main() {
     }
 
     vec3 finalColor = diffuseColor.rgb * totalIntensity + vec3(specularIntensity);
-
-    // Calculate fog
-    float dist = distance(fragWorldPos, fragUniforms.cameraPos);
-    float fogFactor = clamp((dist - fragUniforms.fogStart) / (fragUniforms.fogEnd - fragUniforms.fogStart), 0.0, 1.0);
-    finalColor = mix(finalColor, fragUniforms.fogColor, fogFactor);
 
     outColor = vec4(clamp(finalColor, vec3(0.0), vec3(1.0)), diffuseColor.a);
 }

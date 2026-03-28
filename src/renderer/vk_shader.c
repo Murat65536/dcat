@@ -5,10 +5,11 @@
 #include <unistd.h>
 
 char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size) {
-    enum { MAX_SHADER_FILENAME_LEN = 255 };
-    enum { MAX_SHADER_DIR_LEN = 240 };
+    constexpr int MAX_SHADER_FILENAME_LEN = 255;
+    constexpr int MAX_SHADER_DIR_LEN = 240;
     const char* search_paths[] = {
-        "",  // Will be replaced with shader_directory if set
+        "",  // Will be replaced with exe_dir/shaders/
+        "",  // Will be replaced with exe_dir (for build directory)
         "./shaders/",
         "/usr/local/share/dcat/shaders/",
         "/usr/share/dcat/shaders/"
@@ -66,6 +67,8 @@ char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size
         char path[512];
         if (i == 0 && exe_dir[0]) {
             snprintf(path, sizeof(path), "%.*sshaders/%.*s", MAX_SHADER_DIR_LEN, exe_dir, MAX_SHADER_FILENAME_LEN, filename);
+        } else if (i == 1 && exe_dir[0]) {
+            snprintf(path, sizeof(path), "%.*s%.*s", MAX_SHADER_DIR_LEN, exe_dir, MAX_SHADER_FILENAME_LEN, filename);
         } else {
             snprintf(path, sizeof(path), "%s%.*s", search_paths[i], MAX_SHADER_FILENAME_LEN, filename);
         }

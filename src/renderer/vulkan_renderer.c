@@ -496,9 +496,6 @@ bool vulkan_renderer_render(
         glm_vec3_copy(r->normalized_light_dir, frag_uniforms.light_dir);
         frag_uniforms.enable_lighting = enable_lighting ? 1 : 0;
         glm_vec3_copy((float*)camera_pos, frag_uniforms.camera_pos);
-        frag_uniforms.fog_start = 5.0f;
-        glm_vec3_zero(frag_uniforms.fog_color);
-        frag_uniforms.fog_end = 10.0f;
         frag_uniforms.use_triplanar_mapping = use_triplanar_mapping ? 1 : 0;
         frag_uniforms.alpha_cutoff = 0.5f;
         frag_uniforms.specular_strength = materials[m].specular_strength;
