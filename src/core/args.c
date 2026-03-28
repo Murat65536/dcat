@@ -24,6 +24,7 @@ void print_usage(void) {
     printf("      --kitty-direct         enable Kitty graphics protocol (inline)\n");
     printf("  -T, --truecolor-characters enable truecolor characters mode\n");
     printf("  -P, --palette-characters   enable 256-color palette characters mode\n");
+    printf("  -B, --block-characters     enable monochrome block characters mode\n");
     printf("  -h, --help                 display this help and exit\n\n");
 }
 
@@ -77,6 +78,8 @@ Args parse_args(int argc, char* argv[]) {
             args.use_truecolor_characters = true;
         } else if (strcmp(argv[i], "-P") == 0 || strcmp(argv[i], "--palette-characters") == 0) {
             args.use_palette_characters = true;
+        } else if (strcmp(argv[i], "-B") == 0 || strcmp(argv[i], "--block-characters") == 0) {
+            args.use_block_characters = true;
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             args.show_help = true;
         } else if (argv[i][0] != '-') {

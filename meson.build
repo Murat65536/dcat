@@ -81,6 +81,7 @@ sources = files(
   'src/terminal/terminal.c',
   'src/terminal/truecolor_characters.c',
   'src/terminal/palette_characters.c',
+  'src/terminal/block_characters.c',
   'src/terminal/sixel.c',
   'src/terminal/kitty.c',
   'src/terminal/kitty_shm.c',

@@ -20,6 +20,7 @@
 #include "terminal/sixel.h"
 #include "terminal/kitty.h"
 #include "terminal/kitty_shm.h"
+#include "terminal/block_characters.h"
 #include "graphics/texture_loader.h"
 #include "renderer/vulkan_renderer.h"
 #include "input/input_handler.h"
@@ -139,6 +140,7 @@ typedef enum OutputMode {
     OUTPUT_MODE_SIXEL,
     OUTPUT_MODE_TRUECOLOR_CHARACTERS,
     OUTPUT_MODE_PALETTE_CHARACTERS,
+    OUTPUT_MODE_BLOCK_CHARACTERS,
 } OutputMode;
 
 typedef struct TerminalSession {
@@ -170,6 +172,9 @@ static OutputMode output_mode_from_args(const Args* args) {
     }
     if (args->use_palette_characters) {
         return OUTPUT_MODE_PALETTE_CHARACTERS;
+    }
+    if (args->use_block_characters) {
+        return OUTPUT_MODE_BLOCK_CHARACTERS;
     }
     return OUTPUT_MODE_AUTO;
 }
@@ -217,6 +222,9 @@ static void render_output_frame(OutputMode output_mode, const uint8_t* framebuff
             break;
         case OUTPUT_MODE_PALETTE_CHARACTERS:
             render_palette_characters(framebuffer, width, height);
+            break;
+        case OUTPUT_MODE_BLOCK_CHARACTERS:
+            render_block_characters(framebuffer, width, height);
             break;
         case OUTPUT_MODE_TRUECOLOR_CHARACTERS:
         case OUTPUT_MODE_AUTO:
