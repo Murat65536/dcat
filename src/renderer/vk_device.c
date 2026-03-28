@@ -21,17 +21,25 @@ bool create_instance(VulkanRenderer* r) {
     VkLayerProperties* available_layers = malloc(layer_count * sizeof(VkLayerProperties));
     vkEnumerateInstanceLayerProperties(&layer_count, available_layers);
     
-    bool validation_available = false;
-    for (uint32_t i = 0; i < layer_count; i++) {
-        if (strcmp("VK_LAYER_KHRONOS_validation", available_layers[i].layerName) == 0) {
-            validation_available = true;
+    uint32_t validation_layer_count = sizeof(validation_layers) / sizeof(validation_layers[0]);
+    bool validation_available = true;
+    for (uint32_t v = 0; v < validation_layer_count; v++) {
+        bool found = false;
+        for (uint32_t i = 0; i < layer_count; i++) {
+            if (strcmp(validation_layers[v], available_layers[i].layerName) == 0) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            validation_available = false;
             break;
         }
     }
     free(available_layers);
-    
+
     if (validation_available) {
-        create_info.enabledLayerCount = 1;
+        create_info.enabledLayerCount = validation_layer_count;
         create_info.ppEnabledLayerNames = validation_layers;
     }
 #endif
