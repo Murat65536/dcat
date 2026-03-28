@@ -113,22 +113,14 @@ static int choose_terminal_recovery_fd(void) {
   return STDOUT_FILENO;
 }
 
-static void terminal_atexit_restore(void) {
-  if (terminal_recovery_armed) {
-    terminal_restore_after_crash();
-  }
-}
-
-static void terminal_sanitizer_death_callback(void) {
+static void terminal_recovery_callback(void) {
   if (terminal_recovery_armed) {
     terminal_restore_after_crash();
   }
 }
 
 void __asan_on_error(void) {
-  if (terminal_recovery_armed) {
-    terminal_restore_after_crash();
-  }
+  terminal_recovery_callback();
 }
 
 static void terminal_write_fd(int fd, const char *data, size_t size) {
@@ -217,11 +209,11 @@ void terminal_arm_recovery(void) {
   terminal_recovery_armed = 1;
   if (!terminal_sanitizer_callback_installed &&
       __sanitizer_set_death_callback != NULL) {
-    __sanitizer_set_death_callback(terminal_sanitizer_death_callback);
+    __sanitizer_set_death_callback(terminal_recovery_callback);
     terminal_sanitizer_callback_installed = true;
   }
   if (!terminal_recovery_registered) {
-    atexit(terminal_atexit_restore);
+    atexit(terminal_recovery_callback);
     terminal_recovery_registered = true;
   }
 }
@@ -242,7 +234,5 @@ void terminal_restore_default_state(void) {
 }
 
 void terminal_restore_after_crash(void) {
-  terminal_disarm_recovery();
-  disable_raw_mode();
-  write_terminal_recovery_sequence(terminal_recovery_fd);
+  terminal_restore_default_state();
 }

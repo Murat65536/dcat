@@ -50,7 +50,7 @@ void camera_move_forward(Camera* cam, float distance) {
     glm_vec3_normalize(right);
     glm_vec3_cross(cam->up, right, horizontal_forward);
     glm_vec3_normalize(horizontal_forward);
-    
+
     vec3 move;
     glm_vec3_scale(horizontal_forward, distance, move);
     glm_vec3_add(cam->position, move, cam->position);
@@ -58,31 +58,7 @@ void camera_move_forward(Camera* cam, float distance) {
 }
 
 void camera_move_backward(Camera* cam, float distance) {
-    vec3 forward, right, horizontal_forward;
-    glm_vec3_sub(cam->target, cam->position, forward);
-    glm_vec3_normalize(forward);
-    glm_vec3_cross(forward, cam->up, right);
-    glm_vec3_normalize(right);
-    glm_vec3_cross(cam->up, right, horizontal_forward);
-    glm_vec3_normalize(horizontal_forward);
-    
-    vec3 move;
-    glm_vec3_scale(horizontal_forward, distance, move);
-    glm_vec3_sub(cam->position, move, cam->position);
-    glm_vec3_sub(cam->target, move, cam->target);
-}
-
-void camera_move_left(Camera* cam, float distance) {
-    vec3 forward, right;
-    glm_vec3_sub(cam->target, cam->position, forward);
-    glm_vec3_normalize(forward);
-    glm_vec3_cross(forward, cam->up, right);
-    glm_vec3_normalize(right);
-    
-    vec3 move;
-    glm_vec3_scale(right, distance, move);
-    glm_vec3_sub(cam->position, move, cam->position);
-    glm_vec3_sub(cam->target, move, cam->target);
+    camera_move_forward(cam, -distance);
 }
 
 void camera_move_right(Camera* cam, float distance) {
@@ -91,11 +67,15 @@ void camera_move_right(Camera* cam, float distance) {
     glm_vec3_normalize(forward);
     glm_vec3_cross(forward, cam->up, right);
     glm_vec3_normalize(right);
-    
+
     vec3 move;
     glm_vec3_scale(right, distance, move);
     glm_vec3_add(cam->position, move, cam->position);
     glm_vec3_add(cam->target, move, cam->target);
+}
+
+void camera_move_left(Camera* cam, float distance) {
+    camera_move_right(cam, -distance);
 }
 
 void camera_move_up(Camera* cam, float distance) {
@@ -104,8 +84,7 @@ void camera_move_up(Camera* cam, float distance) {
 }
 
 void camera_move_down(Camera* cam, float distance) {
-    cam->position[1] -= distance;
-    cam->target[1] -= distance;
+    camera_move_up(cam, -distance);
 }
 
 void camera_rotate(Camera* cam, float yaw_delta, float pitch_delta) {
@@ -118,50 +97,34 @@ void camera_rotate(Camera* cam, float yaw_delta, float pitch_delta) {
     camera_update_direction(cam);
 }
 
-void camera_orbit(Camera* cam, float yaw_delta, float pitch_delta) {
-    cam->yaw += yaw_delta;
-    cam->pitch += pitch_delta;
-    
-    const float max_pitch = GLM_PI / 2.0f - 0.01f;
-    cam->pitch = clampf(cam->pitch, -max_pitch, max_pitch);
-    
-    float dist = glm_vec3_distance(cam->position, cam->target);
-    
-    float cos_yaw = cosf(cam->yaw);
-    float sin_yaw = sinf(cam->yaw);
-    float cos_pitch = cosf(cam->pitch);
-    float sin_pitch = sinf(cam->pitch);
-    
+static void camera_set_orbit_position(Camera* cam, float dist) {
     vec3 direction = {
-        cos_yaw * cos_pitch,
-        sin_pitch,
-        sin_yaw * cos_pitch
+        cosf(cam->yaw) * cosf(cam->pitch),
+        sinf(cam->pitch),
+        sinf(cam->yaw) * cosf(cam->pitch)
     };
-    
+
     vec3 offset;
     glm_vec3_scale(direction, dist, offset);
     glm_vec3_sub(cam->target, offset, cam->position);
+}
+
+void camera_orbit(Camera* cam, float yaw_delta, float pitch_delta) {
+    cam->yaw += yaw_delta;
+    cam->pitch += pitch_delta;
+
+    const float max_pitch = GLM_PI / 2.0f - 0.01f;
+    cam->pitch = clampf(cam->pitch, -max_pitch, max_pitch);
+
+    camera_set_orbit_position(cam, glm_vec3_distance(cam->position, cam->target));
 }
 
 void camera_zoom(Camera* cam, float delta) {
     float dist = glm_vec3_distance(cam->position, cam->target);
     dist -= delta * powf(dist, DISTANCE_SCALING_POWER);
     if (dist < 0.1f) dist = 0.1f;
-    
-    float cos_yaw = cosf(cam->yaw);
-    float sin_yaw = sinf(cam->yaw);
-    float cos_pitch = cosf(cam->pitch);
-    float sin_pitch = sinf(cam->pitch);
-    
-    vec3 direction = {
-        cos_yaw * cos_pitch,
-        sin_pitch,
-        sin_yaw * cos_pitch
-    };
-    
-    vec3 offset;
-    glm_vec3_scale(direction, dist, offset);
-    glm_vec3_sub(cam->target, offset, cam->position);
+
+    camera_set_orbit_position(cam, dist);
 }
 
 void camera_pan(Camera* cam, float dx, float dy) {

@@ -174,12 +174,6 @@ bool create_sync_objects(VulkanRenderer* r) {
     return true;
 }
 
-bool create_descriptor_sets(VulkanRenderer* r) {
-    // Material descriptor sets are allocated lazily in the render function
-    (void)r;
-    return true;
-}
-
 void cleanup_render_targets(VulkanRenderer* r) {
     if (r->framebuffer != VK_NULL_HANDLE) {
         vkDestroyFramebuffer(r->device, r->framebuffer, NULL);

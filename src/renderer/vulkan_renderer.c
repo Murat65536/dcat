@@ -79,7 +79,6 @@ bool vulkan_renderer_initialize(VulkanRenderer* r) {
     if (!create_sampler(r)) return false;
     if (!create_command_buffers(r)) return false;
     if (!create_sync_objects(r)) return false;
-    if (!create_descriptor_sets(r)) return false;
 
     create_skydome_pipeline(r);
 

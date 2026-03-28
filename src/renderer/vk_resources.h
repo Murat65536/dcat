@@ -14,8 +14,6 @@ bool create_uniform_buffers(VulkanRenderer* r);
 bool create_sampler(VulkanRenderer* r);
 bool create_command_buffers(VulkanRenderer* r);
 bool create_sync_objects(VulkanRenderer* r);
-bool create_descriptor_sets(VulkanRenderer* r);
-
 void cleanup_render_targets(VulkanRenderer* r);
 void cleanup(VulkanRenderer* r);
 

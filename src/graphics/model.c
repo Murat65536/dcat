@@ -365,9 +365,7 @@ static int count_nodes(const struct aiNode* node) {
 }
 
 // Build bone hierarchy iteratively to avoid reallocation issues
-static void build_bone_hierarchy(const struct aiNode* root, Skeleton* skeleton, int parent_index) {
-    (void)parent_index;  // Initial call uses -1
-    
+static void build_bone_hierarchy(const struct aiNode* root, Skeleton* skeleton) {
     // Pre-allocate to avoid reallocations during build
     int total_nodes = count_nodes(root);
     skeleton->bone_hierarchy.data = aligned_malloc(total_nodes * sizeof(BoneNode));
@@ -692,7 +690,7 @@ bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs,
 
         process_node_animated(scene->mRootNode, scene, &mesh->vertices, &mesh->indices,
                              &mesh->submeshes, out_has_uvs, &mesh->skeleton, flip_uv_y, uv_channel);
-        build_bone_hierarchy(scene->mRootNode, &mesh->skeleton, -1);
+        build_bone_hierarchy(scene->mRootNode, &mesh->skeleton);
         load_animations(scene, &mesh->animations);
 
         mat4 root_transform;

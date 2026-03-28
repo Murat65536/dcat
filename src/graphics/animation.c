@@ -108,60 +108,41 @@ static inline int find_key_index(const void* data, size_t count, size_t stride, 
     return left;
 }
 
-void interpolate_position(const VectorKeyArray* keys, float time, vec3 out) {
+static void interpolate_vec3_keys(const VectorKeyArray* keys, float time,
+                                  const vec3 default_value, vec3 out) {
     if (keys->count == 0) {
-        glm_vec3_zero(out);
+        glm_vec3_copy((float*)default_value, out);
         return;
     }
     if (keys->count == 1) {
         glm_vec3_copy(keys->data[0].value, out);
         return;
     }
-    
+
     int index = find_key_index(keys->data, keys->count, sizeof(VectorKey), time);
     int next_index = index + 1;
-    
+
     if (next_index >= (int)keys->count) {
         glm_vec3_copy(keys->data[index].value, out);
         return;
     }
-    
+
     float delta_time = keys->data[next_index].time - keys->data[index].time;
     float factor = 0.0f;
     if (delta_time > 0.00001f) {
         factor = (time - keys->data[index].time) / delta_time;
     }
     factor = clampf(factor, 0.0f, 1.0f);
-    
+
     glm_vec3_lerp(keys->data[index].value, keys->data[next_index].value, factor, out);
 }
 
+void interpolate_position(const VectorKeyArray* keys, float time, vec3 out) {
+    interpolate_vec3_keys(keys, time, (vec3){0.0f, 0.0f, 0.0f}, out);
+}
+
 void interpolate_scale(const VectorKeyArray* keys, float time, vec3 out) {
-    if (keys->count == 0) {
-        glm_vec3_one(out);
-        return;
-    }
-    if (keys->count == 1) {
-        glm_vec3_copy(keys->data[0].value, out);
-        return;
-    }
-    
-    int index = find_key_index(keys->data, keys->count, sizeof(VectorKey), time);
-    int next_index = index + 1;
-    
-    if (next_index >= (int)keys->count) {
-        glm_vec3_copy(keys->data[index].value, out);
-        return;
-    }
-    
-    float delta_time = keys->data[next_index].time - keys->data[index].time;
-    float factor = 0.0f;
-    if (delta_time > 0.0f) {
-        factor = (time - keys->data[index].time) / delta_time;
-    }
-    factor = clampf(factor, 0.0f, 1.0f);
-    
-    glm_vec3_lerp(keys->data[index].value, keys->data[next_index].value, factor, out);
+    interpolate_vec3_keys(keys, time, (vec3){1.0f, 1.0f, 1.0f}, out);
 }
 
 void interpolate_rotation(const QuaternionKeyArray* keys, float time, versor out) {
