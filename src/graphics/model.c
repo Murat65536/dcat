@@ -764,7 +764,7 @@ bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs,
         // Fallback: check standard material opacity
         if (mats[i].alpha_mode == ALPHA_MODE_OPAQUE) {
             float opacity = 1.0f;
-            if (aiGetMaterialFloat(material, AI_MATKEY_OPACITY, &opacity) == aiReturn_SUCCESS) {
+            if (aiGetMaterialFloatArray(material, AI_MATKEY_OPACITY, &opacity, NULL) == aiReturn_SUCCESS) {
                 if (opacity < 1.0f) {
                     mats[i].alpha_mode = ALPHA_MODE_BLEND;
                 }
@@ -779,20 +779,20 @@ bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs,
         }
 
         float shininess = 0.0f;
-        if (aiGetMaterialFloat(material, AI_MATKEY_SHININESS, &shininess) == aiReturn_SUCCESS &&
+        if (aiGetMaterialFloatArray(material, AI_MATKEY_SHININESS, &shininess, NULL) == aiReturn_SUCCESS &&
             shininess > 0.0f) {
             mats[i].shininess = clampf(shininess, 8.0f, 256.0f);
             mats[i].specular_strength = fmaxf(mats[i].specular_strength, 0.2f);
         }
 
         float shininess_strength = 0.0f;
-        if (aiGetMaterialFloat(material, AI_MATKEY_SHININESS_STRENGTH, &shininess_strength) == aiReturn_SUCCESS) {
+        if (aiGetMaterialFloatArray(material, AI_MATKEY_SHININESS_STRENGTH, &shininess_strength, NULL) == aiReturn_SUCCESS) {
             mats[i].specular_strength = fmaxf(mats[i].specular_strength,
                                               clampf(shininess_strength, 0.0f, 1.0f));
         }
 
         float reflectivity = 0.0f;
-        if (aiGetMaterialFloat(material, AI_MATKEY_REFLECTIVITY, &reflectivity) == aiReturn_SUCCESS) {
+        if (aiGetMaterialFloatArray(material, AI_MATKEY_REFLECTIVITY, &reflectivity, NULL) == aiReturn_SUCCESS) {
             mats[i].specular_strength = fmaxf(mats[i].specular_strength,
                                               clampf(reflectivity, 0.0f, 1.0f));
         }
@@ -806,13 +806,13 @@ bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs,
         }
 
         float metallic = 0.0f;
-        if (aiGetMaterialFloat(material, AI_MATKEY_METALLIC_FACTOR, &metallic) == aiReturn_SUCCESS) {
+        if (aiGetMaterialFloatArray(material, AI_MATKEY_METALLIC_FACTOR, &metallic, NULL) == aiReturn_SUCCESS) {
             mats[i].specular_strength = fmaxf(mats[i].specular_strength,
                                               clampf(metallic, 0.0f, 1.0f));
         }
 
         float roughness = 1.0f;
-        if (aiGetMaterialFloat(material, AI_MATKEY_ROUGHNESS_FACTOR, &roughness) == aiReturn_SUCCESS) {
+        if (aiGetMaterialFloatArray(material, AI_MATKEY_ROUGHNESS_FACTOR, &roughness, NULL) == aiReturn_SUCCESS) {
             float clamped_roughness = clampf(roughness, 0.0f, 1.0f);
             mats[i].shininess = clampf((1.0f - clamped_roughness) * 120.0f + 8.0f, 8.0f, 256.0f);
             mats[i].specular_strength = fmaxf(mats[i].specular_strength,
