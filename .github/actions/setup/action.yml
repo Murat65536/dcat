@@ -25,6 +25,7 @@ runs:
           libvulkan-dev \
           vulkan-headers \
           shaderc \
+          vulkan-utility-libraries-dev \
           libassimp-dev \
           libcglm-dev \
           libsixel-dev \
