@@ -36,10 +36,11 @@ static inline void* aligned_realloc(void* ptr, size_t old_size, size_t new_size)
         }
         
         void* aligned_ptr = aligned_malloc(new_size);
-        if (aligned_ptr) {
-            size_t copy_size = (old_size < new_size) ? old_size : new_size;
-            memcpy(aligned_ptr, new_ptr, copy_size);
+        if (!aligned_ptr) {
+            return new_ptr; // keep unaligned rather than losing data
         }
+        size_t copy_size = (old_size < new_size) ? old_size : new_size;
+        memcpy(aligned_ptr, new_ptr, copy_size);
         free(new_ptr);
         return aligned_ptr;
     }

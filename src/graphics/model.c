@@ -265,6 +265,7 @@ static void process_node_animated(const struct aiNode* node, const struct aiScen
                     bone_index = (int)skeleton->bones.count;
                     BoneInfo bone_info;
                     bone_info.name = str_dup(bone_name);
+                    if (!bone_info.name) continue;
                     ai_matrix_to_glm(&bone->mOffsetMatrix, bone_info.offset_matrix);
                     bone_info.index = bone_index;
                     ARRAY_PUSH(skeleton->bones, bone_info);
@@ -303,6 +304,7 @@ static void process_node_animated(const struct aiNode* node, const struct aiScen
                         node_bone_index = (int)skeleton->bones.count;
                         BoneInfo bone_info;
                         bone_info.name = str_dup(node_name);
+                        if (!bone_info.name) break;
                         glm_mat4_identity(bone_info.offset_matrix);
                         bone_info.index = node_bone_index;
                         ARRAY_PUSH(skeleton->bones, bone_info);
@@ -369,12 +371,14 @@ static void build_bone_hierarchy(const struct aiNode* root, Skeleton* skeleton) 
     // Pre-allocate to avoid reallocations during build
     int total_nodes = count_nodes(root);
     skeleton->bone_hierarchy.data = aligned_malloc(total_nodes * sizeof(BoneNode));
+    if (!skeleton->bone_hierarchy.data) return;
     skeleton->bone_hierarchy.capacity = total_nodes;
     skeleton->bone_hierarchy.count = 0;
-    
+
     // Use a simple stack for iterative traversal
     typedef struct { const struct aiNode* node; int parent_idx; } StackItem;
     StackItem* stack = malloc(total_nodes * sizeof(StackItem));
+    if (!stack) return;
     int stack_top = 0;
     
     stack[stack_top++] = (StackItem){root, -1};
@@ -388,6 +392,7 @@ static void build_bone_hierarchy(const struct aiNode* root, Skeleton* skeleton) 
         memset(&bone_node, 0, sizeof(BoneNode));
         
         bone_node.name = str_dup(node->mName.data);
+        if (!bone_node.name) break;
         ai_matrix_to_glm(&node->mTransformation, bone_node.transformation);
         
         // Decompose transform for fallback
@@ -443,6 +448,7 @@ static void load_animations(const struct aiScene* scene, AnimationArray* animati
         Animation animation;
         memset(&animation, 0, sizeof(Animation));
         animation.name = str_dup(ai_anim->mName.data);
+        if (!animation.name) continue;
         animation.duration = (float)ai_anim->mDuration;
         animation.ticks_per_second = (float)ai_anim->mTicksPerSecond;
         ARRAY_INIT(animation.bone_animations);
@@ -454,6 +460,7 @@ static void load_animations(const struct aiScene* scene, AnimationArray* animati
             BoneAnimation bone_anim;
             memset(&bone_anim, 0, sizeof(BoneAnimation));
             bone_anim.bone_name = str_dup(channel->mNodeName.data);
+            if (!bone_anim.bone_name) continue;
             ARRAY_INIT(bone_anim.position_keys);
             ARRAY_INIT(bone_anim.scale_keys);
             ARRAY_INIT(bone_anim.rotation_keys);
@@ -560,7 +567,8 @@ static char* resolve_texture_path(const char* model_path, const char* texture_pa
     }
     
     char* clean_path = str_dup(texture_path);
-    
+    if (!clean_path) return NULL;
+
     // Handle Windows absolute paths
     if (strlen(clean_path) >= 3 && clean_path[1] == ':' && (clean_path[2] == '\\' || clean_path[2] == '/')) {
         const char* last_sep = strrchr(clean_path, '\\');
@@ -568,6 +576,7 @@ static char* resolve_texture_path(const char* model_path, const char* texture_pa
         if (last_fslash > last_sep) last_sep = last_fslash;
         if (last_sep) {
             char* filename = str_dup(last_sep + 1);
+            if (!filename) { free(clean_path); return NULL; }
             free(clean_path);
             clean_path = filename;
         }
@@ -582,6 +591,7 @@ static char* resolve_texture_path(const char* model_path, const char* texture_pa
         size_t dir_len = last_slash - model_path + 1;
         size_t path_len = strlen(clean_path);
         char* full_path = malloc(dir_len + path_len + 1);
+        if (!full_path) { free(clean_path); return NULL; }
         memcpy(full_path, model_path, dir_len);
         memcpy(full_path + dir_len, clean_path, path_len + 1);
         free(clean_path);
@@ -714,6 +724,12 @@ bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs,
     if (mat_count == 0) mat_count = 1;
 
     MaterialInfo* mats = calloc(mat_count, sizeof(MaterialInfo));
+    if (!mats) {
+        fprintf(stderr, "Failed to allocate materials\n");
+        aiReleaseImport(scene);
+        mesh_free(mesh);
+        return false;
+    }
     for (size_t i = 0; i < mat_count; i++) {
         material_info_init(&mats[i]);
         mats[i].uv_channel = uv_channel;

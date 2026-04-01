@@ -531,6 +531,10 @@ int main(int argc, char* argv[]) {
     diffuse_textures = calloc(model_material_count, sizeof(Texture));
     normal_textures = calloc(model_material_count, sizeof(Texture));
     render_materials = calloc(model_material_count, sizeof(RenderMaterial));
+    if (!diffuse_textures || !normal_textures || !render_materials) {
+        fprintf(stderr, "Failed to allocate material resources\n");
+        goto cleanup;
+    }
 
     for (size_t i = 0; i < model_material_count; i++) {
         load_diffuse_texture(args.model_path, args.texture_path,
