@@ -40,6 +40,7 @@ typedef struct FragmentUniforms {
     float shininess;
     uint32_t use_diffuse_alpha_as_luster;
     uint32_t padding0[3];
+    vec4 base_color;
     vec4 hemisphere_sky_color;
     vec4 hemisphere_ground_color;
     vec4 fill_light_dir;
@@ -53,6 +54,7 @@ typedef struct RenderMaterial {
     AlphaMode alpha_mode;
     float specular_strength;
     float shininess;
+    float base_color[4];
     bool use_diffuse_alpha_as_luster;
 } RenderMaterial;
 

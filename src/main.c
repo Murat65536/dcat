@@ -546,6 +546,7 @@ int main(int argc, char* argv[]) {
         render_materials[i].alpha_mode = model_materials[i].alpha_mode;
         render_materials[i].specular_strength = model_materials[i].specular_strength;
         render_materials[i].shininess = model_materials[i].shininess;
+        memcpy(render_materials[i].base_color, model_materials[i].base_color, sizeof(float) * 4);
         render_materials[i].use_diffuse_alpha_as_luster =
             render_materials[i].alpha_mode == ALPHA_MODE_OPAQUE &&
             diffuse_textures[i].has_transparency;

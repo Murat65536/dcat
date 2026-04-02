@@ -502,6 +502,9 @@ bool vulkan_renderer_render(
         frag_uniforms.use_diffuse_alpha_as_luster =
             materials[m].use_diffuse_alpha_as_luster ? 1 : 0;
 
+        // Base/diffuse color factor
+        memcpy(frag_uniforms.base_color, materials[m].base_color, sizeof(float) * 4);
+
         // Hemisphere ambient lighting
         glm_vec4_copy((vec4){0.50f, 0.50f, 0.52f, 0.0f}, frag_uniforms.hemisphere_sky_color);
         glm_vec4_copy((vec4){0.18f, 0.16f, 0.14f, 0.0f}, frag_uniforms.hemisphere_ground_color);

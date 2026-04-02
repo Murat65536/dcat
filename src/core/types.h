@@ -143,6 +143,7 @@ typedef struct MaterialInfo {
     AlphaMode alpha_mode;
     float specular_strength;
     float shininess;
+    float base_color[4];            // RGBA base/diffuse color factor
     unsigned int uv_channel;        // which UV set the diffuse texture uses
     unsigned char* embedded_diffuse; // raw bytes of embedded diffuse texture (or NULL)
     size_t embedded_diffuse_size;   // byte count of embedded_diffuse

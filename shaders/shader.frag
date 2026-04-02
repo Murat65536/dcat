@@ -16,6 +16,7 @@ layout(set = 0, binding = 3) uniform FragmentUniforms {
     uint _pad0;
     uint _pad1;
     uint _pad2;
+    vec4 baseColor;
     vec4 hemisphereSkyColor;
     vec4 hemisphereGroundColor;
     vec4 fillLightDir;    // xyz = direction, w = intensity
@@ -52,6 +53,8 @@ void main() {
         diffuseColor = texture(diffuseTexture, fragTexCoord);
     }
     
+    diffuseColor *= fragUniforms.baseColor;
+
     float sampledAlpha = diffuseColor.a;
 
     // Alpha handling

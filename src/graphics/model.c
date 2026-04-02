@@ -39,6 +39,10 @@ void material_info_init(MaterialInfo* info) {
     info->alpha_mode = ALPHA_MODE_OPAQUE;
     info->specular_strength = 0.0f;
     info->shininess = 32.0f;
+    info->base_color[0] = 1.0f;
+    info->base_color[1] = 1.0f;
+    info->base_color[2] = 1.0f;
+    info->base_color[3] = 1.0f;
     info->uv_channel = 0;
     info->embedded_diffuse = NULL;
     info->embedded_diffuse_size = 0;
@@ -750,6 +754,16 @@ bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs,
             || aiGetMaterialTexture(material, aiTextureType_HEIGHT, 0, &str, NULL, NULL, NULL, NULL, NULL, NULL) == aiReturn_SUCCESS) {
             mats[i].normal_path = resolve_texture_path(path, str.data, scene);
         }
+
+        // Base / diffuse color factor
+        struct aiColor4D base_color = {1.0f, 1.0f, 1.0f, 1.0f};
+        if (aiGetMaterialColor(material, AI_MATKEY_BASE_COLOR, &base_color) != aiReturn_SUCCESS) {
+            aiGetMaterialColor(material, AI_MATKEY_COLOR_DIFFUSE, &base_color);
+        }
+        mats[i].base_color[0] = base_color.r;
+        mats[i].base_color[1] = base_color.g;
+        mats[i].base_color[2] = base_color.b;
+        mats[i].base_color[3] = base_color.a;
 
         // Alpha mode (GLTF specific)
         struct aiString alpha_mode_str;
