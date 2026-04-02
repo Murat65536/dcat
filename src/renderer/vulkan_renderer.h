@@ -39,7 +39,11 @@ typedef struct FragmentUniforms {
     float specular_strength;
     float shininess;
     uint32_t use_diffuse_alpha_as_luster;
-    uint32_t padding[2];
+    uint32_t padding0[3];
+    vec4 hemisphere_sky_color;
+    vec4 hemisphere_ground_color;
+    vec4 fill_light_dir;
+    vec4 rim_light_dir;
 } FragmentUniforms;
 
 // Per-material render data passed from main to renderer

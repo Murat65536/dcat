@@ -502,6 +502,18 @@ bool vulkan_renderer_render(
         frag_uniforms.use_diffuse_alpha_as_luster =
             materials[m].use_diffuse_alpha_as_luster ? 1 : 0;
 
+        // Hemisphere ambient lighting
+        glm_vec4_copy((vec4){0.50f, 0.50f, 0.52f, 0.0f}, frag_uniforms.hemisphere_sky_color);
+        glm_vec4_copy((vec4){0.18f, 0.16f, 0.14f, 0.0f}, frag_uniforms.hemisphere_ground_color);
+
+        // Fill light: opposite side, lower, soft
+        glm_vec4_copy((vec4){-0.7f, -0.3f, 0.5f, 0.35f}, frag_uniforms.fill_light_dir);
+        glm_vec3_normalize(frag_uniforms.fill_light_dir);
+
+        // Rim light: behind and slightly above
+        glm_vec4_copy((vec4){0.0f, 0.3f, 0.8f, 0.4f}, frag_uniforms.rim_light_dir);
+        glm_vec3_normalize(frag_uniforms.rim_light_dir);
+
         switch (materials[m].alpha_mode) {
             case ALPHA_MODE_MASK: frag_uniforms.alpha_mode = 1; break;
             case ALPHA_MODE_BLEND: frag_uniforms.alpha_mode = 2; break;

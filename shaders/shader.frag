@@ -13,6 +13,13 @@ layout(set = 0, binding = 3) uniform FragmentUniforms {
     float specularStrength;
     float shininess;
     uint useDiffuseAlphaAsLuster;
+    uint _pad0;
+    uint _pad1;
+    uint _pad2;
+    vec4 hemisphereSkyColor;
+    vec4 hemisphereGroundColor;
+    vec4 fillLightDir;    // xyz = direction, w = intensity
+    vec4 rimLightDir;     // xyz = direction, w = intensity
 } fragUniforms;
 
 layout(location = 0) in vec2 fragTexCoord;
@@ -76,13 +83,28 @@ void main() {
         tangentNormal.z * N
     );
     
-    // Calculate both diffuse and ambient lighting
+    // Key light (directional)
     vec3 lightDir = normalize(fragUniforms.lightDir);
     vec3 viewDir = normalize(fragUniforms.cameraPos - fragWorldPos);
-    float diffuseIntensity = max(dot(perturbedNormal, lightDir), 0.0);
-    float ambientIntensity = 0.45;
-    float totalIntensity = min(diffuseIntensity + ambientIntensity, 1.0);
+    float keyDiffuse = max(dot(perturbedNormal, lightDir), 0.0);
 
+    // Hemisphere ambient: interpolate between ground and sky based on up-facing
+    float hemisphereBlend = dot(perturbedNormal, vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
+    vec3 ambientColor = mix(fragUniforms.hemisphereGroundColor.rgb,
+                            fragUniforms.hemisphereSkyColor.rgb,
+                            hemisphereBlend);
+
+    // Fill light (diffuse only, no specular)
+    vec3 fillDir = normalize(fragUniforms.fillLightDir.xyz);
+    float fillDiffuse = max(dot(perturbedNormal, fillDir), 0.0) * fragUniforms.fillLightDir.w;
+
+    // Rim light (edge-based, view-dependent)
+    vec3 rimDir = normalize(fragUniforms.rimLightDir.xyz);
+    float rimDot = 1.0 - max(dot(perturbedNormal, viewDir), 0.0);
+    float rimFacing = max(dot(perturbedNormal, rimDir), 0.0);
+    float rimContrib = pow(rimDot, 3.0) * rimFacing * fragUniforms.rimLightDir.w;
+
+    // Specular (key light only)
     float specularStrength = clamp(fragUniforms.specularStrength, 0.0, 1.0);
     float specularShininess = clamp(fragUniforms.shininess, 8.0, 256.0);
     if (fragUniforms.useDiffuseAlphaAsLuster != 0u) {
@@ -91,14 +113,16 @@ void main() {
     }
 
     float specularIntensity = 0.0;
-    if (diffuseIntensity > 0.0 && specularStrength > 0.0) {
+    if (keyDiffuse > 0.0 && specularStrength > 0.0) {
         vec3 halfVector = normalize(lightDir + viewDir);
         float specAngle = max(dot(perturbedNormal, halfVector), 0.0);
         float fresnel = pow(1.0 - max(dot(perturbedNormal, viewDir), 0.0), 5.0);
         specularIntensity = pow(specAngle, specularShininess) * specularStrength * (0.08 + 0.92 * fresnel);
     }
 
-    vec3 finalColor = diffuseColor.rgb * totalIntensity + vec3(specularIntensity);
+    vec3 finalColor = diffuseColor.rgb * (keyDiffuse + fillDiffuse)
+                    + diffuseColor.rgb * ambientColor
+                    + vec3(specularIntensity + rimContrib);
 
     outColor = vec4(clamp(finalColor, vec3(0.0), vec3(1.0)), diffuseColor.a);
 }
