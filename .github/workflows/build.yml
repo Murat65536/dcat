@@ -13,11 +13,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            buildtype: release
+            buildtype: Release
           - os: ubuntu-latest
-            buildtype: debug
+            buildtype: Debug
           - os: windows-latest
-            buildtype: release
+            buildtype: Release
     runs-on: ${{ matrix.os }}
 
     steps:

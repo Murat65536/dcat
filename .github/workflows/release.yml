@@ -20,7 +20,7 @@ jobs:
       - name: Build
         uses: ./.github/actions/setup
         with:
-          buildtype: 'release'
+          buildtype: 'Release'
 
   release:
     runs-on: ubuntu-latest
@@ -32,7 +32,7 @@ jobs:
       - name: Build
         uses: ./.github/actions/setup
         with:
-          buildtype: 'release'
+          buildtype: 'Release'
 
       - name: Prepare Release Artifacts
         run: |
