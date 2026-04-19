@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #ifdef _WIN32
 #include <malloc.h>
 #endif
@@ -65,6 +66,16 @@ static inline void* aligned_realloc(void* ptr, size_t old_size, size_t new_size)
 #endif
 }
 
+static inline void* aligned_realloc_checked(void* ptr, size_t old_size,
+                                            size_t new_size) {
+    void* new_ptr = aligned_realloc(ptr, old_size, new_size);
+    if (!new_ptr && new_size > 0) {
+        fputs("Fatal: out of memory while growing dynamic array\n", stderr);
+        abort();
+    }
+    return new_ptr;
+}
+
 static inline void aligned_free(void* ptr) {
     if (!ptr) return;
 #ifdef _WIN32
@@ -83,21 +94,37 @@ static inline void aligned_free(void* ptr) {
 
 #define ARRAY_RESERVE(arr, cap) do { \
     if ((cap) > (arr).capacity) { \
-        size_t old_cap = (arr).capacity; \
-        (arr).capacity = (cap); \
-        (arr).data = aligned_realloc((arr).data, \
-            old_cap * sizeof(*(arr).data), \
-            (arr).capacity * sizeof(*(arr).data)); \
+        size_t _old_cap = (arr).capacity; \
+        size_t _new_cap = (cap); \
+        size_t _elem_size = sizeof(*(arr).data); \
+        if (_new_cap > (SIZE_MAX / _elem_size)) { \
+            fputs("Fatal: dynamic array size overflow\n", stderr); \
+            abort(); \
+        } \
+        void* _new_data = aligned_realloc_checked((arr).data, \
+            _old_cap * _elem_size, _new_cap * _elem_size); \
+        (arr).data = _new_data; \
+        (arr).capacity = _new_cap; \
     } \
 } while(0)
 
 #define ARRAY_PUSH(arr, item) do { \
     if ((arr).count >= (arr).capacity) { \
-        size_t old_cap = (arr).capacity; \
-        (arr).capacity = (arr).capacity ? (arr).capacity * 2 : 8; \
-        (arr).data = aligned_realloc((arr).data, \
-            old_cap * sizeof(*(arr).data), \
-            (arr).capacity * sizeof(*(arr).data)); \
+        size_t _old_cap = (arr).capacity; \
+        size_t _new_cap = _old_cap ? _old_cap * 2 : 8; \
+        size_t _elem_size = sizeof(*(arr).data); \
+        if (_old_cap > 0 && _new_cap < _old_cap) { \
+            fputs("Fatal: dynamic array capacity overflow\n", stderr); \
+            abort(); \
+        } \
+        if (_new_cap > (SIZE_MAX / _elem_size)) { \
+            fputs("Fatal: dynamic array size overflow\n", stderr); \
+            abort(); \
+        } \
+        void* _new_data = aligned_realloc_checked((arr).data, \
+            _old_cap * _elem_size, _new_cap * _elem_size); \
+        (arr).data = _new_data; \
+        (arr).capacity = _new_cap; \
     } \
     (arr).data[(arr).count++] = (item); \
 } while(0)
