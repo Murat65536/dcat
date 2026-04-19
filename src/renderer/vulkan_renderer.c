@@ -535,13 +535,25 @@ bool vulkan_renderer_render(
         glm_vec4_copy((vec4){0.50f, 0.50f, 0.52f, 0.0f}, frag_uniforms.hemisphere_sky_color);
         glm_vec4_copy((vec4){0.18f, 0.16f, 0.14f, 0.0f}, frag_uniforms.hemisphere_ground_color);
 
-        // Fill light: opposite side, lower, soft
-        glm_vec4_copy((vec4){-0.7f, -0.3f, 0.5f, 0.35f}, frag_uniforms.fill_light_dir);
-        glm_vec3_normalize(frag_uniforms.fill_light_dir);
+        // Fill/rim are derived from key light direction so camera-linked key
+        // lighting remains visually obvious while orbiting.
+        vec3 fill_dir = {
+            -frag_uniforms.light_dir[0],
+            -frag_uniforms.light_dir[1] - 0.2f,
+            -frag_uniforms.light_dir[2]
+        };
+        glm_vec3_normalize(fill_dir);
+        glm_vec4_copy((vec4){fill_dir[0], fill_dir[1], fill_dir[2], 0.18f},
+                      frag_uniforms.fill_light_dir);
 
-        // Rim light: behind and slightly above
-        glm_vec4_copy((vec4){0.0f, 0.3f, 0.8f, 0.4f}, frag_uniforms.rim_light_dir);
-        glm_vec3_normalize(frag_uniforms.rim_light_dir);
+        vec3 rim_dir = {
+            -frag_uniforms.light_dir[0],
+            -frag_uniforms.light_dir[1],
+            -frag_uniforms.light_dir[2]
+        };
+        glm_vec3_normalize(rim_dir);
+        glm_vec4_copy((vec4){rim_dir[0], rim_dir[1], rim_dir[2], 0.22f},
+                      frag_uniforms.rim_light_dir);
 
         switch (materials[m].alpha_mode) {
             case ALPHA_MODE_MASK: frag_uniforms.alpha_mode = 1; break;

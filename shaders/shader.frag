@@ -31,6 +31,16 @@ layout(location = 4) in vec3 fragWorldPos;
 
 layout(location = 0) out vec4 outColor;
 
+vec3 applyToneMappingAndGamma(vec3 hdrColor) {
+    const float exposure = 1.0;
+    const float gamma = 2.2;
+
+    // Simple HDR-style exposure tone mapping.
+    vec3 mapped = vec3(1.0) - exp(-max(hdrColor, vec3(0.0)) * exposure);
+    // Final output gamma encoding for display.
+    return pow(mapped, vec3(1.0 / gamma));
+}
+
 vec4 getTriplanarColor(vec3 worldPos, vec3 normal) {
     vec3 blendWeights = abs(normal);
     // Tighten the blending to reduce blurring
@@ -69,7 +79,7 @@ void main() {
     // BLEND (2) - keep original alpha, no discard
 
     if (fragUniforms.enableLighting == 0u) {
-        outColor = diffuseColor;
+        outColor = vec4(applyToneMappingAndGamma(diffuseColor.rgb), diffuseColor.a);
         return;
     }
     
@@ -127,5 +137,5 @@ void main() {
                     + diffuseColor.rgb * ambientColor
                     + vec3(specularIntensity + rimContrib);
 
-    outColor = vec4(clamp(finalColor, vec3(0.0), vec3(1.0)), diffuseColor.a);
+    outColor = vec4(applyToneMappingAndGamma(finalColor), diffuseColor.a);
 }

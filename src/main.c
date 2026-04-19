@@ -740,6 +740,10 @@ int main(int argc, char* argv[]) {
             process_input_devices(&key_state, &camera, delta_time,
                                   &move_speed);
         }
+        vec3 camera_forward;
+        camera_forward_direction(&camera, camera_forward);
+        glm_vec3_negate(camera_forward);
+        vulkan_renderer_set_light_direction(renderer, camera_forward);
         camera_view_matrix(&camera, view);
         glm_vec3_copy(camera.position, camera_position_snapshot);
         if (has_animations) {
