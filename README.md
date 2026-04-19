@@ -23,6 +23,11 @@ https://github.com/user-attachments/assets/ca47ea52-6a46-4ac2-8c9f-430fc9ea9865
   - `w/a/s/d` - Rotate the camera around the model
   - `e/r` - Zoom in and out
 
+## Character rendering option
+
+- `--hash-characters` makes character modes (`--truecolor-characters`, `--palette-characters`, `--block-characters`) render with `#` instead of half-block glyphs.
+- In this mode, vertical detail is halved (one source pixel row per terminal row).
+
 ## Build
 
 Linux/macOS:

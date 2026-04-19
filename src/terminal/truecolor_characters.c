@@ -37,8 +37,44 @@ static inline void write_u8_3digit(char *p, uint8_t v) {
     memcpy(p, u8_3digit[v], 3);
 }
 
-void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t height) {
+void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t height,
+                                 bool use_hash_characters) {
     init_u8_table();
+    if (use_hash_characters) {
+        size_t num_cells = (size_t)width * height;
+        size_t needed_size = 12 + num_cells * 18 + (height > 0 ? height - 1 : 0) + 13;
+
+        if (render_buf_size < needed_size) {
+            free(render_buf);
+            render_buf = (char *)malloc(needed_size);
+            render_buf_size = needed_size;
+        }
+
+        char *p = render_buf;
+        memcpy(p, "\x1b[?2026h\x1b[H", 12);
+        p += 12;
+
+        for (uint32_t y = 0; y < height; y++) {
+            const uint8_t *row = buffer + (y * width * 4);
+            for (uint32_t x = 0; x < width; x++) {
+                memcpy(p, "\x1b[38;2;000;000;000m#", 18);
+                write_u8_3digit(p + 7, row[0]);
+                write_u8_3digit(p + 11, row[1]);
+                write_u8_3digit(p + 15, row[2]);
+                p += 18;
+                row += 4;
+            }
+            if (y + 1 < height) {
+                *p++ = '\n';
+            }
+        }
+
+        memcpy(p, "\x1b[0m\x1b[?2026l", 13);
+        p += 13;
+        safe_write(render_buf, (size_t)(p - render_buf));
+        return;
+    }
+
     uint32_t num_blocks = width * ((height + 1) / 2);
     
     // Detect resize or first run

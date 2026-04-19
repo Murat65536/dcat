@@ -217,6 +217,12 @@ static bool output_mode_uses_kitty(const OutputMode output_mode) {
            output_mode == OUTPUT_MODE_KITTY_DIRECT;
 }
 
+static bool output_mode_uses_character_cells(const OutputMode output_mode) {
+    return output_mode == OUTPUT_MODE_TRUECOLOR_CHARACTERS ||
+           output_mode == OUTPUT_MODE_PALETTE_CHARACTERS ||
+           output_mode == OUTPUT_MODE_BLOCK_CHARACTERS;
+}
+
 static bool output_mode_supported_on_platform(const OutputMode output_mode) {
 #ifdef _WIN32
     if (output_mode == OUTPUT_MODE_KITTY_SHM ||
@@ -243,14 +249,20 @@ static const char* output_mode_flag_name(const OutputMode output_mode) {
 
 static void calculate_output_dimensions(const Args* args, OutputMode output_mode,
                                         uint32_t* width, uint32_t* height) {
+    bool use_hash_characters =
+        args->use_hash_characters && output_mode_uses_character_cells(output_mode);
     calculate_render_dimensions(args->width, args->height,
                                 output_mode == OUTPUT_MODE_SIXEL,
                                 output_mode_uses_kitty(output_mode),
+                                use_hash_characters,
                                 args->show_status_bar, width, height);
 }
 
 static void render_output_frame(OutputMode output_mode, const uint8_t* framebuffer,
-                                uint32_t width, uint32_t height) {
+                                uint32_t width, uint32_t height,
+                                bool use_hash_characters) {
+    bool hash_for_characters =
+        use_hash_characters && output_mode_uses_character_cells(output_mode);
     switch (output_mode) {
         case OUTPUT_MODE_KITTY_SHM:
             render_kitty_shm(framebuffer, width, height);
@@ -262,14 +274,14 @@ static void render_output_frame(OutputMode output_mode, const uint8_t* framebuff
             render_sixel(framebuffer, width, height);
             break;
         case OUTPUT_MODE_PALETTE_CHARACTERS:
-            render_palette_characters(framebuffer, width, height);
+            render_palette_characters(framebuffer, width, height, hash_for_characters);
             break;
         case OUTPUT_MODE_BLOCK_CHARACTERS:
-            render_block_characters(framebuffer, width, height);
+            render_block_characters(framebuffer, width, height, hash_for_characters);
             break;
         case OUTPUT_MODE_TRUECOLOR_CHARACTERS:
         case OUTPUT_MODE_AUTO:
-            render_truecolor_characters(framebuffer, width, height);
+            render_truecolor_characters(framebuffer, width, height, hash_for_characters);
             break;
     }
 }
@@ -450,6 +462,7 @@ static void process_input_devices(KeyState* key_state,
 static bool render_frame(RenderContext* ctx, const AnimationContext* anim_ctx,
                          const Mesh* mesh, mat4* view, mat4* projection,
                          OutputMode output_mode, bool show_status_bar,
+                         bool use_hash_characters,
                          uint32_t width, uint32_t height,
                          float fps, float move_speed, const vec3 camera_position,
                          int current_animation_index) {
@@ -478,7 +491,8 @@ static bool render_frame(RenderContext* ctx, const AnimationContext* anim_ctx,
     }
 
     if (framebuffer) {
-        render_output_frame(output_mode, framebuffer, width, height);
+        render_output_frame(output_mode, framebuffer, width, height,
+                           use_hash_characters);
 
         if (show_status_bar) {
             draw_status_bar(fps, move_speed, camera_position,
@@ -734,7 +748,8 @@ int main(int argc, char* argv[]) {
         dcat_mutex_unlock(&shared_state_mutex);
 
         if (!render_frame(&render_ctx, &anim_ctx, &mesh, &view, &projection,
-                          output_mode, args.show_status_bar, width, height,
+                          output_mode, args.show_status_bar,
+                          args.use_hash_characters, width, height,
                           calculate_frame_fps(delta_time), move_speed,
                           camera_position_snapshot,
                           current_animation_index_snapshot)) {

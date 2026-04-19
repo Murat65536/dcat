@@ -9,19 +9,45 @@
 static char *render_buf = NULL;
 static size_t render_buf_size = 0;
 
-// Each cell can be one of 4 states based on upper/lower pixel luminance:
-//   both dark  -> space (1 byte)
-//   upper lit  -> ▀ (U+2580, 3 bytes)
-//   lower lit  -> ▄ (U+2584, 3 bytes)
-//   both lit   -> █ (U+2588, 3 bytes)
-
 #define LUMA_THRESHOLD 63
 
 static inline uint8_t luminance(uint8_t r, uint8_t g, uint8_t b) {
     return (uint8_t)((r * 77u + g * 150u + b * 29u) >> 8);
 }
 
-void render_block_characters(const uint8_t *buffer, uint32_t width, uint32_t height) {
+void render_block_characters(const uint8_t *buffer, uint32_t width, uint32_t height,
+                             bool use_hash_characters) {
+    if (use_hash_characters) {
+        size_t max_size = 12 + (size_t)height * width + (height > 0 ? height - 1 : 0) + 9;
+
+        if (render_buf_size < max_size) {
+            free(render_buf);
+            render_buf = (char *)malloc(max_size);
+            render_buf_size = max_size;
+        }
+
+        char *p = render_buf;
+        memcpy(p, "\x1b[?2026h\x1b[H", 12);
+        p += 12;
+
+        for (uint32_t y = 0; y < height; y++) {
+            const uint8_t *row = buffer + (y * width * 4);
+            for (uint32_t x = 0; x < width; x++) {
+                uint8_t luma = luminance(row[0], row[1], row[2]);
+                *p++ = (luma >= LUMA_THRESHOLD) ? '#' : ' ';
+                row += 4;
+            }
+            if (y + 1 < height) {
+                *p++ = '\n';
+            }
+        }
+
+        memcpy(p, "\x1b[?2026l", 9);
+        p += 9;
+        safe_write(render_buf, (size_t)(p - render_buf));
+        return;
+    }
+
     uint32_t rows = (height + 1) / 2;
     // Worst case: every cell is a 3-byte block char
     // Header(12) + rows * width * 3 + newlines(rows-1) + footer(9)

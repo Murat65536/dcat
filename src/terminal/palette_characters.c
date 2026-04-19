@@ -50,8 +50,43 @@ static inline uint8_t rgb_to_256(uint8_t r, uint8_t g, uint8_t b) {
     return 16 + 36 * vr + 6 * vg + vb;
 }
 
-void render_palette_characters(const uint8_t *buffer, uint32_t width, uint32_t height) {
+void render_palette_characters(const uint8_t *buffer, uint32_t width, uint32_t height,
+                               bool use_hash_characters) {
     init_u8_table();
+    if (use_hash_characters) {
+        size_t num_cells = (size_t)width * height;
+        size_t needed_size = 12 + num_cells * 12 + (height > 0 ? height - 1 : 0) + 13;
+
+        if (render_buf_size < needed_size) {
+            free(render_buf);
+            render_buf = (char *)malloc(needed_size);
+            render_buf_size = needed_size;
+        }
+
+        char *p = render_buf;
+        memcpy(p, "\x1b[?2026h\x1b[H", 12);
+        p += 12;
+
+        for (uint32_t y = 0; y < height; y++) {
+            const uint8_t *row = buffer + (y * width * 4);
+            for (uint32_t x = 0; x < width; x++) {
+                uint8_t idx = rgb_to_256(row[0], row[1], row[2]);
+                memcpy(p, "\x1b[38;5;000m#", 12);
+                memcpy(p + 7, u8_3digit[idx], 3);
+                p += 12;
+                row += 4;
+            }
+            if (y + 1 < height) {
+                *p++ = '\n';
+            }
+        }
+
+        memcpy(p, "\x1b[0m\x1b[?2026l", 13);
+        p += 13;
+        safe_write(render_buf, (size_t)(p - render_buf));
+        return;
+    }
+
     uint32_t num_blocks = width * ((height + 1) / 2);
 
     if (!buffer_initialized || width != last_width || height != last_height) {

@@ -26,6 +26,7 @@ typedef struct Args {
     bool use_truecolor_characters;
     bool use_palette_characters;
     bool use_block_characters;
+    bool use_hash_characters;
 } Args;
 
 // Parse command line arguments

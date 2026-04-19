@@ -85,6 +85,7 @@ void get_terminal_size_pixels(uint32_t *width, uint32_t *height) {
 
 void calculate_render_dimensions(int explicit_width, int explicit_height,
                                  bool use_sixel, bool use_kitty,
+                                 bool use_hash_characters,
                                  bool reserve_bottom_line, uint32_t *out_width,
                                  uint32_t *out_height) {
   if (explicit_width > 0 && explicit_height > 0) {
@@ -114,7 +115,7 @@ void calculate_render_dimensions(int explicit_width, int explicit_height,
     rows--;
   }
   *out_width = cols;
-  *out_height = rows * 2;
+  *out_height = use_hash_characters ? rows : rows * 2;
 }
 
 static TermiosState raw_mode_state;
