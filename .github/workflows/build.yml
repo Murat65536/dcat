@@ -8,15 +8,22 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        buildtype: [release, debug]
+        include:
+          - os: ubuntu-latest
+            buildtype: release
+          - os: ubuntu-latest
+            buildtype: debug
+          - os: windows-latest
+            buildtype: release
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build
+      - name: Build (${{ matrix.os }} / ${{ matrix.buildtype }})
         uses: ./.github/actions/setup
         with:
           buildtype: ${{ matrix.buildtype }}

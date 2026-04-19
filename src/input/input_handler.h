@@ -1,9 +1,9 @@
 #ifndef DCAT_INPUT_HANDLER_H
 #define DCAT_INPUT_HANDLER_H
 
-#include <pthread.h>
 #include <stdatomic.h>
 #include <stdbool.h>
+#include "../core/threading.h"
 #include "../graphics/camera.h"
 #include "../graphics/animation.h"
 #include "../renderer/vulkan_renderer.h"
@@ -39,7 +39,7 @@ typedef struct InputThreadData {
     VulkanRenderer* renderer;
     AnimationState* anim_state;
     Mesh* mesh;
-    pthread_mutex_t* state_mutex;
+    DcatMutex* state_mutex;
     atomic_bool* running;
     bool fps_controls;
     bool mouse_orbit;
@@ -49,6 +49,10 @@ typedef struct InputThreadData {
 } InputThreadData;
 
 // Input thread function
+#ifdef _WIN32
+unsigned __stdcall input_thread_func(void* arg);
+#else
 void* input_thread_func(void* arg);
+#endif
 
 #endif

@@ -2,15 +2,18 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <signal.h>
-#include <pthread.h>
 #include <stdatomic.h>
 #include <stdarg.h>
 #include <string.h>
 #include <time.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <vips/vips.h>
 
+#include "core/platform_compat.h"
+#include "core/threading.h"
 #include "core/args.h"
 #include "graphics/camera.h"
 #include "graphics/model.h"
@@ -42,10 +45,12 @@ static void signal_handler(int sig) {
     atomic_store(&g_running, false);
 }
 
+#ifdef SIGWINCH
 static void resize_handler(int sig) {
     (void)sig;
     g_resize_pending = 1;
 }
+#endif
 
 static void write_signal_literal(int fd, const char* data, size_t size) {
     while (size > 0) {
@@ -66,9 +71,11 @@ static void write_signal_name(int sig) {
         case SIGABRT:
             write_signal_literal(STDERR_FILENO, "SIGABRT", 7);
             break;
+#ifdef SIGBUS
         case SIGBUS:
             write_signal_literal(STDERR_FILENO, "SIGBUS", 6);
             break;
+#endif
         case SIGFPE:
             write_signal_literal(STDERR_FILENO, "SIGFPE", 6);
             break;
@@ -97,7 +104,7 @@ static void fatal_signal_handler(int sig) {
     write_signal_literal(STDERR_FILENO, prefix, sizeof(prefix) - 1);
     write_signal_name(sig);
     write_signal_literal(STDERR_FILENO, suffix, sizeof(suffix) - 1);
-    _exit(128 + sig);
+    _Exit(128 + sig);
 }
 
 static void record_fatal_report(FatalReport* report, const char* format, ...) {
@@ -114,9 +121,19 @@ static void record_fatal_report(FatalReport* report, const char* format, ...) {
 }
 
 static inline double get_time_seconds(void) {
+#ifdef _WIN32
+    static LARGE_INTEGER frequency = {0};
+    LARGE_INTEGER counter;
+    if (frequency.QuadPart == 0) {
+        QueryPerformanceFrequency(&frequency);
+    }
+    QueryPerformanceCounter(&counter);
+    return (double)counter.QuadPart / (double)frequency.QuadPart;
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_sec + ts.tv_nsec / 1e9;
+#endif
 }
 
 typedef struct RenderContext {
@@ -198,6 +215,30 @@ static OutputMode detect_output_mode(void) {
 static bool output_mode_uses_kitty(const OutputMode output_mode) {
     return output_mode == OUTPUT_MODE_KITTY_SHM ||
            output_mode == OUTPUT_MODE_KITTY_DIRECT;
+}
+
+static bool output_mode_supported_on_platform(const OutputMode output_mode) {
+#ifdef _WIN32
+    if (output_mode == OUTPUT_MODE_KITTY_SHM ||
+        output_mode == OUTPUT_MODE_KITTY_DIRECT ||
+        output_mode == OUTPUT_MODE_SIXEL) {
+        return false;
+    }
+#endif
+    return true;
+}
+
+static const char* output_mode_flag_name(const OutputMode output_mode) {
+    switch (output_mode) {
+        case OUTPUT_MODE_KITTY_SHM:
+            return "--kitty";
+        case OUTPUT_MODE_KITTY_DIRECT:
+            return "--kitty-direct";
+        case OUTPUT_MODE_SIXEL:
+            return "--sixel";
+        default:
+            return "auto";
+    }
 }
 
 static void calculate_output_dimensions(const Args* args, OutputMode output_mode,
@@ -282,10 +323,13 @@ static float calculate_frame_fps(float delta_time) {
 
 static bool resize_renderer_if_needed(const Args* args, OutputMode output_mode,
                                       VulkanRenderer* renderer,
-                                      pthread_mutex_t* shared_state_mutex,
+                                      DcatMutex* shared_state_mutex,
                                       Camera* camera, uint32_t* width,
                                       uint32_t* height, mat4 view,
                                       mat4 projection) {
+#ifdef _WIN32
+    g_resize_pending = 1;
+#endif
     if (!g_resize_pending) {
         return true;
     }
@@ -305,10 +349,10 @@ static bool resize_renderer_if_needed(const Args* args, OutputMode output_mode,
         return false;
     }
 
-    pthread_mutex_lock(shared_state_mutex);
+    dcat_mutex_lock(shared_state_mutex);
     camera_init(camera, *width, *height, camera->position, camera->target, 60.0f);
     refresh_camera_matrices(camera, view, projection);
-    pthread_mutex_unlock(shared_state_mutex);
+    dcat_mutex_unlock(shared_state_mutex);
     return true;
 }
 
@@ -464,19 +508,45 @@ int main(int argc, char* argv[]) {
     if (output_mode == OUTPUT_MODE_AUTO) {
         output_mode = detect_output_mode();
     }
+    if (!output_mode_supported_on_platform(output_mode)) {
+        fprintf(stderr,
+                "Output mode %s is not supported on native Windows. "
+                "Use --truecolor-characters, --palette-characters, or "
+                "--block-characters.\n",
+                output_mode_flag_name(output_mode));
+        vips_shutdown();
+        return 1;
+    }
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
+#ifdef SIGWINCH
     signal(SIGWINCH, resize_handler);
+#endif
 
+#ifdef _WIN32
+    signal(SIGABRT, fatal_signal_handler);
+#ifdef SIGFPE
+    signal(SIGFPE, fatal_signal_handler);
+#endif
+#ifdef SIGILL
+    signal(SIGILL, fatal_signal_handler);
+#endif
+#ifdef SIGSEGV
+    signal(SIGSEGV, fatal_signal_handler);
+#endif
+#else
     struct sigaction fatal_action = {0};
     fatal_action.sa_handler = fatal_signal_handler;
     sigemptyset(&fatal_action.sa_mask);
     sigaction(SIGABRT, &fatal_action, NULL);
+#ifdef SIGBUS
     sigaction(SIGBUS, &fatal_action, NULL);
+#endif
     sigaction(SIGFPE, &fatal_action, NULL);
     sigaction(SIGILL, &fatal_action, NULL);
     sigaction(SIGSEGV, &fatal_action, NULL);
+#endif
 
     uint32_t width = 0;
     uint32_t height = 0;
@@ -498,9 +568,9 @@ int main(int argc, char* argv[]) {
     bool has_uvs = false;
     bool has_animations = false;
     bool has_skydome = false;
-    pthread_mutex_t shared_state_mutex;
+    DcatMutex shared_state_mutex;
     bool shared_state_mutex_initialized = false;
-    pthread_t input_thread;
+    DcatThread input_thread;
     bool input_thread_started = false;
     TerminalSession terminal_session = {0};
     FatalReport fatal_report = {0};
@@ -587,7 +657,7 @@ int main(int argc, char* argv[]) {
     mat4 view, projection;
     refresh_camera_matrices(&camera, view, projection);
 
-    if (pthread_mutex_init(&shared_state_mutex, NULL) != 0) {
+    if (!dcat_mutex_init(&shared_state_mutex)) {
         fprintf(stderr, "Failed to initialize shared state mutex\n");
         goto cleanup;
     }
@@ -602,10 +672,8 @@ int main(int argc, char* argv[]) {
         args.fps_controls, args.mouse_orbit, args.mouse_sensitivity, has_animations,
         &key_state
     };
-    int thread_error = pthread_create(&input_thread, NULL, input_thread_func, &input_data);
-    if (thread_error != 0) {
-        record_fatal_report(&fatal_report, "Failed to start input thread: %s",
-                            strerror(thread_error));
+    if (!dcat_thread_create(&input_thread, input_thread_func, &input_data)) {
+        record_fatal_report(&fatal_report, "Failed to start input thread");
         goto cleanup;
     }
     input_thread_started = true;
@@ -652,7 +720,7 @@ int main(int argc, char* argv[]) {
             glm_mat4_mul(rotation_mat, base_model_matrix, render_ctx.model_matrix);
         }
 
-        pthread_mutex_lock(&shared_state_mutex);
+        dcat_mutex_lock(&shared_state_mutex);
         if (args.fps_controls) {
             process_input_devices(&key_state, &camera, delta_time,
                                   &move_speed);
@@ -663,7 +731,7 @@ int main(int argc, char* argv[]) {
             update_animation(&mesh, &anim_state, delta_time, bone_matrices);
             current_animation_index_snapshot = anim_state.current_animation_index;
         }
-        pthread_mutex_unlock(&shared_state_mutex);
+        dcat_mutex_unlock(&shared_state_mutex);
 
         if (!render_frame(&render_ctx, &anim_ctx, &mesh, &view, &projection,
                           output_mode, args.show_status_bar, width, height,
@@ -680,7 +748,15 @@ int main(int argc, char* argv[]) {
         double frame_end = get_time_seconds();
         double frame_duration = frame_end - frame_start;
         if (frame_duration < target_frame_time) {
-            usleep((useconds_t)((target_frame_time - frame_duration) * 1e6));
+            double remaining = target_frame_time - frame_duration;
+#ifdef _WIN32
+            DWORD sleep_ms = (DWORD)(remaining * 1000.0);
+            if (sleep_ms > 0) {
+                Sleep(sleep_ms);
+            }
+#else
+            usleep((useconds_t)(remaining * 1e6));
+#endif
         }
     }
 
@@ -689,7 +765,7 @@ int main(int argc, char* argv[]) {
 cleanup:
     atomic_store(&g_running, false);
     if (input_thread_started) {
-        pthread_join(input_thread, NULL);
+        dcat_thread_join(input_thread);
     }
     terminal_session_end(&terminal_session);
     if (fatal_report.active) {
@@ -697,10 +773,10 @@ cleanup:
     }
     vulkan_renderer_wait_idle(renderer);
     if (shared_state_mutex_initialized) {
-        pthread_mutex_destroy(&shared_state_mutex);
+        dcat_mutex_destroy(&shared_state_mutex);
     }
 
-    free(bone_matrices);
+    aligned_free(bone_matrices);
     if (diffuse_textures) {
         for (size_t i = 0; i < model_material_count; i++) {
             texture_free(&diffuse_textures[i]);

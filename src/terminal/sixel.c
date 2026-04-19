@@ -1,9 +1,29 @@
 #include "sixel.h"
 #include "terminal.h"
+#include "core/platform_compat.h"
+#ifdef _WIN32
+#include <stdint.h>
+#include <stdbool.h>
+#else
 #include <sixel.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#endif
+
+#ifdef _WIN32
+
+void render_sixel(const uint8_t *buffer, uint32_t width, uint32_t height) {
+    (void)buffer;
+    (void)width;
+    (void)height;
+}
+
+bool detect_sixel_support(void) {
+    return false;
+}
+
+#else
 
 static int sixel_write_cb(char *data, int size, void *priv) {
     (void)priv;
@@ -63,12 +83,7 @@ bool detect_sixel_support(void) {
         return false;
 
     TermiosState ts;
-    if (!termios_state_init(&ts, STDIN_FILENO))
-        return false;
-    ts.settings.c_lflag &= ~(ICANON | ECHO);
-    ts.settings.c_cc[VMIN] = 0;
-    ts.settings.c_cc[VTIME] = 1; // 100ms timeout
-    if (!termios_state_apply(&ts))
+    if (!terminal_begin_query_mode(&ts))
         return false;
 
     // XTSMGRAPHICS query: read sixel geometry (item 2).
@@ -87,6 +102,8 @@ bool detect_sixel_support(void) {
             found = true;
     }
 
-    termios_state_restore(&ts);
+    terminal_end_query_mode(&ts);
     return found;
 }
+
+#endif

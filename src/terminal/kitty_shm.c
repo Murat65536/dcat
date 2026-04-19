@@ -1,5 +1,10 @@
 #include "kitty_shm.h"
 #include "terminal.h"
+#include "core/platform_compat.h"
+#ifdef _WIN32
+#include <stdbool.h>
+#include <stdint.h>
+#else
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +13,21 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#endif
+
+#ifdef _WIN32
+
+void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height) {
+    (void)buffer;
+    (void)width;
+    (void)height;
+}
+
+bool detect_kitty_shm_support(void) {
+    return false;
+}
+
+#else
 
 static const char b64[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -138,14 +158,7 @@ bool detect_kitty_shm_support(void) {
     static const char *cleanup = "\x1b_Ga=d,d=i,i=31\x1b\\";
 
     TermiosState ts;
-    if (!termios_state_init(&ts, STDIN_FILENO)) {
-        shm_unlink(shm_name);
-        return false;
-    }
-    ts.settings.c_lflag &= ~(ICANON | ECHO);
-    ts.settings.c_cc[VMIN] = 0;
-    ts.settings.c_cc[VTIME] = 1; // 100ms timeout
-    if (!termios_state_apply(&ts)) {
+    if (!terminal_begin_query_mode(&ts)) {
         shm_unlink(shm_name);
         return false;
     }
@@ -167,6 +180,8 @@ bool detect_kitty_shm_support(void) {
     if (found)
         safe_write(cleanup, strlen(cleanup));
 
-    termios_state_restore(&ts);
+    terminal_end_query_mode(&ts);
     return found;
 }
+
+#endif

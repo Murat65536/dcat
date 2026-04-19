@@ -307,7 +307,7 @@ void skeleton_free(Skeleton* skeleton) {
         free(skeleton->bone_hierarchy.data[i].name);
         free(skeleton->bone_hierarchy.data[i].child_indices.data);
     }
-    free(skeleton->bone_hierarchy.data);
+    aligned_free(skeleton->bone_hierarchy.data);
     
     bone_map_free(&skeleton->bone_map);
     

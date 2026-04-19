@@ -1,12 +1,64 @@
 #include "vk_shader.h"
+#include "core/platform_compat.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
+
+static void normalize_path_separators(char *path) {
+#ifdef _WIN32
+    for (char *p = path; *p; p++) {
+        if (*p == '\\') {
+            *p = '/';
+        }
+    }
+#else
+    (void)path;
+#endif
+}
+
+static void get_executable_directory(char *out, size_t out_size) {
+    if (out_size == 0) {
+        return;
+    }
+    out[0] = '\0';
+
+#ifdef _WIN32
+    DWORD len = GetModuleFileNameA(NULL, out, (DWORD)out_size);
+    if (len == 0 || len >= out_size) {
+        out[0] = '\0';
+        return;
+    }
+    normalize_path_separators(out);
+#else
+    ssize_t len = readlink("/proc/self/exe", out, out_size - 1);
+    if (len == -1) {
+        out[0] = '\0';
+        return;
+    }
+    out[len] = '\0';
+#endif
+
+    char *last_slash = strrchr(out, '/');
+    if (!last_slash) {
+        out[0] = '\0';
+        return;
+    }
+    last_slash[1] = '\0';
+}
 
 char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size) {
-    constexpr int MAX_SHADER_FILENAME_LEN = 255;
-    constexpr int MAX_SHADER_DIR_LEN = 240;
+    enum { MAX_SHADER_FILENAME_LEN = 255, MAX_SHADER_DIR_LEN = 240 };
+#ifdef _WIN32
+    const char* search_paths[] = {
+        "",  // Will be replaced with exe_dir/shaders/
+        "",  // Will be replaced with exe_dir
+        "./shaders/",
+        "../share/dcat/shaders/",
+    };
+#else
     const char* search_paths[] = {
         "",  // Will be replaced with exe_dir/shaders/
         "",  // Will be replaced with exe_dir (for build directory)
@@ -14,20 +66,11 @@ char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size
         "/usr/local/share/dcat/shaders/",
         "/usr/share/dcat/shaders/"
     };
-    
+#endif
+
     // Get executable directory
-    char exe_path[4096] = {0};
     char exe_dir[4096] = {0};
-    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-    if (len != -1) {
-        exe_path[len] = '\0';
-        char* last_slash = strrchr(exe_path, '/');
-        if (last_slash) {
-            size_t dir_len = last_slash - exe_path + 1;
-            memcpy(exe_dir, exe_path, dir_len);
-            exe_dir[dir_len] = '\0';
-        }
-    }
+    get_executable_directory(exe_dir, sizeof(exe_dir));
     
     // Try shader directory first if set
     if (r->shader_directory[0]) {
@@ -72,6 +115,7 @@ char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size
         } else {
             snprintf(path, sizeof(path), "%s%.*s", search_paths[i], MAX_SHADER_FILENAME_LEN, filename);
         }
+        normalize_path_separators(path);
         
         FILE* f = fopen(path, "rb");
         if (f) {

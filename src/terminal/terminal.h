@@ -4,7 +4,14 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
 #include <termios.h>
+#endif
 
 #define DEFAULT_TERM_WIDTH 80
 #define DEFAULT_TERM_HEIGHT 24
@@ -21,14 +28,23 @@ void safe_write(const char *data, size_t size);
 void draw_status_bar(float fps, float speed, const float* pos, const char* animation_name);
 
 typedef struct {
+#ifdef _WIN32
+    HANDLE handle;
+    DWORD saved_mode;
+    DWORD mode;
+    bool valid;
+#else
     int fd;
     struct termios saved;
     struct termios settings;
+#endif
 } TermiosState;
 
 bool termios_state_init(TermiosState *state, int fd);
 bool termios_state_apply(TermiosState *state);
 void termios_state_restore(TermiosState *state);
+bool terminal_begin_query_mode(TermiosState *state);
+void terminal_end_query_mode(TermiosState *state);
 
 void enable_raw_mode(void);
 void disable_raw_mode(void);

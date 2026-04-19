@@ -10,6 +10,18 @@ on:
   workflow_dispatch:
 
 jobs:
+  windows-build:
+    name: Windows build validation
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        uses: ./.github/actions/setup
+        with:
+          buildtype: 'release'
+
   release:
     runs-on: ubuntu-latest
     permissions:

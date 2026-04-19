@@ -1,7 +1,12 @@
 #include "input_handler.h"
 #include <string.h>
+#include <ctype.h>
+#ifdef _WIN32
+#include <conio.h>
+#else
 #include <unistd.h>
 #include <poll.h>
+#endif
 #include <cglm/cglm.h>
 
 static const float ROTATION_AMOUNT = GLM_PI / 8.0f;
@@ -92,13 +97,41 @@ static void handle_key(InputThreadData* data, int key_code,
     }
 }
 
+#ifdef _WIN32
+unsigned __stdcall input_thread_func(void* arg) {
+#else
 void* input_thread_func(void* arg) {
+#endif
     InputThreadData* data = (InputThreadData*)arg;
+#ifndef _WIN32
     char buffer[512];
     ssize_t carry = 0;
     int last_mouse_x = 0, last_mouse_y = 0;
+#endif
 
     while (atomic_load(data->running)) {
+#ifdef _WIN32
+        if (!_kbhit()) {
+            dcat_sleep_ms(1);
+            continue;
+        }
+
+        int key_code = _getch();
+        if (key_code == 0 || key_code == 0xE0) {
+            (void)_getch();
+            continue;
+        }
+
+        if (key_code >= 'A' && key_code <= 'Z') {
+            key_code = tolower(key_code);
+        }
+
+        dcat_mutex_lock(data->state_mutex);
+        handle_key(data, key_code, 1, 1);
+        handle_key(data, key_code, 1, 3);
+        dcat_mutex_unlock(data->state_mutex);
+        continue;
+#else
         struct pollfd pfd = {STDIN_FILENO, POLLIN, 0};
         if (poll(&pfd, 1, 1) <= 0 || !(pfd.revents & POLLIN)) continue;
 
@@ -108,7 +141,7 @@ void* input_thread_func(void* arg) {
         n += carry;
         carry = 0;
 
-        pthread_mutex_lock(data->state_mutex);
+        dcat_mutex_lock(data->state_mutex);
 
         ssize_t i = 0;
         while (i < n) {
@@ -295,8 +328,9 @@ void* input_thread_func(void* arg) {
             }
         }
 
-        pthread_mutex_unlock(data->state_mutex);
+        dcat_mutex_unlock(data->state_mutex);
+#endif
     }
 
-    return NULL;
+    return 0;
 }

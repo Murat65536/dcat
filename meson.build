@@ -3,41 +3,106 @@ project(
   'c',
   version: '0.1.0',
   default_options: [
-    'c_std=gnu2x',
+    'c_std=c17',
     'warning_level=3',
   ],
 )
 
 cc = meson.get_compiler('c')
 buildtype = get_option('buildtype')
+is_windows = host_machine.system() == 'windows'
+is_msvc = cc.get_id() == 'msvc'
 
 if buildtype == 'release'
-  add_project_arguments(
-    '-march=native',
-    '-ffast-math',
-    '-funroll-loops',
-    language: 'c',
-  )
+  release_args = ['-march=native', '-ffast-math', '-funroll-loops']
+  foreach arg : release_args
+    if cc.has_argument(arg)
+      add_project_arguments(arg, language: 'c')
+    endif
+  endforeach
+endif
+
+if is_msvc
+  # MSVC requires this flag for <stdatomic.h> support.
+  c11_atomics_flag = '/experimental:c11atomics'
+  if cc.has_argument(c11_atomics_flag)
+    add_project_arguments(c11_atomics_flag, language: 'c')
+  endif
 endif
 
 if get_option('profile')
-  add_project_arguments('-pg', language: 'c')
-  add_project_link_arguments('-pg', language: 'c')
+  if cc.has_argument('-pg')
+    add_project_arguments('-pg', language: 'c')
+  endif
+  if cc.has_link_argument('-pg')
+    add_project_link_arguments('-pg', language: 'c')
+  endif
 endif
 
 target_override_options = []
-if buildtype == 'debug' and get_option('use_sanitizers')
+if buildtype == 'debug' and get_option('use_sanitizers') and not is_msvc
   target_override_options += ['b_sanitize=address,undefined']
 endif
 
-vulkan_dep = dependency('vulkan', required: true)
-assimp_dep = dependency('assimp', required: true)
-cglm_dep = dependency('cglm', required: true)
-sixel_dep = dependency('libsixel', required: true)
-vips_dep = dependency('vips', required: true)
+vulkan_dep = dependency('vulkan', method: 'pkg-config', required: false)
+if not vulkan_dep.found()
+  vulkan_dep = dependency('vulkan-loader', method: 'pkg-config', required: false)
+endif
+if not vulkan_dep.found()
+  if is_windows
+    vulkan_dep = dependency('vulkan', method: 'system', required: true)
+  else
+    vulkan_dep = dependency('vulkan', required: true)
+  endif
+endif
+
+assimp_dep = dependency('assimp', method: 'pkg-config', required: false)
+if not assimp_dep.found()
+  if is_windows
+    assimp_dep = dependency('assimp', method: 'cmake', required: true)
+  else
+    assimp_dep = dependency('assimp', required: true)
+  endif
+endif
+
+cglm_dep = dependency('cglm', method: 'pkg-config', required: false)
+if not cglm_dep.found()
+  if is_windows
+    cglm_dep = dependency('cglm', method: 'system', required: true)
+  else
+    cglm_dep = dependency('cglm', required: true)
+  endif
+endif
+
+vips_dep = dependency('vips', method: 'pkg-config', required: false)
+if not vips_dep.found()
+  if is_windows
+    vips_dep = dependency('vips', method: 'system', required: true)
+  else
+    vips_dep = dependency('vips', required: true)
+  endif
+endif
 threads_dep = dependency('threads', required: true)
-m_dep = cc.find_library('m', required: true)
-rt_dep = cc.find_library('rt', required: true)
+
+deps = [
+  vulkan_dep,
+  assimp_dep,
+  cglm_dep,
+  vips_dep,
+  threads_dep,
+]
+
+if not is_windows
+  sixel_dep = dependency('libsixel', method: 'pkg-config', required: false)
+  if not sixel_dep.found()
+    sixel_dep = dependency('libsixel', required: true)
+  endif
+  deps += [sixel_dep]
+
+  m_dep = cc.find_library('m', required: true)
+  rt_dep = cc.find_library('rt', required: true)
+  deps += [m_dep, rt_dep]
+endif
 
 inc_src = include_directories('src')
 
@@ -127,16 +192,7 @@ dcat = executable(
   'dcat',
   sources,
   include_directories: [inc_src],
-  dependencies: [
-    vulkan_dep,
-    assimp_dep,
-    cglm_dep,
-    sixel_dep,
-    vips_dep,
-    threads_dep,
-    m_dep,
-    rt_dep,
-  ],
+  dependencies: deps,
   c_args: target_c_args,
   override_options: target_override_options,
   install: true,

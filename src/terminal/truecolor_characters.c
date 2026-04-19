@@ -1,11 +1,14 @@
 #include "terminal/truecolor_characters.h"
 #include "terminal/terminal.h"
+#include "core/platform_compat.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 // Persistent buffer with fixed structure - only RGB digits change
 static char *render_buf = NULL;
@@ -16,14 +19,18 @@ static bool buffer_initialized = false;
 
 // Lookup table: uint8 -> 3-digit ASCII string (fixed width)
 static char u8_3digit[256][3];
+static bool u8_table_initialized = false;
 
-__attribute__((constructor))
 static void init_u8_table(void) {
+    if (u8_table_initialized) {
+        return;
+    }
     for (int i = 0; i < 256; i++) {
         u8_3digit[i][0] = '0' + (i / 100);
         u8_3digit[i][1] = '0' + ((i / 10) % 10);
         u8_3digit[i][2] = '0' + (i % 10);
     }
+    u8_table_initialized = true;
 }
 
 static inline void write_u8_3digit(char *p, uint8_t v) {
@@ -31,6 +38,7 @@ static inline void write_u8_3digit(char *p, uint8_t v) {
 }
 
 void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t height) {
+    init_u8_table();
     uint32_t num_blocks = width * ((height + 1) / 2);
     
     // Detect resize or first run
@@ -105,6 +113,23 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
 }
 
 bool detect_truecolor_support(void) {
+#ifdef _WIN32
+    if (!isatty(STDOUT_FILENO)) {
+        return false;
+    }
+
+    const char *colorterm = getenv("COLORTERM");
+    if (colorterm && (strcmp(colorterm, "truecolor") == 0 || strcmp(colorterm, "24bit") == 0)) {
+        return true;
+    }
+
+    const char *wt_session = getenv("WT_SESSION");
+    if (wt_session && wt_session[0]) {
+        return true;
+    }
+
+    return true;
+#else
     const char *colorterm = getenv("COLORTERM");
     if (colorterm && (strcmp(colorterm, "truecolor") == 0 || strcmp(colorterm, "24bit") == 0)) {
         return true;
@@ -120,12 +145,7 @@ bool detect_truecolor_support(void) {
         return false;
 
     TermiosState ts;
-    if (!termios_state_init(&ts, STDIN_FILENO))
-        return false;
-    ts.settings.c_lflag &= ~(ICANON | ECHO);
-    ts.settings.c_cc[VMIN] = 0;
-    ts.settings.c_cc[VTIME] = 1; // 100ms timeout
-    if (!termios_state_apply(&ts))
+    if (!terminal_begin_query_mode(&ts))
         return false;
 
     // Query RGB capability (524742 is hex for "RGB")
@@ -142,6 +162,7 @@ bool detect_truecolor_support(void) {
         }
     }
 
-    termios_state_restore(&ts);
+    terminal_end_query_mode(&ts);
     return found;
+#endif
 }

@@ -1,5 +1,5 @@
 name: 'Setup'
-description: 'Installs dependencies and builds the project with Meson'
+description: 'Installs dependencies and builds the project with Meson on Linux and Windows'
 inputs:
   buildtype:
     description: 'Meson build type (e.g., release, debug)'
@@ -10,13 +10,15 @@ runs:
   using: "composite"
   steps:
     - name: Add LunarG Vulkan SDK repository
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
         sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-noble.list https://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list
         sudo apt-get update
 
-    - name: Install dependencies
+    - name: Install Linux dependencies
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         sudo apt-get install -y \
@@ -32,10 +34,40 @@ runs:
           meson \
           libvips-dev
 
-    - name: Configure
+    - name: Setup MSYS2 toolchain
+      if: runner.os == 'Windows'
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-meson
+          mingw-w64-x86_64-ninja
+          mingw-w64-x86_64-vulkan-headers
+          mingw-w64-x86_64-vulkan-loader
+          mingw-w64-x86_64-shaderc
+          mingw-w64-x86_64-assimp
+          mingw-w64-x86_64-cglm
+          mingw-w64-x86_64-libvips
+          mingw-w64-x86_64-pkgconf
+
+    - name: Configure (Linux)
+      if: runner.os == 'Linux'
       shell: bash
       run: meson setup build --buildtype=${{ inputs.buildtype }} -Duse_sanitizers=false
 
-    - name: Build
+    - name: Configure (Windows)
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      run: meson setup build --buildtype=${{ inputs.buildtype }} -Duse_sanitizers=false
+
+    - name: Build (Linux)
+      if: runner.os == 'Linux'
       shell: bash
+      run: meson compile -C build
+
+    - name: Build (Windows)
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
       run: meson compile -C build

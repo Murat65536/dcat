@@ -6,6 +6,9 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <malloc.h>
+#endif
 #include <cglm/cglm.h>
 
 #define MAX_BONES 200
@@ -15,26 +18,40 @@
 // Aligned memory allocation for SIMD operations
 static inline void* aligned_malloc(size_t size) {
     if (size == 0) return NULL;
+#ifdef _WIN32
+    return _aligned_malloc(size, ALIGN_SIZE);
+#else
     void* ptr = NULL;
     if (posix_memalign(&ptr, ALIGN_SIZE, size) != 0) return NULL;
     return ptr;
+#endif
 }
 
 static inline void* aligned_realloc(void* ptr, size_t old_size, size_t new_size) {
     if (new_size == 0) {
-        free(ptr);
+        if (ptr) {
+#ifdef _WIN32
+            _aligned_free(ptr);
+#else
+            free(ptr);
+#endif
+        }
         return NULL;
     }
     if (ptr == NULL) {
         return aligned_malloc(new_size);
     }
-    
+
+#ifdef _WIN32
+    (void)old_size;
+    return _aligned_realloc(ptr, new_size, ALIGN_SIZE);
+#else
     void* new_ptr = realloc(ptr, new_size);
     if (new_ptr) {
         if (((uintptr_t)new_ptr & (ALIGN_SIZE - 1)) == 0) {
             return new_ptr;
         }
-        
+
         void* aligned_ptr = aligned_malloc(new_size);
         if (!aligned_ptr) {
             return new_ptr; // keep unaligned rather than losing data
@@ -45,6 +62,16 @@ static inline void* aligned_realloc(void* ptr, size_t old_size, size_t new_size)
         return aligned_ptr;
     }
     return NULL;
+#endif
+}
+
+static inline void aligned_free(void* ptr) {
+    if (!ptr) return;
+#ifdef _WIN32
+    _aligned_free(ptr);
+#else
+    free(ptr);
+#endif
 }
 
 // Dynamic array macros
@@ -76,7 +103,7 @@ static inline void* aligned_realloc(void* ptr, size_t old_size, size_t new_size)
 } while(0)
 
 #define ARRAY_FREE(arr) do { \
-    free((arr).data); \
+    aligned_free((arr).data); \
     ARRAY_INIT(arr); \
 } while(0)
 
