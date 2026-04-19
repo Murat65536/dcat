@@ -18,10 +18,18 @@
 #ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
 #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
 #endif
+#ifndef ENABLE_QUICK_EDIT_MODE
+#define ENABLE_QUICK_EDIT_MODE 0x0040
+#endif
+#ifndef ENABLE_MOUSE_INPUT
+#define ENABLE_MOUSE_INPUT 0x0010
+#endif
 #endif
 
 static const char TERMINAL_RECOVERY_SEQUENCE[] =
+#ifndef _WIN32
     "\x1b[?2026l"
+#endif
     "\x1b[<u"
     "\x1b[?1000l"
     "\x1b[?1002l"
@@ -204,10 +212,17 @@ void draw_status_bar(float fps, float speed, const float *pos,
     snprintf(anim_part, sizeof(anim_part), " | ANIM: %s", animation_name);
   }
 
+#ifdef _WIN32
+  int len = snprintf(buffer, sizeof(buffer),
+                     "\x1b[%u;1H\x1b[2K\x1b[7m FPS: %.1f | SPEED: "
+                     "%.2f | POS: %.2f, %.2f, %.2f%s \x1b[0m\x1b[H",
+                     rows, fps, speed, pos[0], pos[1], pos[2], anim_part);
+#else
   int len = snprintf(buffer, sizeof(buffer),
                      "\x1b[?2026h\x1b[%u;1H\x1b[2K\x1b[7m FPS: %.1f | SPEED: "
                      "%.2f | POS: %.2f, %.2f, %.2f%s \x1b[0m\x1b[H\x1b[?2026l",
                      rows, fps, speed, pos[0], pos[1], pos[2], anim_part);
+#endif
   if (len > 0) {
     size_t written = (size_t)len;
     if (written >= sizeof(buffer)) {
@@ -288,7 +303,8 @@ void enable_raw_mode(void) {
   if (!termios_state_init(&raw_mode_state, STDIN_FILENO))
     return;
 #ifdef _WIN32
-  raw_mode_state.mode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
+  raw_mode_state.mode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT |
+                           ENABLE_PROCESSED_INPUT | ENABLE_QUICK_EDIT_MODE);
   raw_mode_state.mode |= ENABLE_EXTENDED_FLAGS | ENABLE_VIRTUAL_TERMINAL_INPUT;
 #else
   raw_mode_state.settings.c_lflag &= ~(ECHO | ICANON);
@@ -312,6 +328,31 @@ void enable_raw_mode(void) {
   }
 #endif
   raw_mode_enabled = true;
+}
+
+void terminal_set_mouse_input_enabled(bool enabled) {
+#ifdef _WIN32
+  HANDLE input_handle = GetStdHandle(STD_INPUT_HANDLE);
+  if (input_handle == INVALID_HANDLE_VALUE || input_handle == NULL) {
+    return;
+  }
+
+  DWORD mode = 0;
+  if (!GetConsoleMode(input_handle, &mode)) {
+    return;
+  }
+
+  mode |= ENABLE_EXTENDED_FLAGS;
+  mode &= ~ENABLE_QUICK_EDIT_MODE;
+  if (enabled) {
+    mode |= ENABLE_MOUSE_INPUT;
+  } else {
+    mode &= ~ENABLE_MOUSE_INPUT;
+  }
+  SetConsoleMode(input_handle, mode);
+#else
+  (void)enabled;
+#endif
 }
 
 void disable_raw_mode(void) {

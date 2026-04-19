@@ -18,6 +18,14 @@ static bool buffer_initialized = false;
 static char u8_3digit[256][3];
 static bool u8_table_initialized = false;
 
+#ifdef _WIN32
+static const char FRAME_BEGIN[] = "\x1b[H";
+static const char FRAME_END[] = "\x1b[0m";
+#else
+static const char FRAME_BEGIN[] = "\x1b[?2026h\x1b[H";
+static const char FRAME_END[] = "\x1b[0m\x1b[?2026l";
+#endif
+
 static void init_u8_table(void) {
     if (u8_table_initialized) {
         return;
@@ -55,7 +63,8 @@ void render_palette_characters(const uint8_t *buffer, uint32_t width, uint32_t h
     init_u8_table();
     if (use_hash_characters) {
         size_t num_cells = (size_t)width * height;
-        size_t needed_size = 12 + num_cells * 12 + (height > 0 ? height - 1 : 0) + 13;
+        size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_cells * 12 +
+                             (height > 0 ? height - 1 : 0) + (sizeof(FRAME_END) - 1);
 
         if (render_buf_size < needed_size) {
             free(render_buf);
@@ -64,8 +73,8 @@ void render_palette_characters(const uint8_t *buffer, uint32_t width, uint32_t h
         }
 
         char *p = render_buf;
-        memcpy(p, "\x1b[?2026h\x1b[H", 12);
-        p += 12;
+        memcpy(p, FRAME_BEGIN, sizeof(FRAME_BEGIN) - 1);
+        p += sizeof(FRAME_BEGIN) - 1;
 
         for (uint32_t y = 0; y < height; y++) {
             const uint8_t *row = buffer + (y * width * 4);
@@ -81,8 +90,8 @@ void render_palette_characters(const uint8_t *buffer, uint32_t width, uint32_t h
             }
         }
 
-        memcpy(p, "\x1b[0m\x1b[?2026l", 13);
-        p += 13;
+        memcpy(p, FRAME_END, sizeof(FRAME_END) - 1);
+        p += sizeof(FRAME_END) - 1;
         safe_write(render_buf, (size_t)(p - render_buf));
         return;
     }
@@ -90,7 +99,8 @@ void render_palette_characters(const uint8_t *buffer, uint32_t width, uint32_t h
     uint32_t num_blocks = width * ((height + 1) / 2);
 
     if (!buffer_initialized || width != last_width || height != last_height) {
-        size_t needed_size = 12 + num_blocks * 23 + 13;
+        size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_blocks * 23 +
+                             (sizeof(FRAME_END) - 1);
         
         if (render_buf_size < needed_size) {
             free(render_buf);
@@ -101,8 +111,8 @@ void render_palette_characters(const uint8_t *buffer, uint32_t width, uint32_t h
         char *p = render_buf;
         
         // Header
-        memcpy(p, "\x1b[?2026h\x1b[H", 12);
-        p += 12;
+        memcpy(p, FRAME_BEGIN, sizeof(FRAME_BEGIN) - 1);
+        p += sizeof(FRAME_BEGIN) - 1;
         
         for (uint32_t i = 0; i < num_blocks; i++) {
             memcpy(p, "\x1b[38;5;000;48;5;000m\xe2\x96\x80", 23);
@@ -110,14 +120,14 @@ void render_palette_characters(const uint8_t *buffer, uint32_t width, uint32_t h
         }
         
         // Footer
-        memcpy(p, "\x1b[0m\x1b[?2026l", 13);
+        memcpy(p, FRAME_END, sizeof(FRAME_END) - 1);
         
         last_width = width;
         last_height = height;
         buffer_initialized = true;
     }
     
-    char *block_ptr = render_buf + 12;
+    char *block_ptr = render_buf + (sizeof(FRAME_BEGIN) - 1);
     
     for (uint32_t y = 0; y < height; y += 2) {
         const uint8_t *row_upper = buffer + (y * width * 4);
@@ -144,5 +154,6 @@ void render_palette_characters(const uint8_t *buffer, uint32_t width, uint32_t h
         }
     }
     
-    safe_write(render_buf, 12 + num_blocks * 23 + 13);
+    safe_write(render_buf, (sizeof(FRAME_BEGIN) - 1) + num_blocks * 23 +
+                          (sizeof(FRAME_END) - 1));
 }

@@ -9,6 +9,14 @@
 static char *render_buf = NULL;
 static size_t render_buf_size = 0;
 
+#ifdef _WIN32
+static const char FRAME_BEGIN[] = "\x1b[H";
+static const char FRAME_END[] = "";
+#else
+static const char FRAME_BEGIN[] = "\x1b[?2026h\x1b[H";
+static const char FRAME_END[] = "\x1b[?2026l";
+#endif
+
 #define LUMA_THRESHOLD 63
 
 static inline uint8_t luminance(uint8_t r, uint8_t g, uint8_t b) {
@@ -18,7 +26,8 @@ static inline uint8_t luminance(uint8_t r, uint8_t g, uint8_t b) {
 void render_block_characters(const uint8_t *buffer, uint32_t width, uint32_t height,
                              bool use_hash_characters) {
     if (use_hash_characters) {
-        size_t max_size = 12 + (size_t)height * width + (height > 0 ? height - 1 : 0) + 9;
+        size_t max_size = (sizeof(FRAME_BEGIN) - 1) + (size_t)height * width +
+                          (height > 0 ? height - 1 : 0) + (sizeof(FRAME_END) - 1);
 
         if (render_buf_size < max_size) {
             free(render_buf);
@@ -27,8 +36,8 @@ void render_block_characters(const uint8_t *buffer, uint32_t width, uint32_t hei
         }
 
         char *p = render_buf;
-        memcpy(p, "\x1b[?2026h\x1b[H", 12);
-        p += 12;
+        memcpy(p, FRAME_BEGIN, sizeof(FRAME_BEGIN) - 1);
+        p += sizeof(FRAME_BEGIN) - 1;
 
         for (uint32_t y = 0; y < height; y++) {
             const uint8_t *row = buffer + (y * width * 4);
@@ -42,8 +51,8 @@ void render_block_characters(const uint8_t *buffer, uint32_t width, uint32_t hei
             }
         }
 
-        memcpy(p, "\x1b[?2026l", 9);
-        p += 9;
+        memcpy(p, FRAME_END, sizeof(FRAME_END) - 1);
+        p += sizeof(FRAME_END) - 1;
         safe_write(render_buf, (size_t)(p - render_buf));
         return;
     }
@@ -51,7 +60,8 @@ void render_block_characters(const uint8_t *buffer, uint32_t width, uint32_t hei
     uint32_t rows = (height + 1) / 2;
     // Worst case: every cell is a 3-byte block char
     // Header(12) + rows * width * 3 + newlines(rows-1) + footer(9)
-    size_t max_size = 12 + (size_t)rows * width * 3 + (rows > 0 ? rows - 1 : 0) + 9;
+    size_t max_size = (sizeof(FRAME_BEGIN) - 1) + (size_t)rows * width * 3 +
+                      (rows > 0 ? rows - 1 : 0) + (sizeof(FRAME_END) - 1);
 
     if (render_buf_size < max_size) {
         free(render_buf);
@@ -62,8 +72,8 @@ void render_block_characters(const uint8_t *buffer, uint32_t width, uint32_t hei
     char *p = render_buf;
 
     // Header: enable synchronized output + cursor home
-    memcpy(p, "\x1b[?2026h\x1b[H", 12);
-    p += 12;
+    memcpy(p, FRAME_BEGIN, sizeof(FRAME_BEGIN) - 1);
+    p += sizeof(FRAME_BEGIN) - 1;
 
     for (uint32_t y = 0; y < height; y += 2) {
         const uint8_t *row_upper = buffer + (y * width * 4);
@@ -103,8 +113,8 @@ void render_block_characters(const uint8_t *buffer, uint32_t width, uint32_t hei
     }
 
     // Footer: disable synchronized output
-    memcpy(p, "\x1b[?2026l", 9);
-    p += 9;
+    memcpy(p, FRAME_END, sizeof(FRAME_END) - 1);
+    p += sizeof(FRAME_END) - 1;
 
     safe_write(render_buf, (size_t)(p - render_buf));
 }

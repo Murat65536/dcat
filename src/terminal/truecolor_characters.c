@@ -21,6 +21,14 @@ static bool buffer_initialized = false;
 static char u8_3digit[256][3];
 static bool u8_table_initialized = false;
 
+#ifdef _WIN32
+static const char FRAME_BEGIN[] = "\x1b[H";
+static const char FRAME_END[] = "\x1b[0m";
+#else
+static const char FRAME_BEGIN[] = "\x1b[?2026h\x1b[H";
+static const char FRAME_END[] = "\x1b[0m\x1b[?2026l";
+#endif
+
 static void init_u8_table(void) {
     if (u8_table_initialized) {
         return;
@@ -42,7 +50,8 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
     init_u8_table();
     if (use_hash_characters) {
         size_t num_cells = (size_t)width * height;
-        size_t needed_size = 12 + num_cells * 18 + (height > 0 ? height - 1 : 0) + 13;
+        size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_cells * 18 +
+                             (height > 0 ? height - 1 : 0) + (sizeof(FRAME_END) - 1);
 
         if (render_buf_size < needed_size) {
             free(render_buf);
@@ -51,8 +60,8 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
         }
 
         char *p = render_buf;
-        memcpy(p, "\x1b[?2026h\x1b[H", 12);
-        p += 12;
+        memcpy(p, FRAME_BEGIN, sizeof(FRAME_BEGIN) - 1);
+        p += sizeof(FRAME_BEGIN) - 1;
 
         for (uint32_t y = 0; y < height; y++) {
             const uint8_t *row = buffer + (y * width * 4);
@@ -69,8 +78,8 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
             }
         }
 
-        memcpy(p, "\x1b[0m\x1b[?2026l", 13);
-        p += 13;
+        memcpy(p, FRAME_END, sizeof(FRAME_END) - 1);
+        p += sizeof(FRAME_END) - 1;
         safe_write(render_buf, (size_t)(p - render_buf));
         return;
     }
@@ -80,9 +89,8 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
     // Detect resize or first run
     if (!buffer_initialized || width != last_width || height != last_height) {
         // Each block: \x1b[38;2;RRR;GGG;BBB;48;2;RRR;GGG;BBBm▀ = 39 bytes
-        // Header: \x1b[?2026h\x1b[H = 12 bytes
-        // Footer: \x1b[0m\x1b[?2026l = 13 bytes
-        size_t needed_size = 12 + num_blocks * 39 + 13;
+        size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_blocks * 39 +
+                             (sizeof(FRAME_END) - 1);
         
         if (render_buf_size < needed_size) {
             free(render_buf);
@@ -94,8 +102,8 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
         char *p = render_buf;
         
         // Header
-        memcpy(p, "\x1b[?2026h\x1b[H", 12);
-        p += 12;
+        memcpy(p, FRAME_BEGIN, sizeof(FRAME_BEGIN) - 1);
+        p += sizeof(FRAME_BEGIN) - 1;
         
         // Build each block with placeholder RGB values (000)
         for (uint32_t i = 0; i < num_blocks; i++) {
@@ -104,7 +112,7 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
         }
         
         // Footer
-        memcpy(p, "\x1b[0m\x1b[?2026l", 13);
+        memcpy(p, FRAME_END, sizeof(FRAME_END) - 1);
         
         last_width = width;
         last_height = height;
@@ -112,7 +120,7 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
     }
     
     // Fast path: only update RGB digits in-place
-    char *block_ptr = render_buf + 12;  // Skip header
+    char *block_ptr = render_buf + (sizeof(FRAME_BEGIN) - 1);
     
     for (uint32_t y = 0; y < height; y += 2) {
         const uint8_t *row_upper = buffer + (y * width * 4);
@@ -145,7 +153,8 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
         }
     }
     
-    safe_write(render_buf, 12 + num_blocks * 39 + 13);
+    safe_write(render_buf, (sizeof(FRAME_BEGIN) - 1) + num_blocks * 39 +
+                          (sizeof(FRAME_END) - 1));
 }
 
 bool detect_truecolor_support(void) {

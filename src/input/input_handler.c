@@ -1,8 +1,10 @@
 #include "input_handler.h"
 #include <string.h>
-#include <ctype.h>
 #ifdef _WIN32
-#include <conio.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
 #else
 #include <unistd.h>
 #include <poll.h>
@@ -98,12 +100,234 @@ static void handle_key(InputThreadData* data, int key_code,
 }
 
 #ifdef _WIN32
+typedef struct WindowsInputState {
+    HANDLE input_handle;
+    int last_mouse_x;
+    int last_mouse_y;
+    bool left_down;
+    bool middle_down;
+    bool right_down;
+    bool prev_q;
+    bool prev_m;
+    bool prev_1;
+    bool prev_2;
+    bool prev_p;
+    bool prev_a;
+    bool prev_d;
+    bool prev_w;
+    bool prev_s;
+    bool prev_e;
+    bool prev_r;
+} WindowsInputState;
+
+static bool windows_key_pressed(int vk_code) {
+    return (GetAsyncKeyState(vk_code) & 0x8000) != 0;
+}
+
+static bool rising_edge(bool down, bool* prev_state) {
+    bool edge = down && !*prev_state;
+    *prev_state = down;
+    return edge;
+}
+
+static void update_windows_keyboard_state(InputThreadData* data,
+                                          WindowsInputState* state) {
+    KeyState* key_state = data->key_state;
+    if (!key_state) {
+        return;
+    }
+
+    bool w_down = windows_key_pressed('W');
+    bool a_down = windows_key_pressed('A');
+    bool s_down = windows_key_pressed('S');
+    bool d_down = windows_key_pressed('D');
+    bool i_down = windows_key_pressed('I');
+    bool j_down = windows_key_pressed('J');
+    bool k_down = windows_key_pressed('K');
+    bool l_down = windows_key_pressed('L');
+    bool q_down = windows_key_pressed('Q');
+    bool m_down = windows_key_pressed('M');
+    bool v_down = windows_key_pressed('V');
+    bool b_down = windows_key_pressed('B');
+    bool e_down = windows_key_pressed('E');
+    bool r_down = windows_key_pressed('R');
+    bool one_down = windows_key_pressed('1');
+    bool two_down = windows_key_pressed('2');
+    bool p_down = windows_key_pressed('P');
+
+    key_state->w = w_down;
+    key_state->a = a_down;
+    key_state->s = s_down;
+    key_state->d = d_down;
+    key_state->i = i_down;
+    key_state->j = j_down;
+    key_state->k = k_down;
+    key_state->l = l_down;
+    key_state->space = windows_key_pressed(VK_SPACE);
+    key_state->shift = windows_key_pressed(VK_SHIFT) ||
+                       windows_key_pressed(VK_LSHIFT) ||
+                       windows_key_pressed(VK_RSHIFT);
+    key_state->ctrl = windows_key_pressed(VK_CONTROL) ||
+                      windows_key_pressed(VK_LCONTROL) ||
+                      windows_key_pressed(VK_RCONTROL);
+    key_state->q = q_down;
+    key_state->v = v_down;
+    key_state->b = b_down;
+
+    if (rising_edge(q_down, &state->prev_q)) {
+        atomic_store(data->running, false);
+    }
+    if (rising_edge(m_down, &state->prev_m)) {
+        handle_key(data, 'm', 1, 1);
+    }
+    if (data->has_animations) {
+        if (rising_edge(one_down, &state->prev_1)) {
+            handle_key(data, '1', 1, 1);
+        }
+        if (rising_edge(two_down, &state->prev_2)) {
+            handle_key(data, '2', 1, 1);
+        }
+        if (rising_edge(p_down, &state->prev_p)) {
+            handle_key(data, 'p', 1, 1);
+        }
+    } else {
+        state->prev_1 = one_down;
+        state->prev_2 = two_down;
+        state->prev_p = p_down;
+    }
+
+    if (!data->fps_controls) {
+        if (rising_edge(a_down, &state->prev_a)) {
+            handle_key(data, 'a', 1, 1);
+        }
+        if (rising_edge(d_down, &state->prev_d)) {
+            handle_key(data, 'd', 1, 1);
+        }
+        if (rising_edge(w_down, &state->prev_w)) {
+            handle_key(data, 'w', 1, 1);
+        }
+        if (rising_edge(s_down, &state->prev_s)) {
+            handle_key(data, 's', 1, 1);
+        }
+        if (rising_edge(e_down, &state->prev_e)) {
+            handle_key(data, 'e', 1, 1);
+        }
+        if (rising_edge(r_down, &state->prev_r)) {
+            handle_key(data, 'r', 1, 1);
+        }
+    } else {
+        state->prev_a = a_down;
+        state->prev_d = d_down;
+        state->prev_w = w_down;
+        state->prev_s = s_down;
+        state->prev_e = e_down;
+        state->prev_r = r_down;
+    }
+}
+
+static void handle_windows_mouse_event(InputThreadData* data,
+                                       WindowsInputState* state,
+                                       const MOUSE_EVENT_RECORD* event) {
+    if (!data->mouse_orbit) {
+        return;
+    }
+
+    if (event->dwEventFlags == MOUSE_WHEELED) {
+        short wheel_delta = (short)HIWORD(event->dwButtonState);
+        if (wheel_delta > 0) {
+            camera_zoom(data->camera, ZOOM_AMOUNT);
+        } else if (wheel_delta < 0) {
+            camera_zoom(data->camera, -ZOOM_AMOUNT);
+        }
+        return;
+    }
+
+    bool left_down =
+        (event->dwButtonState & FROM_LEFT_1ST_BUTTON_PRESSED) != 0;
+    bool middle_down =
+        (event->dwButtonState & FROM_LEFT_2ND_BUTTON_PRESSED) != 0;
+    bool right_down =
+        (event->dwButtonState & RIGHTMOST_BUTTON_PRESSED) != 0;
+
+    int mouse_x = event->dwMousePosition.X;
+    int mouse_y = event->dwMousePosition.Y;
+
+    if (event->dwEventFlags == 0) {
+        state->last_mouse_x = mouse_x;
+        state->last_mouse_y = mouse_y;
+        state->left_down = left_down;
+        state->middle_down = middle_down;
+        state->right_down = right_down;
+        return;
+    }
+
+    if (event->dwEventFlags != MOUSE_MOVED) {
+        state->left_down = left_down;
+        state->middle_down = middle_down;
+        state->right_down = right_down;
+        return;
+    }
+
+    int dx = mouse_x - state->last_mouse_x;
+    int dy = mouse_y - state->last_mouse_y;
+    state->last_mouse_x = mouse_x;
+    state->last_mouse_y = mouse_y;
+
+    if (dx != 0 || dy != 0) {
+        if (left_down || state->left_down) {
+            camera_orbit(data->camera,
+                         (float)dx * data->mouse_sensitivity,
+                         -(float)dy * data->mouse_sensitivity);
+        } else if (right_down || middle_down ||
+                   state->right_down || state->middle_down) {
+            float pan_speed = data->mouse_sensitivity * 0.2f;
+            camera_pan(data->camera, (float)dx * pan_speed, (float)dy * pan_speed);
+        }
+    }
+
+    state->left_down = left_down;
+    state->middle_down = middle_down;
+    state->right_down = right_down;
+}
+
+static void poll_windows_console_events(InputThreadData* data,
+                                        WindowsInputState* state) {
+    if (state->input_handle == INVALID_HANDLE_VALUE || state->input_handle == NULL) {
+        return;
+    }
+
+    DWORD pending_count = 0;
+    if (!GetNumberOfConsoleInputEvents(state->input_handle, &pending_count) ||
+        pending_count == 0) {
+        return;
+    }
+
+    INPUT_RECORD records[16];
+    DWORD to_read = pending_count < 16 ? pending_count : 16;
+    DWORD read_count = 0;
+    if (!ReadConsoleInput(state->input_handle, records, to_read, &read_count) ||
+        read_count == 0) {
+        return;
+    }
+
+    for (DWORD i = 0; i < read_count; i++) {
+        if (records[i].EventType == MOUSE_EVENT && data->mouse_orbit) {
+            handle_windows_mouse_event(data, state, &records[i].Event.MouseEvent);
+        }
+    }
+}
+#endif
+
+#ifdef _WIN32
 unsigned __stdcall input_thread_func(void* arg) {
 #else
 void* input_thread_func(void* arg) {
 #endif
     InputThreadData* data = (InputThreadData*)arg;
-#ifndef _WIN32
+#ifdef _WIN32
+    WindowsInputState windows_state = {0};
+    windows_state.input_handle = GetStdHandle(STD_INPUT_HANDLE);
+#else
     char buffer[512];
     ssize_t carry = 0;
     int last_mouse_x = 0, last_mouse_y = 0;
@@ -111,25 +335,11 @@ void* input_thread_func(void* arg) {
 
     while (atomic_load(data->running)) {
 #ifdef _WIN32
-        if (!_kbhit()) {
-            dcat_sleep_ms(1);
-            continue;
-        }
-
-        int key_code = _getch();
-        if (key_code == 0 || key_code == 0xE0) {
-            (void)_getch();
-            continue;
-        }
-
-        if (key_code >= 'A' && key_code <= 'Z') {
-            key_code = tolower(key_code);
-        }
-
         dcat_mutex_lock(data->state_mutex);
-        handle_key(data, key_code, 1, 1);
-        handle_key(data, key_code, 1, 3);
+        update_windows_keyboard_state(data, &windows_state);
+        poll_windows_console_events(data, &windows_state);
         dcat_mutex_unlock(data->state_mutex);
+        dcat_sleep_ms(1);
         continue;
 #else
         struct pollfd pfd = {STDIN_FILENO, POLLIN, 0};

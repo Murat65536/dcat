@@ -295,6 +295,7 @@ static void terminal_session_begin(TerminalSession* session, bool mouse_orbit) {
     hide_cursor();
     enter_alternate_screen();
     enable_raw_mode();
+    terminal_set_mouse_input_enabled(mouse_orbit);
     enable_kitty_keyboard();
     if (mouse_orbit) {
         enable_mouse_orbit_tracking();
