@@ -309,11 +309,11 @@ void skeleton_free(Skeleton *skeleton) {
     for (size_t i = 0; i < skeleton->bones.count; i++) {
         free(skeleton->bones.data[i].name);
     }
-    free(skeleton->bones.data);
+    aligned_free(skeleton->bones.data);
 
     for (size_t i = 0; i < skeleton->bone_hierarchy.count; i++) {
         free(skeleton->bone_hierarchy.data[i].name);
-        free(skeleton->bone_hierarchy.data[i].child_indices.data);
+        aligned_free(skeleton->bone_hierarchy.data[i].child_indices.data);
     }
     aligned_free(skeleton->bone_hierarchy.data);
 
@@ -326,11 +326,11 @@ void animation_free(Animation *animation) {
     free(animation->name);
     for (size_t i = 0; i < animation->bone_animations.count; i++) {
         free(animation->bone_animations.data[i].bone_name);
-        free(animation->bone_animations.data[i].position_keys.data);
-        free(animation->bone_animations.data[i].scale_keys.data);
-        free(animation->bone_animations.data[i].rotation_keys.data);
+        aligned_free(animation->bone_animations.data[i].position_keys.data);
+        aligned_free(animation->bone_animations.data[i].scale_keys.data);
+        aligned_free(animation->bone_animations.data[i].rotation_keys.data);
     }
-    free(animation->bone_animations.data);
+    aligned_free(animation->bone_animations.data);
     bone_anim_map_free(&animation->bone_anim_map);
 }
 

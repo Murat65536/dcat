@@ -16,9 +16,9 @@ void mesh_init(Mesh *mesh) {
 }
 
 void mesh_free(Mesh *mesh) {
-    free(mesh->vertices.data);
-    free(mesh->indices.data);
-    free(mesh->submeshes.data);
+    aligned_free(mesh->vertices.data);
+    aligned_free(mesh->indices.data);
+    aligned_free(mesh->submeshes.data);
     skeleton_free(&mesh->skeleton);
     animation_array_free(&mesh->animations);
     mesh_init(mesh);
