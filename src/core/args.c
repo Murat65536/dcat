@@ -1,4 +1,8 @@
 #include "args.h"
+#include <errno.h>
+#include <float.h>
+#include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,7 +33,37 @@ void print_usage(void) {
     printf("  -h, --help                 display this help and exit\n\n");
 }
 
-Args parse_args(int argc, char* argv[]) {
+static bool parse_int_arg(const char* option, const char* value, int* out) {
+    char* end = NULL;
+    long parsed = 0;
+
+    errno = 0;
+    parsed = strtol(value, &end, 10);
+    if (errno == ERANGE || end == value || *end != '\0' || parsed < INT_MIN || parsed > INT_MAX) {
+        fprintf(stderr, "Invalid integer for %s: %s\n", option, value);
+        return false;
+    }
+
+    *out = (int)parsed;
+    return true;
+}
+
+static bool parse_float_arg(const char* option, const char* value, float* out) {
+    char* end = NULL;
+
+    errno = 0;
+    double parsed = strtod(value, &end);
+    if (errno == ERANGE || end == value || *end != '\0' || !isfinite(parsed) ||
+        parsed < -FLT_MAX || parsed > FLT_MAX) {
+        fprintf(stderr, "Invalid number for %s: %s\n", option, value);
+        return false;
+    }
+
+    *out = (float)parsed;
+    return true;
+}
+
+Args parse_args(const int argc, char* argv[]) {
     Args args = {0};
     args.width = -1;
     args.height = -1;
@@ -46,17 +80,17 @@ Args parse_args(int argc, char* argv[]) {
         } else if (strcmp(argv[i], "--skydome") == 0) {
             if (++i < argc) args.skydome_path = argv[i];
         } else if (strcmp(argv[i], "-W") == 0 || strcmp(argv[i], "--width") == 0) {
-            if (++i < argc) args.width = atoi(argv[i]);
+            if (++i < argc && !parse_int_arg("--width", argv[i], &args.width)) exit(1);
         } else if (strcmp(argv[i], "-H") == 0 || strcmp(argv[i], "--height") == 0) {
-            if (++i < argc) args.height = atoi(argv[i]);
+            if (++i < argc && !parse_int_arg("--height", argv[i], &args.height)) exit(1);
         } else if (strcmp(argv[i], "--camera-distance") == 0) {
-            if (++i < argc) args.camera_distance = atof(argv[i]);
+            if (++i < argc && !parse_float_arg("--camera-distance", argv[i], &args.camera_distance)) exit(1);
         } else if (strcmp(argv[i], "--model-scale") == 0) {
-            if (++i < argc) args.model_scale = atof(argv[i]);
+            if (++i < argc && !parse_float_arg("--model-scale", argv[i], &args.model_scale)) exit(1);
         } else if (strcmp(argv[i], "--spin") == 0) {
-            if (++i < argc) args.spin_speed = atof(argv[i]);
+            if (++i < argc && !parse_float_arg("--spin", argv[i], &args.spin_speed)) exit(1);
         } else if (strcmp(argv[i], "-f") == 0 || strcmp(argv[i], "--fps") == 0) {
-            if (++i < argc) args.target_fps = atoi(argv[i]);
+            if (++i < argc && !parse_int_arg("--fps", argv[i], &args.target_fps)) exit(1);
         } else if (strcmp(argv[i], "--no-lighting") == 0) {
             args.no_lighting = true;
         } else if (strcmp(argv[i], "--keyboard-controls") == 0) {
@@ -65,7 +99,7 @@ Args parse_args(int argc, char* argv[]) {
             args.mouse_orbit = true;
         } else if (strcmp(argv[i], "--mouse-sensitivity") == 0) {
             if (++i < argc) {
-                args.mouse_sensitivity = atof(argv[i]);
+                if (!parse_float_arg("--mouse-sensitivity", argv[i], &args.mouse_sensitivity)) exit(1);
             }
         } else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--status-bar") == 0) {
             args.show_status_bar = true;
