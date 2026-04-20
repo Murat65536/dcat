@@ -66,6 +66,17 @@ static bool get_wireframe_mode(const atomic_bool *wireframe_mode) {
     return *wireframe_mode;
 }
 
+static bool wait_for_in_flight_frames(VulkanRenderer *r, const char *detail) {
+    VkResult result =
+        vkWaitForFences(r->device, MAX_FRAMES_IN_FLIGHT, r->in_flight_fences, VK_TRUE, UINT64_MAX);
+    if (result != VK_SUCCESS) {
+        vulkan_renderer_set_error(r, result, "vkWaitForFences", "%s", detail);
+        return false;
+    }
+
+    return true;
+}
+
 void vulkan_renderer_clear_error(VulkanRenderer *r) {
     if (!r)
         return;
@@ -180,10 +191,7 @@ bool vulkan_renderer_get_wireframe_mode(const VulkanRenderer *r) {
 bool vulkan_renderer_resize(VulkanRenderer *r, uint32_t width, uint32_t height) {
     vulkan_renderer_clear_error(r);
 
-    VkResult result = vkDeviceWaitIdle(r->device);
-    if (result != VK_SUCCESS) {
-        vulkan_renderer_set_error(r, result, "vkDeviceWaitIdle",
-                                  "Failed to wait for device idle during resize");
+    if (!wait_for_in_flight_frames(r, "Failed to wait for in-flight frames during resize")) {
         return false;
     }
 
@@ -312,10 +320,8 @@ static uint32_t next_material_descriptor_capacity(uint32_t current_capacity,
 
 static bool rebuild_material_descriptor_pool(VulkanRenderer *r, uint32_t material_count,
                                              uint32_t material_capacity) {
-    VkResult result = vkDeviceWaitIdle(r->device);
-    if (result != VK_SUCCESS) {
-        vulkan_renderer_set_error(r, result, "vkDeviceWaitIdle",
-                                  "Failed to wait for device idle before growing descriptors");
+    if (!wait_for_in_flight_frames(r,
+                                   "Failed to wait for in-flight frames before growing descriptors")) {
         return false;
     }
 

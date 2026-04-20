@@ -34,6 +34,7 @@ static volatile sig_atomic_t g_resize_pending = 1;
 static volatile sig_atomic_t g_terminal_session_active = 0;
 
 static const float TARGET_SIZE = 4.0f;
+static const float MAX_SIMULATION_DELTA_SECONDS = 0.1f;
 
 static void set_atomic_flag(atomic_bool *flag, const bool value) {
     *flag = value;
@@ -332,6 +333,42 @@ static bool initialize_bone_matrices(mat4 **out_bone_matrices) {
 
 static float calculate_frame_fps(float delta_time) {
     return delta_time > 0.0f ? 1.0f / delta_time : 0.0f;
+}
+
+static float clamp_simulation_delta(const double frame_delta_seconds) {
+    if (frame_delta_seconds <= 0.0) {
+        return 0.0f;
+    }
+
+    if (frame_delta_seconds > MAX_SIMULATION_DELTA_SECONDS) {
+        return MAX_SIMULATION_DELTA_SECONDS;
+    }
+
+    return (float)frame_delta_seconds;
+}
+
+static void pace_frame(const double frame_start_time, const double target_frame_time) {
+    if (target_frame_time <= 0.0) {
+        return;
+    }
+
+    const double frame_deadline = frame_start_time + target_frame_time;
+    for (;;) {
+        const double remaining = frame_deadline - get_time_seconds();
+        if (remaining <= 0.0) {
+            return;
+        }
+
+        if (remaining > 0.003) {
+            const unsigned int sleep_ms = (unsigned int)((remaining - 0.001) * 1000.0);
+            if (sleep_ms > 0) {
+                dcat_sleep_ms(sleep_ms);
+                continue;
+            }
+        }
+
+        dcat_sleep_ms(0);
+    }
 }
 
 static bool resize_renderer_if_needed(const Args *args, OutputMode output_mode,
@@ -724,8 +761,10 @@ int main(int argc, char *argv[]) {
         }
 
         double frame_start = get_time_seconds();
-        float delta_time = (float)(frame_start - last_frame_time);
+        double frame_delta = frame_start - last_frame_time;
         last_frame_time = frame_start;
+        float delta_time = clamp_simulation_delta(frame_delta);
+        float display_fps = calculate_frame_fps((float)frame_delta);
         vec3 camera_position_snapshot;
         int current_animation_index_snapshot = -1;
 
@@ -753,28 +792,16 @@ int main(int argc, char *argv[]) {
         dcat_mutex_unlock(&shared_state_mutex);
 
         if (!render_frame(&render_ctx, &anim_ctx, &mesh, &view, &projection, output_mode,
-                          args.show_status_bar, args.use_hash_characters, width, height,
-                          calculate_frame_fps(delta_time), move_speed, camera_position_snapshot,
-                          current_animation_index_snapshot)) {
+                           args.show_status_bar, args.use_hash_characters, width, height,
+                           display_fps, move_speed, camera_position_snapshot,
+                           current_animation_index_snapshot)) {
             const char *renderer_error = vulkan_renderer_get_last_error(renderer);
             record_fatal_report(&fatal_report, "%s",
                                 renderer_error ? renderer_error : "Rendering failed");
             goto cleanup;
         }
 
-        double frame_end = get_time_seconds();
-        double frame_duration = frame_end - frame_start;
-        if (frame_duration < target_frame_time) {
-            double remaining = target_frame_time - frame_duration;
-#ifdef _WIN32
-            DWORD sleep_ms = (DWORD)(remaining * 1000.0);
-            if (sleep_ms > 0) {
-                Sleep(sleep_ms);
-            }
-#else
-            usleep((useconds_t)(remaining * 1e6));
-#endif
-        }
+        pace_frame(frame_start, target_frame_time);
     }
 
     exit_code = 0;

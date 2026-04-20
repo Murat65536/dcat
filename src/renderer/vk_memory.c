@@ -205,19 +205,30 @@ bool end_single_time_commands(VulkanRenderer *r, VkCommandBuffer cmd) {
         return false;
     }
 
+    VkFence transfer_fence = VK_NULL_HANDLE;
+    VkFenceCreateInfo fence_info = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    result = vkCreateFence(r->device, &fence_info, NULL, &transfer_fence);
+    if (result != VK_SUCCESS) {
+        vulkan_renderer_set_error(r, result, "vkCreateFence",
+                                  "Failed to create fence for single-use command buffer");
+        vkFreeCommandBuffers(r->device, r->command_pool, 1, &cmd);
+        return false;
+    }
+
     VkSubmitInfo submit_info = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &cmd;
 
-    result = vkQueueSubmit(r->graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+    result = vkQueueSubmit(r->graphics_queue, 1, &submit_info, transfer_fence);
     const char *operation = "vkQueueSubmit";
     const char *detail = "Failed to submit single-use command buffer";
     if (result == VK_SUCCESS) {
-        result = vkQueueWaitIdle(r->graphics_queue);
-        operation = "vkQueueWaitIdle";
-        detail = "Failed to wait for single-use command buffer completion";
+        result = vkWaitForFences(r->device, 1, &transfer_fence, VK_TRUE, UINT64_MAX);
+        operation = "vkWaitForFences";
+        detail = "Failed waiting for single-use command buffer fence";
     }
 
+    vkDestroyFence(r->device, transfer_fence, NULL);
     vkFreeCommandBuffers(r->device, r->command_pool, 1, &cmd);
     if (result != VK_SUCCESS) {
         vulkan_renderer_set_error(r, result, operation, detail);
