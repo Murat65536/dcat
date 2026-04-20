@@ -133,6 +133,9 @@ static bool terminal_sanitizer_callback_installed = false;
 static HANDLE raw_mode_output_handle = INVALID_HANDLE_VALUE;
 static DWORD raw_mode_output_saved = 0;
 static bool raw_mode_output_saved_valid = false;
+static UINT raw_mode_input_code_page = 0;
+static UINT raw_mode_output_code_page = 0;
+static bool raw_mode_code_pages_saved = false;
 #endif
 static void terminal_write_fd(int fd, const char *data, size_t size);
 
@@ -320,6 +323,16 @@ void enable_raw_mode(void) {
             SetConsoleMode(raw_mode_output_handle, mode);
         }
     }
+
+    if (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)) {
+        raw_mode_input_code_page = GetConsoleCP();
+        raw_mode_output_code_page = GetConsoleOutputCP();
+        if (raw_mode_input_code_page != 0 && raw_mode_output_code_page != 0) {
+            raw_mode_code_pages_saved = true;
+            SetConsoleCP(CP_UTF8);
+            SetConsoleOutputCP(CP_UTF8);
+        }
+    }
 #endif
     raw_mode_enabled = true;
 }
@@ -354,6 +367,11 @@ void disable_raw_mode(void) {
         return;
     termios_state_restore(&raw_mode_state);
 #ifdef _WIN32
+    if (raw_mode_code_pages_saved) {
+        SetConsoleCP(raw_mode_input_code_page);
+        SetConsoleOutputCP(raw_mode_output_code_page);
+        raw_mode_code_pages_saved = false;
+    }
     if (raw_mode_output_saved_valid && raw_mode_output_handle != INVALID_HANDLE_VALUE &&
         raw_mode_output_handle != NULL) {
         SetConsoleMode(raw_mode_output_handle, raw_mode_output_saved);

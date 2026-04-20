@@ -67,8 +67,20 @@ static bool get_wireframe_mode(const atomic_bool *wireframe_mode) {
 }
 
 static bool wait_for_in_flight_frames(VulkanRenderer *r, const char *detail) {
-    VkResult result =
-        vkWaitForFences(r->device, MAX_FRAMES_IN_FLIGHT, r->in_flight_fences, VK_TRUE, UINT64_MAX);
+    VkFence pending_fences[MAX_FRAMES_IN_FLIGHT] = {VK_NULL_HANDLE};
+    uint32_t pending_count = 0;
+
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        if (r->frame_ready[i] && r->in_flight_fences[i] != VK_NULL_HANDLE) {
+            pending_fences[pending_count++] = r->in_flight_fences[i];
+        }
+    }
+
+    if (pending_count == 0) {
+        return true;
+    }
+
+    VkResult result = vkWaitForFences(r->device, pending_count, pending_fences, VK_TRUE, UINT64_MAX);
     if (result != VK_SUCCESS) {
         vulkan_renderer_set_error(r, result, "vkWaitForFences", "%s", detail);
         return false;
@@ -479,6 +491,7 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
         vulkan_renderer_set_error(r, vk_result, "vkResetFences", "Failed to reset in-flight fence");
         return false;
     }
+    r->frame_ready[r->current_frame] = false;
 
     r->current_staging_buffer = (r->current_staging_buffer + 1) % NUM_STAGING_BUFFERS;
     uint32_t write_staging_idx = r->current_staging_buffer;

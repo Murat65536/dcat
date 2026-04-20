@@ -57,7 +57,7 @@ void render_block_characters(const uint8_t *buffer, const uint32_t width, const 
         return;
     }
 
-    uint32_t rows = (height + 1) / 2;
+    const uint32_t rows = (height + 1) / 2;
     // Worst case: every cell is a 3-byte block char
     // Header(12) + rows * width * 3 + newlines(rows-1) + footer(9)
     const size_t max_size = (sizeof(FRAME_BEGIN) - 1) + (size_t)rows * width * 3 +
