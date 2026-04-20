@@ -108,7 +108,7 @@ void calculate_render_dimensions(int explicit_width, int explicit_height,
       uint32_t cols, rows;
       get_terminal_size(&cols, &rows);
       if (rows > 0) {
-        uint32_t char_height = *out_height / rows;
+        const uint32_t char_height = *out_height / rows;
         if (*out_height > char_height) {
           *out_height -= char_height;
         }
@@ -140,7 +140,7 @@ static bool raw_mode_output_saved_valid = false;
 static void terminal_write_fd(int fd, const char *data, size_t size);
 
 #if defined(__GNUC__) || defined(__clang__)
-extern void __sanitizer_set_death_callback(void (*callback)(void))
+extern void sanitizer_set_death_callback(void (*callback)(void))
     __attribute__((weak));
 #define HAVE_SANITIZER_DEATH_CALLBACK 1
 #else
@@ -177,14 +177,14 @@ static void terminal_recovery_callback(void) {
   }
 }
 
-void __asan_on_error(void) {
+void asan_on_error(void) {
   terminal_recovery_callback();
 }
 
 static void terminal_write_fd(int fd, const char *data, size_t size) {
   size_t remaining = size;
   while (remaining > 0) {
-    ssize_t written = write(fd, data, remaining);
+    const ssize_t written = write(fd, data, remaining);
     if (written < 0) {
       if (errno == EINTR)
         continue;
@@ -332,7 +332,7 @@ void enable_raw_mode(void) {
 
 void terminal_set_mouse_input_enabled(bool enabled) {
 #ifdef _WIN32
-  HANDLE input_handle = GetStdHandle(STD_INPUT_HANDLE);
+  const HANDLE input_handle = GetStdHandle(STD_INPUT_HANDLE);
   if (input_handle == INVALID_HANDLE_VALUE || input_handle == NULL) {
     return;
   }
@@ -374,8 +374,8 @@ void terminal_arm_recovery(void) {
   terminal_recovery_armed = 1;
 #if HAVE_SANITIZER_DEATH_CALLBACK
   if (!terminal_sanitizer_callback_installed &&
-      __sanitizer_set_death_callback != NULL) {
-    __sanitizer_set_death_callback(terminal_recovery_callback);
+      sanitizer_set_death_callback != NULL) {
+    sanitizer_set_death_callback(terminal_recovery_callback);
     terminal_sanitizer_callback_installed = true;
   }
 #endif

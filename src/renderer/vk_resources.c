@@ -14,7 +14,7 @@ bool create_command_pool(VulkanRenderer* r) {
     return true;
 }
 
-bool create_descriptor_pool_with_capacity(VulkanRenderer* r, uint32_t material_capacity,
+bool create_descriptor_pool_with_capacity(VulkanRenderer* r, const uint32_t material_capacity,
                                           VkDescriptorPool* out_pool) {
     // Pool sized for per-material descriptor sets plus skydome.
     VkDescriptorPoolSize pool_sizes[2] = {
@@ -199,7 +199,7 @@ void cleanup_render_targets(VulkanRenderer* r) {
     }
 }
 
-static void cleanup_material_gpu(VulkanRenderer* r, MaterialGPUData* m) {
+static void cleanup_material_gpu(const VulkanRenderer* r, const MaterialGPUData* m) {
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         if (m->fragment_uniform_buffers[i] != VK_NULL_HANDLE) {
             vkDestroyBuffer(r->device, m->fragment_uniform_buffers[i], NULL);

@@ -14,26 +14,26 @@ typedef CRITICAL_SECTION DcatMutex;
 typedef HANDLE DcatThread;
 typedef unsigned(__stdcall *DcatThreadFunc)(void *);
 
-static inline bool dcat_mutex_init(DcatMutex *mutex) {
+static bool dcat_mutex_init(DcatMutex *mutex) {
   InitializeCriticalSection(mutex);
   return true;
 }
 
-static inline void dcat_mutex_lock(DcatMutex *mutex) {
+static void dcat_mutex_lock(DcatMutex *mutex) {
   EnterCriticalSection(mutex);
 }
 
-static inline void dcat_mutex_unlock(DcatMutex *mutex) {
+static void dcat_mutex_unlock(DcatMutex *mutex) {
   LeaveCriticalSection(mutex);
 }
 
-static inline void dcat_mutex_destroy(DcatMutex *mutex) {
+static void dcat_mutex_destroy(DcatMutex *mutex) {
   DeleteCriticalSection(mutex);
 }
 
-static inline bool dcat_thread_create(DcatThread *thread, DcatThreadFunc func,
+static bool dcat_thread_create(DcatThread *thread, DcatThreadFunc func,
                                       void *arg) {
-  uintptr_t handle = _beginthreadex(NULL, 0, func, arg, 0, NULL);
+  const uintptr_t handle = _beginthreadex(NULL, 0, func, arg, 0, NULL);
   if (handle == 0) {
     return false;
   }
@@ -41,7 +41,7 @@ static inline bool dcat_thread_create(DcatThread *thread, DcatThreadFunc func,
   return true;
 }
 
-static inline bool dcat_thread_join(DcatThread thread) {
+static bool dcat_thread_join(DcatThread thread) {
   if (WaitForSingleObject(thread, INFINITE) != WAIT_OBJECT_0) {
     return false;
   }
@@ -49,7 +49,7 @@ static inline bool dcat_thread_join(DcatThread thread) {
   return true;
 }
 
-static inline void dcat_sleep_ms(unsigned int ms) {
+static void dcat_sleep_ms(const unsigned int ms) {
   Sleep(ms);
 }
 

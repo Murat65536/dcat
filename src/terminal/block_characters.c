@@ -19,14 +19,14 @@ static const char FRAME_END[] = "\x1b[?2026l";
 
 #define LUMA_THRESHOLD 63
 
-static inline uint8_t luminance(uint8_t r, uint8_t g, uint8_t b) {
+static uint8_t luminance(const uint8_t r, const uint8_t g, const uint8_t b) {
     return (uint8_t)((r * 77u + g * 150u + b * 29u) >> 8);
 }
 
-void render_block_characters(const uint8_t *buffer, uint32_t width, uint32_t height,
-                             bool use_hash_characters) {
+void render_block_characters(const uint8_t *buffer, const uint32_t width, const uint32_t height,
+                             const bool use_hash_characters) {
     if (use_hash_characters) {
-        size_t max_size = (sizeof(FRAME_BEGIN) - 1) + (size_t)height * width +
+        const size_t max_size = (sizeof(FRAME_BEGIN) - 1) + (size_t)height * width +
                           (height > 0 ? height - 1 : 0) + (sizeof(FRAME_END) - 1);
 
         if (render_buf_size < max_size) {
@@ -42,7 +42,7 @@ void render_block_characters(const uint8_t *buffer, uint32_t width, uint32_t hei
         for (uint32_t y = 0; y < height; y++) {
             const uint8_t *row = buffer + (y * width * 4);
             for (uint32_t x = 0; x < width; x++) {
-                uint8_t luma = luminance(row[0], row[1], row[2]);
+                const uint8_t luma = luminance(row[0], row[1], row[2]);
                 *p++ = (luma >= LUMA_THRESHOLD) ? '#' : ' ';
                 row += 4;
             }
@@ -60,7 +60,7 @@ void render_block_characters(const uint8_t *buffer, uint32_t width, uint32_t hei
     uint32_t rows = (height + 1) / 2;
     // Worst case: every cell is a 3-byte block char
     // Header(12) + rows * width * 3 + newlines(rows-1) + footer(9)
-    size_t max_size = (sizeof(FRAME_BEGIN) - 1) + (size_t)rows * width * 3 +
+    const size_t max_size = (sizeof(FRAME_BEGIN) - 1) + (size_t)rows * width * 3 +
                       (rows > 0 ? rows - 1 : 0) + (sizeof(FRAME_END) - 1);
 
     if (render_buf_size < max_size) {
@@ -78,10 +78,10 @@ void render_block_characters(const uint8_t *buffer, uint32_t width, uint32_t hei
     for (uint32_t y = 0; y < height; y += 2) {
         const uint8_t *row_upper = buffer + (y * width * 4);
         const uint8_t *row_lower = buffer + ((y + 1) * width * 4);
-        bool has_lower = (y + 1 < height);
+        const bool has_lower = (y + 1 < height);
 
         for (uint32_t x = 0; x < width; x++) {
-            uint8_t lU = luminance(row_upper[0], row_upper[1], row_upper[2]);
+            const uint8_t lU = luminance(row_upper[0], row_upper[1], row_upper[2]);
             row_upper += 4;
 
             uint8_t lL = 0;
@@ -90,8 +90,8 @@ void render_block_characters(const uint8_t *buffer, uint32_t width, uint32_t hei
                 row_lower += 4;
             }
 
-            bool upper_on = lU >= LUMA_THRESHOLD;
-            bool lower_on = lL >= LUMA_THRESHOLD;
+            const bool upper_on = lU >= LUMA_THRESHOLD;
+            const bool lower_on = lL >= LUMA_THRESHOLD;
 
             if (upper_on && lower_on) {
                 memcpy(p, "\xe2\x96\x88", 3);

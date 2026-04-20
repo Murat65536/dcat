@@ -35,14 +35,22 @@ static volatile sig_atomic_t g_terminal_session_active = 0;
 
 static const float TARGET_SIZE = 4.0f;
 
+static void set_atomic_flag(atomic_bool* flag, const bool value) {
+    *flag = value;
+}
+
+static bool get_atomic_flag(const atomic_bool* flag) {
+    return *flag;
+}
+
 typedef struct FatalReport {
     bool active;
     char message[512];
 } FatalReport;
 
-static void signal_handler(int sig) {
+static void signal_handler(const int sig) {
     (void)sig;
-    atomic_store(&g_running, false);
+    set_atomic_flag(&g_running, false);
 }
 
 #ifdef SIGWINCH
@@ -408,7 +416,7 @@ static void setup_model_transform(const Mesh* mesh, const CameraSetup* camera_se
 
 static void setup_camera_position(const CameraSetup* camera_setup, float model_scale_arg,
                                    float camera_distance_arg, vec3 out_position) {
-    float model_scale_factor = compute_model_scale_factor(camera_setup,
+    const float model_scale_factor = compute_model_scale_factor(camera_setup,
                                                           model_scale_arg);
     vec3 camera_offset;
     glm_vec3_sub((float*)camera_setup->position, (float*)camera_setup->target, camera_offset);
@@ -426,10 +434,10 @@ static void setup_camera_position(const CameraSetup* camera_setup, float model_s
     glm_vec3_add(camera_target, camera_offset, out_position);
 }
 
-static void process_input_devices(KeyState* key_state,
-                                   Camera* camera, float delta_time, float* move_speed) {
+static void process_input_devices(const KeyState* key_state,
+                                   Camera* camera, const float delta_time, float* move_speed) {
     if (key_state->q) {
-        atomic_store(&g_running, false);
+        set_atomic_flag(&g_running, false);
         return;
     }
 
@@ -448,7 +456,7 @@ static void process_input_devices(KeyState* key_state,
 
     if (key_state->mouse_dx != 0 || key_state->mouse_dy != 0) {
         const float ROTATION_SENSITIVITY = 2.0f;
-        float sensitivity = ROTATION_SENSITIVITY * 0.001f;
+        const float sensitivity = ROTATION_SENSITIVITY * 0.001f;
         camera_rotate(camera, key_state->mouse_dx * sensitivity,
                      -key_state->mouse_dy * sensitivity);
     }
@@ -516,7 +524,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    atomic_store(&g_running, true);
+    set_atomic_flag(&g_running, true);
 
     int exit_code = 1;
     OutputMode output_mode = output_mode_from_args(&args);
@@ -711,7 +719,7 @@ int main(int argc, char* argv[]) {
     mat4 base_model_matrix;
     glm_mat4_copy(render_ctx.model_matrix, base_model_matrix);
 
-    while (atomic_load(&g_running)) {
+    while (get_atomic_flag(&g_running)) {
         if (!resize_renderer_if_needed(&args, output_mode, renderer,
                                        &shared_state_mutex, &camera,
                                        &width, &height, view, projection)) {
@@ -783,7 +791,7 @@ int main(int argc, char* argv[]) {
     exit_code = 0;
 
 cleanup:
-    atomic_store(&g_running, false);
+    set_atomic_flag(&g_running, false);
     if (input_thread_started) {
         dcat_thread_join(input_thread);
     }

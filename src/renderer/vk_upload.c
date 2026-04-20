@@ -35,7 +35,7 @@ static bool upload_texture_image(VulkanRenderer* r, const Texture* texture,
         *cached_h = texture->height;
     }
 
-    VkDeviceSize image_size = texture->data_size;
+    const VkDeviceSize image_size = texture->data_size;
     VkBuffer staging_buf = VK_NULL_HANDLE;
     VulkanAllocation staging_alloc = {0};
     if (!create_buffer(r, image_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,

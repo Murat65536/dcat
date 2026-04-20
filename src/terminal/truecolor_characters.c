@@ -49,8 +49,8 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
                                  bool use_hash_characters) {
     init_u8_table();
     if (use_hash_characters) {
-        size_t num_cells = (size_t)width * height;
-        size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_cells * 18 +
+        const size_t num_cells = (size_t)width * height;
+        const size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_cells * 18 +
                              (height > 0 ? height - 1 : 0) + (sizeof(FRAME_END) - 1);
 
         if (render_buf_size < needed_size) {
@@ -125,10 +125,10 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
     for (uint32_t y = 0; y < height; y += 2) {
         const uint8_t *row_upper = buffer + (y * width * 4);
         const uint8_t *row_lower = buffer + ((y + 1) * width * 4);
-        bool has_lower = (y + 1 < height);
+        const bool has_lower = (y + 1 < height);
         
         for (uint32_t x = 0; x < width; x++) {
-            uint8_t rU = row_upper[0], gU = row_upper[1], bU = row_upper[2];
+            const uint8_t rU = row_upper[0], gU = row_upper[1], bU = row_upper[2];
             row_upper += 4;
             
             uint8_t rL = 0, gL = 0, bL = 0;

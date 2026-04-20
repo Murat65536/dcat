@@ -30,7 +30,7 @@ bool load_diffuse_texture(const char* model_path, const char* texture_arg,
             return true;
         }
         
-        int tex_index = atoi(final_path + 1);
+        const int tex_index = atoi(final_path + 1);
         if (tex_index < 0 || tex_index >= (int)scene->mNumTextures) {
             texture_init_default(out_texture);
             aiReleaseImport(scene);

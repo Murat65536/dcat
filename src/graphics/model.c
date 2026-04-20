@@ -9,7 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <float.h>
 
 void mesh_init(Mesh* mesh) {
     memset(mesh, 0, sizeof(Mesh));
@@ -140,8 +139,7 @@ static void process_node(const struct aiNode* node, const struct aiScene* scene,
         
         // Process vertices
         for (unsigned int j = 0; j < mesh->mNumVertices; j++) {
-            Vertex vertex;
-            memset(&vertex, 0, sizeof(Vertex));
+            Vertex vertex = {0};
             vertex.bone_ids[0] = -1;
             vertex.bone_ids[1] = -1;
             vertex.bone_ids[2] = -1;
@@ -219,8 +217,7 @@ static void process_node_animated(const struct aiNode* node, const struct aiScen
         
         // Process vertices (no transformation - keep in bind pose)
         for (unsigned int j = 0; j < mesh->mNumVertices; j++) {
-            Vertex vertex;
-            memset(&vertex, 0, sizeof(Vertex));
+            Vertex vertex = {0};
             vertex.bone_ids[0] = -1;
             vertex.bone_ids[1] = -1;
             vertex.bone_ids[2] = -1;
@@ -392,9 +389,8 @@ static void build_bone_hierarchy(const struct aiNode* root, Skeleton* skeleton) 
         const struct aiNode* node = item.node;
         int parent_idx = item.parent_idx;
         
-        BoneNode bone_node;
-        memset(&bone_node, 0, sizeof(BoneNode));
-        
+        BoneNode bone_node = {0};
+
         bone_node.name = str_dup(node->mName.data);
         if (!bone_node.name) break;
         ai_matrix_to_glm(&node->mTransformation, bone_node.transformation);
@@ -449,8 +445,7 @@ static void load_animations(const struct aiScene* scene, AnimationArray* animati
     for (unsigned int i = 0; i < scene->mNumAnimations; i++) {
         const struct aiAnimation* ai_anim = scene->mAnimations[i];
         
-        Animation animation;
-        memset(&animation, 0, sizeof(Animation));
+        Animation animation = {0};
         animation.name = str_dup(ai_anim->mName.data);
         if (!animation.name) continue;
         animation.duration = (float)ai_anim->mDuration;
@@ -461,8 +456,7 @@ static void load_animations(const struct aiScene* scene, AnimationArray* animati
         for (unsigned int j = 0; j < ai_anim->mNumChannels; j++) {
             const struct aiNodeAnim* channel = ai_anim->mChannels[j];
             
-            BoneAnimation bone_anim;
-            memset(&bone_anim, 0, sizeof(BoneAnimation));
+            BoneAnimation bone_anim = {0};
             bone_anim.bone_name = str_dup(channel->mNodeName.data);
             if (!bone_anim.bone_name) continue;
             ARRAY_INIT(bone_anim.position_keys);
@@ -609,7 +603,7 @@ static void extract_embedded_texture(const struct aiScene* scene, MaterialInfo* 
     const char* tex_path = is_diffuse ? mat->diffuse_path : mat->normal_path;
     if (!tex_path || tex_path[0] != '*') return;
 
-    int tex_index = atoi(tex_path + 1);
+    const int tex_index = atoi(tex_path + 1);
     if (tex_index < 0 || tex_index >= (int)scene->mNumTextures) return;
 
     const struct aiTexture* embedded_tex = scene->mTextures[tex_index];

@@ -228,10 +228,10 @@ bool vulkan_renderer_render(
 bool vulkan_renderer_set_skydome(VulkanRenderer* r, const Mesh* mesh, const Texture* texture);
 
 // Wait for idle
-void vulkan_renderer_wait_idle(VulkanRenderer* r);
+void vulkan_renderer_wait_idle(const VulkanRenderer* r);
 
 // Get frame size
-static inline size_t vulkan_renderer_get_frame_size(const VulkanRenderer* r) {
+static size_t vulkan_renderer_get_frame_size(const VulkanRenderer* r) {
     return r->width * r->height * 4;
 }
 

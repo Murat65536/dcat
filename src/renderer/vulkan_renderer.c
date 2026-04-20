@@ -36,6 +36,14 @@ static const char* vk_result_to_string(VkResult result) {
     }
 }
 
+static void set_wireframe_mode(atomic_bool* wireframe_mode, bool enabled) {
+    *wireframe_mode = enabled;
+}
+
+static bool get_wireframe_mode(const atomic_bool* wireframe_mode) {
+    return *wireframe_mode;
+}
+
 void vulkan_renderer_clear_error(VulkanRenderer* r) {
     if (!r) return;
 
@@ -121,11 +129,11 @@ void vulkan_renderer_set_light_direction(VulkanRenderer* r, const float* directi
 }
 
 void vulkan_renderer_set_wireframe_mode(VulkanRenderer* r, bool enabled) {
-    atomic_store(&r->wireframe_mode, enabled);
+    set_wireframe_mode(&r->wireframe_mode, enabled);
 }
 
 bool vulkan_renderer_get_wireframe_mode(const VulkanRenderer* r) {
-    return atomic_load(&r->wireframe_mode);
+    return get_wireframe_mode(&r->wireframe_mode);
 }
 
 bool vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height) {
@@ -165,7 +173,7 @@ bool vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height) 
     return true;
 }
 
-void vulkan_renderer_wait_idle(VulkanRenderer* r) {
+void vulkan_renderer_wait_idle(const VulkanRenderer* r) {
     if (r && r->device != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(r->device);
     }
@@ -210,7 +218,7 @@ bool vulkan_renderer_set_skydome(VulkanRenderer* r, const Mesh* mesh, const Text
     return true;
 }
 
-static void cleanup_material_fragment_uniform_buffers(VulkanRenderer* r, MaterialGPUData* mat) {
+static void cleanup_material_fragment_uniform_buffers(const VulkanRenderer* r, MaterialGPUData* mat) {
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         if (mat->fragment_uniform_buffers[i] != VK_NULL_HANDLE) {
             vkDestroyBuffer(r->device, mat->fragment_uniform_buffers[i], NULL);
@@ -240,7 +248,7 @@ static bool allocate_descriptor_sets_from_pool(VulkanRenderer* r, VkDescriptorPo
     alloc_info.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
     alloc_info.pSetLayouts = layouts;
 
-    VkResult result = vkAllocateDescriptorSets(r->device, &alloc_info, descriptor_sets);
+    const VkResult result = vkAllocateDescriptorSets(r->device, &alloc_info, descriptor_sets);
     if (result != VK_SUCCESS) {
         vulkan_renderer_set_error(r, result, "vkAllocateDescriptorSets", "%s", detail);
         return false;
@@ -337,10 +345,10 @@ static bool rebuild_material_descriptor_pool(VulkanRenderer* r, uint32_t materia
 }
 
 // Ensure per-material GPU resources are allocated for the given material count
-static bool ensure_material_gpu(VulkanRenderer* r, uint32_t material_count) {
+static bool ensure_material_gpu(VulkanRenderer* r, const uint32_t material_count) {
     if (r->material_gpu_count >= material_count) return true;
 
-    uint32_t old_material_count = r->material_gpu_count;
+    const uint32_t old_material_count = r->material_gpu_count;
 
     // Grow the array
     MaterialGPUData* new_mats = calloc(material_count, sizeof(MaterialGPUData));
@@ -375,7 +383,7 @@ static bool ensure_material_gpu(VulkanRenderer* r, uint32_t material_count) {
         }
     }
 
-    uint32_t new_capacity = next_material_descriptor_capacity(
+    const uint32_t new_capacity = next_material_descriptor_capacity(
         r->descriptor_pool_material_capacity, material_count);
     if (!rebuild_material_descriptor_pool(r, material_count, new_capacity)) {
         for (uint32_t m = old_material_count; m < material_count; m++) {
@@ -621,7 +629,8 @@ bool vulkan_renderer_render(
     }
 
     // Render main model
-    VkPipeline active_pipeline = atomic_load(&r->wireframe_mode) ? r->wireframe_pipeline : r->graphics_pipeline;
+    VkPipeline active_pipeline =
+        get_wireframe_mode(&r->wireframe_mode) ? r->wireframe_pipeline : r->graphics_pipeline;
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline);
     vkCmdPushConstants(cmd, r->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &push_constants);
 

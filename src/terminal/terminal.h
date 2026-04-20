@@ -56,18 +56,18 @@ void write_terminal_recovery_sequence(int fd);
 void terminal_restore_default_state(void);
 void terminal_restore_after_crash(void);
 
-static inline void enter_alternate_screen(void) { safe_write("\x1b[?1049h", 8); }
-static inline void exit_alternate_screen(void) { safe_write("\x1b[?1049l", 8); }
-static inline void hide_cursor(void) { safe_write("\x1b[?25l", 6); }
-static inline void show_cursor(void) { safe_write("\x1b[?25h", 6); }
-static inline void enable_mouse_orbit_tracking(void) { safe_write("\x1b[?1002h\x1b[?1006h\x1b[?1016h", 24); }
-static inline void disable_mouse_orbit_tracking(void) { safe_write("\x1b[?1016l\x1b[?1006l\x1b[?1005l\x1b[?1004l\x1b[?1003l\x1b[?1002l\x1b[?1000l", 56); }
+static void enter_alternate_screen(void) { safe_write("\x1b[?1049h", 8); }
+static void exit_alternate_screen(void) { safe_write("\x1b[?1049l", 8); }
+static void hide_cursor(void) { safe_write("\x1b[?25l", 6); }
+static void show_cursor(void) { safe_write("\x1b[?25h", 6); }
+static void enable_mouse_orbit_tracking(void) { safe_write("\x1b[?1002h\x1b[?1006h\x1b[?1016h", 24); }
+static void disable_mouse_orbit_tracking(void) { safe_write("\x1b[?1016l\x1b[?1006l\x1b[?1005l\x1b[?1004l\x1b[?1003l\x1b[?1002l\x1b[?1000l", 56); }
 #ifdef _WIN32
-static inline void enable_kitty_keyboard(void) { }
-static inline void disable_kitty_keyboard(void) { }
+static void enable_kitty_keyboard(void) { }
+static void disable_kitty_keyboard(void) { }
 #else
-static inline void enable_kitty_keyboard(void) { safe_write("\x1b[>31u", 6); }
-static inline void disable_kitty_keyboard(void) { safe_write("\x1b[<u", 4); }
+static void enable_kitty_keyboard(void) { safe_write("\x1b[>31u", 6); }
+static void disable_kitty_keyboard(void) { safe_write("\x1b[<u", 4); }
 #endif
 
 #endif // DCAT_TERMINAL_H

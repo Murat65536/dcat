@@ -1,7 +1,6 @@
 #include "vk_pipeline.h"
 #include "vk_shader.h"
 #include <stdio.h>
-#include <stddef.h>
 
 bool create_descriptor_set_layout(VulkanRenderer* r) {
     VkDescriptorSetLayoutBinding bindings[4] = {0};

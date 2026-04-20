@@ -20,10 +20,18 @@ static const float ZOOM_AMOUNT = 0.05f;
 #define KITTY_LEFT_CTRL    57442
 #define KITTY_RIGHT_CTRL   57448
 
-static void handle_key(InputThreadData* data, int key_code,
-                       int modifiers, int event_type) {
+static void stop_input_loop(atomic_bool* running) {
+    *running = false;
+}
+
+static bool is_input_loop_running(const atomic_bool* running) {
+    return *running;
+}
+
+static void handle_key(const InputThreadData* data, const int key_code,
+                       const int modifiers, const int event_type) {
     (void)modifiers;
-    bool pressed = (event_type != 3);
+    const bool pressed = (event_type != 3);
 
     // Update FPS held-key state
     if (data->fps_controls && data->key_state) {
@@ -52,12 +60,12 @@ static void handle_key(InputThreadData* data, int key_code,
     if (event_type != 1) return;
 
     if (key_code == 'q') {
-        atomic_store(data->running, false);
+        stop_input_loop(data->running);
         return;
     }
 
     if (key_code == 'm') {
-        bool current = vulkan_renderer_get_wireframe_mode(data->renderer);
+        const bool current = vulkan_renderer_get_wireframe_mode(data->renderer);
         vulkan_renderer_set_wireframe_mode(data->renderer, !current);
     }
 
@@ -130,7 +138,7 @@ static bool rising_edge(bool down, bool* prev_state) {
     return edge;
 }
 
-static void update_windows_keyboard_state(InputThreadData* data,
+static void update_windows_keyboard_state(const InputThreadData* data,
                                           WindowsInputState* state) {
     KeyState* key_state = data->key_state;
     if (!key_state) {
@@ -175,7 +183,7 @@ static void update_windows_keyboard_state(InputThreadData* data,
     key_state->b = b_down;
 
     if (rising_edge(q_down, &state->prev_q)) {
-        atomic_store(data->running, false);
+        stop_input_loop(data->running);
     }
     if (rising_edge(m_down, &state->prev_m)) {
         handle_key(data, 'm', 1, 1);
@@ -225,7 +233,7 @@ static void update_windows_keyboard_state(InputThreadData* data,
     }
 }
 
-static void handle_windows_mouse_event(InputThreadData* data,
+static void handle_windows_mouse_event(const InputThreadData* data,
                                        WindowsInputState* state,
                                        const MOUSE_EVENT_RECORD* event) {
     if (!data->mouse_orbit) {
@@ -333,14 +341,13 @@ void* input_thread_func(void* arg) {
     int last_mouse_x = 0, last_mouse_y = 0;
 #endif
 
-    while (atomic_load(data->running)) {
+    while (is_input_loop_running(data->running)) {
 #ifdef _WIN32
         dcat_mutex_lock(data->state_mutex);
         update_windows_keyboard_state(data, &windows_state);
         poll_windows_console_events(data, &windows_state);
         dcat_mutex_unlock(data->state_mutex);
         dcat_sleep_ms(1);
-        continue;
 #else
         struct pollfd pfd = {STDIN_FILENO, POLLIN, 0};
         if (poll(&pfd, 1, 1) <= 0 || !(pfd.revents & POLLIN)) continue;
@@ -358,7 +365,7 @@ void* input_thread_func(void* arg) {
             if (buffer[i] != '\x1b') {
                 // Fallback for raw bytes (Kitty protocol not active)
                 if (buffer[i] == 'q' || buffer[i] == 'Q') {
-                    atomic_store(data->running, false);
+                    stop_input_loop(data->running);
                 }
                 i++;
                 continue;

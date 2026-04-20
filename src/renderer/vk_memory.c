@@ -1,9 +1,8 @@
 #include "vk_memory.h"
-#include <stdio.h>
 #include <string.h>
 
-bool find_memory_type(VulkanRenderer* r, uint32_t type_filter,
-                      VkMemoryPropertyFlags properties,
+bool find_memory_type(VulkanRenderer* r, const uint32_t type_filter,
+                      const VkMemoryPropertyFlags properties,
                       uint32_t* out_memory_type) {
     for (uint32_t i = 0; i < r->mem_properties.memoryTypeCount; i++) {
         if ((type_filter & (1 << i)) && 
@@ -17,8 +16,8 @@ bool find_memory_type(VulkanRenderer* r, uint32_t type_filter,
     return false;
 }
 
-bool create_buffer(VulkanRenderer* r, VkDeviceSize size, VkBufferUsageFlags usage,
-                   VkMemoryPropertyFlags properties, VkBuffer* buffer, VulkanAllocation* alloc) {
+bool create_buffer(VulkanRenderer* r, const VkDeviceSize size, const VkBufferUsageFlags usage,
+                   const VkMemoryPropertyFlags properties, VkBuffer* buffer, VulkanAllocation* alloc) {
     *buffer = VK_NULL_HANDLE;
     memset(alloc, 0, sizeof(*alloc));
 
@@ -87,8 +86,8 @@ bool create_buffer(VulkanRenderer* r, VkDeviceSize size, VkBufferUsageFlags usag
     return true;
 }
 
-bool create_image(VulkanRenderer* r, uint32_t width, uint32_t height, VkFormat format,
-                  VkImageUsageFlags usage, VkMemoryPropertyFlags properties,
+bool create_image(VulkanRenderer* r, const uint32_t width, const uint32_t height, const VkFormat format,
+                  const VkImageUsageFlags usage, VkMemoryPropertyFlags properties,
                   VkImage* image, VulkanAllocation* alloc) {
     *image = VK_NULL_HANDLE;
     memset(alloc, 0, sizeof(*alloc));

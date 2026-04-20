@@ -2,14 +2,9 @@
 #define DCAT_TYPES_H
 
 #include <stdint.h>
-#include <stddef.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#ifdef _WIN32
-#include <malloc.h>
-#endif
 #include <cglm/cglm.h>
 
 #define MAX_BONES 200
@@ -17,7 +12,7 @@
 #define ALIGN_SIZE 32
 
 // Aligned memory allocation for SIMD operations
-static inline void* aligned_malloc(size_t size) {
+static void* aligned_malloc(size_t size) {
     if (size == 0) return NULL;
 #ifdef _WIN32
     return _aligned_malloc(size, ALIGN_SIZE);
@@ -28,7 +23,7 @@ static inline void* aligned_malloc(size_t size) {
 #endif
 }
 
-static inline void* aligned_realloc(void* ptr, size_t old_size, size_t new_size) {
+static void* aligned_realloc(void* ptr, const size_t old_size, const size_t new_size) {
     if (new_size == 0) {
         if (ptr) {
 #ifdef _WIN32
@@ -66,7 +61,7 @@ static inline void* aligned_realloc(void* ptr, size_t old_size, size_t new_size)
 #endif
 }
 
-static inline void* aligned_realloc_checked(void* ptr, size_t old_size,
+static void* aligned_realloc_checked(void* ptr, size_t old_size,
                                             size_t new_size) {
     void* new_ptr = aligned_realloc(ptr, old_size, new_size);
     if (!new_ptr && new_size > 0) {
@@ -76,7 +71,7 @@ static inline void* aligned_realloc_checked(void* ptr, size_t old_size,
     return new_ptr;
 }
 
-static inline void aligned_free(void* ptr) {
+static void aligned_free(void* ptr) {
     if (!ptr) return;
 #ifdef _WIN32
     _aligned_free(ptr);
@@ -213,7 +208,7 @@ typedef struct CameraSetup {
 } CameraSetup;
 
 // Utility functions
-static inline char* str_dup(const char* s) {
+static char* str_dup(const char* s) {
     if (!s) return NULL;
     size_t len = strlen(s) + 1;
     char* copy = malloc(len);
@@ -221,7 +216,7 @@ static inline char* str_dup(const char* s) {
     return copy;
 }
 
-static inline float clampf(float val, float min_val, float max_val) {
+static float clampf(float val, float min_val, float max_val) {
     if (val < min_val) return min_val;
     if (val > max_val) return max_val;
     return val;

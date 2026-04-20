@@ -18,7 +18,7 @@ static const char base64_chars[] =
 // header (max 64) + base64 payload + ST (2)
 static char cmd_buf[64 + B64_CHUNK + 2];
 
-static inline size_t encode_chunk(const uint8_t *data, size_t len, char *out) {
+static size_t encode_chunk(const uint8_t *data, size_t len, char *out) {
     char *p = out;
     for (size_t i = 0; i < len; i += 3) {
         uint32_t n = (uint32_t)data[i] << 16;
@@ -33,7 +33,7 @@ static inline size_t encode_chunk(const uint8_t *data, size_t len, char *out) {
 }
 
 void render_kitty(const uint8_t *buffer, uint32_t width, uint32_t height) {
-    size_t total = (size_t)width * height * 4;
+    const size_t total = (size_t)width * height * 4;
     size_t offset = 0;
     bool first = true;
 
@@ -42,7 +42,7 @@ void render_kitty(const uint8_t *buffer, uint32_t width, uint32_t height) {
         if (raw > RAW_CHUNK) raw = RAW_CHUNK;
         bool last = (offset + raw >= total);
 
-        size_t b64_len = encode_chunk(buffer + offset, raw, cmd_buf + 64);
+        const size_t b64_len = encode_chunk(buffer + offset, raw, cmd_buf + 64);
 
         int hdr_len;
         if (first) {

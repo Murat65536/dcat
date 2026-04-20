@@ -6,8 +6,8 @@
 
 static const float DISTANCE_SCALING_POWER = 1.25f;
 
-void camera_init(Camera* cam, uint32_t width, uint32_t height,
-                 vec3 pos, vec3 tgt, float fov_degrees) {
+void camera_init(Camera* cam, const uint32_t width, const uint32_t height,
+                 vec3 pos, vec3 tgt, const float fov_degrees) {
     glm_vec3_copy(pos, cam->position);
     glm_vec3_copy(tgt, cam->target);
     glm_vec3_copy((vec3){0.0f, 1.0f, 0.0f}, cam->up);

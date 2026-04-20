@@ -19,14 +19,14 @@ static void normalize_path_separators(char *path) {
 #endif
 }
 
-static void get_executable_directory(char *out, size_t out_size) {
+static void get_executable_directory(char *out, const size_t out_size) {
     if (out_size == 0) {
         return;
     }
     out[0] = '\0';
 
 #ifdef _WIN32
-    DWORD len = GetModuleFileNameA(NULL, out, (DWORD)out_size);
+    const DWORD len = GetModuleFileNameA(NULL, out, out_size);
     if (len == 0 || len >= out_size) {
         out[0] = '\0';
         return;
@@ -79,7 +79,7 @@ char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size
         FILE* f = fopen(path, "rb");
         if (f) {
             fseek(f, 0, SEEK_END);
-            long file_size = ftell(f);
+            const long file_size = ftell(f);
             fseek(f, 0, SEEK_SET);
 
             if (file_size < 0) {
@@ -120,7 +120,7 @@ char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size
         FILE* f = fopen(path, "rb");
         if (f) {
             fseek(f, 0, SEEK_END);
-            long file_size = ftell(f);
+            const long file_size = ftell(f);
             fseek(f, 0, SEEK_SET);
 
             if (file_size < 0) {
@@ -144,9 +144,9 @@ char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size
             fclose(f);
             
             // Cache shader directory
-            char* last_slash = strrchr(path, '/');
+            const char* last_slash = strrchr(path, '/');
             if (last_slash) {
-                size_t dir_len = last_slash - path + 1;
+                const size_t dir_len = last_slash - path + 1;
                 if (dir_len < sizeof(r->shader_directory)) {
                     memcpy(r->shader_directory, path, dir_len);
                     r->shader_directory[dir_len] = '\0';

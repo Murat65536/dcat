@@ -38,7 +38,7 @@ static void init_u8_table(void) {
     u8_table_initialized = true;
 }
 
-static inline uint8_t rgb_to_256(uint8_t r, uint8_t g, uint8_t b) {
+static uint8_t rgb_to_256(uint8_t r, uint8_t g, uint8_t b) {
     // Check if grayscale
     if (r == g && g == b) {
         if (r < 8) return 16;

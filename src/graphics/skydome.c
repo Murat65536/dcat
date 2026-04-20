@@ -7,24 +7,23 @@ void generate_skydome(Mesh* mesh, float radius, int segments, int rings) {
     
     // Generate vertices
     for (int ring = 0; ring <= rings; ring++) {
-        float phi = GLM_PI * (float)ring / (float)rings;
-        float y = radius * cosf(phi);
-        float ring_radius = radius * sinf(phi);
+        const float phi = GLM_PI * (float)ring / (float)rings;
+        const float y = radius * cosf(phi);
+        const float ring_radius = radius * sinf(phi);
         
         for (int seg = 0; seg <= segments; seg++) {
-            float theta = 2.0f * GLM_PI * (float)seg / (float)segments;
-            float x = ring_radius * cosf(theta);
-            float z = ring_radius * sinf(theta);
+            const float theta = 2.0f * GLM_PI * (float)seg / (float)segments;
+            const float x = ring_radius * cosf(theta);
+            const float z = ring_radius * sinf(theta);
             
-            Vertex vertex;
-            memset(&vertex, 0, sizeof(Vertex));
-            
+            Vertex vertex = {0};
+
             vertex.position[0] = x;
             vertex.position[1] = y;
             vertex.position[2] = z;
             
             // Inverted normals (pointing inward)
-            float len = sqrtf(x*x + y*y + z*z);
+            const float len = sqrtf(x*x + y*y + z*z);
             if (len > 0.0001f) {
                 vertex.normal[0] = -x / len;
                 vertex.normal[1] = -y / len;
@@ -52,8 +51,8 @@ void generate_skydome(Mesh* mesh, float radius, int segments, int rings) {
     // Generate indices (inverted winding for inside rendering)
     for (int ring = 0; ring < rings; ring++) {
         for (int seg = 0; seg < segments; seg++) {
-            uint32_t current = ring * (segments + 1) + seg;
-            uint32_t next = current + segments + 1;
+            const uint32_t current = ring * (segments + 1) + seg;
+            const uint32_t next = current + segments + 1;
             
             // Triangle 1 (inverted winding)
             ARRAY_PUSH(mesh->indices, current);
