@@ -349,5 +349,28 @@ add_custom_command(TARGET dcat POST_BUILD
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${shader_outputs} "$<TARGET_FILE_DIR:dcat>/shaders"
 )
 
+if(WIN32)
+  set(_deps_runtime_dlls "")
+  if(DEPS_PREFIX)
+    file(GLOB _deps_runtime_dlls "${DEPS_PREFIX}/bin/*.dll")
+  endif()
+
+  add_custom_command(TARGET dcat POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+      $<TARGET_RUNTIME_DLLS:dcat>
+      "$<TARGET_FILE_DIR:dcat>"
+    COMMAND_EXPAND_LISTS
+  )
+
+  if(_deps_runtime_dlls)
+    add_custom_command(TARGET dcat POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        ${_deps_runtime_dlls}
+        "$<TARGET_FILE_DIR:dcat>"
+      COMMAND_EXPAND_LISTS
+    )
+  endif()
+endif()
+
 install(TARGETS dcat RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(FILES ${shader_outputs} DESTINATION "${CMAKE_INSTALL_DATADIR}/dcat/shaders")
