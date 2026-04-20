@@ -1,11 +1,11 @@
 #include "terminal/truecolor_characters.h"
-#include "terminal/terminal.h"
 #include "core/platform_compat.h"
+#include "terminal/terminal.h"
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -51,7 +51,7 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
     if (use_hash_characters) {
         const size_t num_cells = (size_t)width * height;
         const size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_cells * 18 +
-                             (height > 0 ? height - 1 : 0) + (sizeof(FRAME_END) - 1);
+                                   (height > 0 ? height - 1 : 0) + (sizeof(FRAME_END) - 1);
 
         if (render_buf_size < needed_size) {
             free(render_buf);
@@ -85,52 +85,51 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
     }
 
     uint32_t num_blocks = width * ((height + 1) / 2);
-    
+
     // Detect resize or first run
     if (!buffer_initialized || width != last_width || height != last_height) {
         // Each block: \x1b[38;2;RRR;GGG;BBB;48;2;RRR;GGG;BBBm▀ = 39 bytes
-        size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_blocks * 39 +
-                             (sizeof(FRAME_END) - 1);
-        
+        size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_blocks * 39 + (sizeof(FRAME_END) - 1);
+
         if (render_buf_size < needed_size) {
             free(render_buf);
             render_buf = (char *)malloc(needed_size);
             render_buf_size = needed_size;
         }
-        
+
         // Build the fixed structure
         char *p = render_buf;
-        
+
         // Header
         memcpy(p, FRAME_BEGIN, sizeof(FRAME_BEGIN) - 1);
         p += sizeof(FRAME_BEGIN) - 1;
-        
+
         // Build each block with placeholder RGB values (000)
         for (uint32_t i = 0; i < num_blocks; i++) {
             memcpy(p, "\x1b[38;2;000;000;000;48;2;000;000;000m\xe2\x96\x80", 39);
             p += 39;
         }
-        
+
         // Footer
         memcpy(p, FRAME_END, sizeof(FRAME_END) - 1);
-        
+
         last_width = width;
         last_height = height;
         buffer_initialized = true;
     }
-    
+
     // Fast path: only update RGB digits in-place
     char *block_ptr = render_buf + (sizeof(FRAME_BEGIN) - 1);
-    
+
     for (uint32_t y = 0; y < height; y += 2) {
         const uint8_t *row_upper = buffer + (y * width * 4);
         const uint8_t *row_lower = buffer + ((y + 1) * width * 4);
         const bool has_lower = (y + 1 < height);
-        
+
         for (uint32_t x = 0; x < width; x++) {
             const uint8_t rU = row_upper[0], gU = row_upper[1], bU = row_upper[2];
             row_upper += 4;
-            
+
             uint8_t rL = 0, gL = 0, bL = 0;
             if (has_lower) {
                 rL = row_lower[0];
@@ -138,23 +137,22 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
                 bL = row_lower[2];
                 row_lower += 4;
             }
-            
+
             // Update foreground RGB: positions 7, 11, 15 within block
             write_u8_3digit(block_ptr + 7, rU);
             write_u8_3digit(block_ptr + 11, gU);
             write_u8_3digit(block_ptr + 15, bU);
-            
+
             // Update background RGB: positions 24, 28, 32 within block
             write_u8_3digit(block_ptr + 24, rL);
             write_u8_3digit(block_ptr + 28, gL);
             write_u8_3digit(block_ptr + 32, bL);
-            
+
             block_ptr += 39;
         }
     }
-    
-    safe_write(render_buf, (sizeof(FRAME_BEGIN) - 1) + num_blocks * 39 +
-                          (sizeof(FRAME_END) - 1));
+
+    safe_write(render_buf, (sizeof(FRAME_BEGIN) - 1) + num_blocks * 39 + (sizeof(FRAME_END) - 1));
 }
 
 bool detect_truecolor_support(void) {

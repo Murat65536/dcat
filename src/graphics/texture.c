@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static bool texture_data_has_transparency(const uint8_t* data, size_t data_size) {
+static bool texture_data_has_transparency(const uint8_t *data, size_t data_size) {
     if (!data || data_size < 4) {
         return false;
     }
@@ -19,37 +19,37 @@ static bool texture_data_has_transparency(const uint8_t* data, size_t data_size)
     return false;
 }
 
-void texture_init_default(Texture* tex) {
+void texture_init_default(Texture *tex) {
     tex->width = 1;
     tex->height = 1;
     tex->data_size = 4;
     tex->has_transparency = false;
     tex->data = malloc(4);
     if (tex->data) {
-        tex->data[0] = 127;  // R
-        tex->data[1] = 127;  // G
-        tex->data[2] = 127;  // B
-        tex->data[3] = 255;  // A
+        tex->data[0] = 127; // R
+        tex->data[1] = 127; // G
+        tex->data[2] = 127; // B
+        tex->data[3] = 255; // A
     }
 }
 
-void texture_create_flat_normal_map(Texture* tex) {
+void texture_create_flat_normal_map(Texture *tex) {
     tex->width = 1;
     tex->height = 1;
     tex->data_size = 4;
     tex->has_transparency = false;
     tex->data = malloc(4);
     if (tex->data) {
-        tex->data[0] = 127;  // R (neutral X)
-        tex->data[1] = 127;  // G (neutral Y)
-        tex->data[2] = 255;  // B (Z up)
-        tex->data[3] = 255;  // A
+        tex->data[0] = 127; // R (neutral X)
+        tex->data[1] = 127; // G (neutral Y)
+        tex->data[2] = 255; // B (Z up)
+        tex->data[3] = 255; // A
     }
 }
 
-static bool texture_from_vips(Texture* tex, VipsImage* image) {
-    VipsImage* srgb = NULL;
-    VipsImage* rgba = NULL;
+static bool texture_from_vips(Texture *tex, VipsImage *image) {
+    VipsImage *srgb = NULL;
+    VipsImage *rgba = NULL;
 
     if (vips_colourspace(image, &srgb, VIPS_INTERPRETATION_sRGB, NULL)) {
         return false;
@@ -66,7 +66,7 @@ static bool texture_from_vips(Texture* tex, VipsImage* image) {
     }
 
     size_t buf_size;
-    void* buf = vips_image_write_to_memory(rgba, &buf_size);
+    void *buf = vips_image_write_to_memory(rgba, &buf_size);
     bool ok = false;
 
     if (buf) {
@@ -86,8 +86,8 @@ static bool texture_from_vips(Texture* tex, VipsImage* image) {
     return ok;
 }
 
-bool texture_from_file(Texture* tex, const char* path) {
-    VipsImage* image = vips_image_new_from_file(path, NULL);
+bool texture_from_file(Texture *tex, const char *path) {
+    VipsImage *image = vips_image_new_from_file(path, NULL);
 
     if (!image) {
         fprintf(stderr, "Warning: Failed to load texture (%s), using gray\n", path);
@@ -106,8 +106,8 @@ bool texture_from_file(Texture* tex, const char* path) {
     return true;
 }
 
-bool texture_from_memory(Texture* tex, const unsigned char* buffer, size_t size) {
-    VipsImage* image = vips_image_new_from_buffer(buffer, size, "", NULL);
+bool texture_from_memory(Texture *tex, const unsigned char *buffer, size_t size) {
+    VipsImage *image = vips_image_new_from_buffer(buffer, size, "", NULL);
 
     if (!image) {
         fprintf(stderr, "Warning: Failed to load texture from memory, using gray\n");
@@ -126,7 +126,7 @@ bool texture_from_memory(Texture* tex, const unsigned char* buffer, size_t size)
     return true;
 }
 
-void texture_free(Texture* tex) {
+void texture_free(Texture *tex) {
     free(tex->data);
     tex->data = NULL;
     tex->width = 0;
@@ -135,7 +135,7 @@ void texture_free(Texture* tex) {
     tex->has_transparency = false;
 }
 
-void texture_update_transparency(Texture* tex) {
+void texture_update_transparency(Texture *tex) {
     if (!tex) {
         return;
     }

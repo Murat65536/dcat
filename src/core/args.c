@@ -33,8 +33,8 @@ void print_usage(void) {
     printf("  -h, --help                 display this help and exit\n\n");
 }
 
-static bool parse_int_arg(const char* option, const char* value, int* out) {
-    char* end = NULL;
+static bool parse_int_arg(const char *option, const char *value, int *out) {
+    char *end = NULL;
     long parsed = 0;
 
     errno = 0;
@@ -48,13 +48,13 @@ static bool parse_int_arg(const char* option, const char* value, int* out) {
     return true;
 }
 
-static bool parse_float_arg(const char* option, const char* value, float* out) {
-    char* end = NULL;
+static bool parse_float_arg(const char *option, const char *value, float *out) {
+    char *end = NULL;
 
     errno = 0;
     double parsed = strtod(value, &end);
-    if (errno == ERANGE || end == value || *end != '\0' || !isfinite(parsed) ||
-        parsed < -FLT_MAX || parsed > FLT_MAX) {
+    if (errno == ERANGE || end == value || *end != '\0' || !isfinite(parsed) || parsed < -FLT_MAX ||
+        parsed > FLT_MAX) {
         fprintf(stderr, "Invalid number for %s: %s\n", option, value);
         return false;
     }
@@ -63,7 +63,7 @@ static bool parse_float_arg(const char* option, const char* value, float* out) {
     return true;
 }
 
-Args parse_args(const int argc, char* argv[]) {
+Args parse_args(const int argc, char *argv[]) {
     Args args = {0};
     args.width = -1;
     args.height = -1;
@@ -71,26 +71,35 @@ Args parse_args(const int argc, char* argv[]) {
     args.model_scale = 1.0f;
     args.mouse_sensitivity = 0.02f;
     args.target_fps = 60;
-    
+
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-t") == 0 || strcmp(argv[i], "--texture") == 0) {
-            if (++i < argc) args.texture_path = argv[i];
+            if (++i < argc)
+                args.texture_path = argv[i];
         } else if (strcmp(argv[i], "-n") == 0 || strcmp(argv[i], "--normal-map") == 0) {
-            if (++i < argc) args.normal_map_path = argv[i];
+            if (++i < argc)
+                args.normal_map_path = argv[i];
         } else if (strcmp(argv[i], "--skydome") == 0) {
-            if (++i < argc) args.skydome_path = argv[i];
+            if (++i < argc)
+                args.skydome_path = argv[i];
         } else if (strcmp(argv[i], "-W") == 0 || strcmp(argv[i], "--width") == 0) {
-            if (++i < argc && !parse_int_arg("--width", argv[i], &args.width)) exit(1);
+            if (++i < argc && !parse_int_arg("--width", argv[i], &args.width))
+                exit(1);
         } else if (strcmp(argv[i], "-H") == 0 || strcmp(argv[i], "--height") == 0) {
-            if (++i < argc && !parse_int_arg("--height", argv[i], &args.height)) exit(1);
+            if (++i < argc && !parse_int_arg("--height", argv[i], &args.height))
+                exit(1);
         } else if (strcmp(argv[i], "--camera-distance") == 0) {
-            if (++i < argc && !parse_float_arg("--camera-distance", argv[i], &args.camera_distance)) exit(1);
+            if (++i < argc && !parse_float_arg("--camera-distance", argv[i], &args.camera_distance))
+                exit(1);
         } else if (strcmp(argv[i], "--model-scale") == 0) {
-            if (++i < argc && !parse_float_arg("--model-scale", argv[i], &args.model_scale)) exit(1);
+            if (++i < argc && !parse_float_arg("--model-scale", argv[i], &args.model_scale))
+                exit(1);
         } else if (strcmp(argv[i], "--spin") == 0) {
-            if (++i < argc && !parse_float_arg("--spin", argv[i], &args.spin_speed)) exit(1);
+            if (++i < argc && !parse_float_arg("--spin", argv[i], &args.spin_speed))
+                exit(1);
         } else if (strcmp(argv[i], "-f") == 0 || strcmp(argv[i], "--fps") == 0) {
-            if (++i < argc && !parse_int_arg("--fps", argv[i], &args.target_fps)) exit(1);
+            if (++i < argc && !parse_int_arg("--fps", argv[i], &args.target_fps))
+                exit(1);
         } else if (strcmp(argv[i], "--no-lighting") == 0) {
             args.no_lighting = true;
         } else if (strcmp(argv[i], "--keyboard-controls") == 0) {
@@ -99,7 +108,8 @@ Args parse_args(const int argc, char* argv[]) {
             args.mouse_orbit = true;
         } else if (strcmp(argv[i], "--mouse-sensitivity") == 0) {
             if (++i < argc) {
-                if (!parse_float_arg("--mouse-sensitivity", argv[i], &args.mouse_sensitivity)) exit(1);
+                if (!parse_float_arg("--mouse-sensitivity", argv[i], &args.mouse_sensitivity))
+                    exit(1);
             }
         } else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--status-bar") == 0) {
             args.show_status_bar = true;
@@ -127,41 +137,41 @@ Args parse_args(const int argc, char* argv[]) {
             exit(1);
         }
     }
-    
+
     if (args.show_help) {
         print_usage();
         exit(0);
     }
-    
+
     return args;
 }
 
-bool validate_args(const Args* args) {
+bool validate_args(const Args *args) {
     if (!args->model_path) {
         fprintf(stderr, "Error: No model file specified\n");
         print_usage();
         return false;
     }
-    
+
     if (args->width > 65535) {
         fprintf(stderr, "Invalid width: %d (must be 1-65535)\n", args->width);
         return false;
     }
-    
+
     if (args->height > 65535) {
         fprintf(stderr, "Invalid height: %d (must be 1-65535)\n", args->height);
         return false;
     }
-    
+
     if (args->target_fps <= 0) {
         fprintf(stderr, "Invalid FPS: %d (must be greater than 0)\n", args->target_fps);
         return false;
     }
-    
+
     if (args->model_scale <= 0) {
         fprintf(stderr, "Invalid scale: %f (must be greater than 0)\n", args->model_scale);
         return false;
     }
-    
+
     return true;
 }

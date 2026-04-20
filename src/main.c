@@ -1,9 +1,9 @@
-#include <stdio.h>
-#include <stdlib.h>
 #include <errno.h>
 #include <signal.h>
-#include <stdatomic.h>
 #include <stdarg.h>
+#include <stdatomic.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #ifndef _WIN32
@@ -12,21 +12,21 @@
 
 #include <vips/vips.h>
 
+#include "core/args.h"
 #include "core/platform_compat.h"
 #include "core/threading.h"
-#include "core/args.h"
 #include "graphics/camera.h"
 #include "graphics/model.h"
-#include "terminal/terminal.h"
-#include "terminal/truecolor_characters.h"
-#include "terminal/palette_characters.h"
-#include "terminal/sixel.h"
+#include "graphics/texture_loader.h"
+#include "input/input_handler.h"
+#include "renderer/vulkan_renderer.h"
+#include "terminal/block_characters.h"
 #include "terminal/kitty.h"
 #include "terminal/kitty_shm.h"
-#include "terminal/block_characters.h"
-#include "graphics/texture_loader.h"
-#include "renderer/vulkan_renderer.h"
-#include "input/input_handler.h"
+#include "terminal/palette_characters.h"
+#include "terminal/sixel.h"
+#include "terminal/terminal.h"
+#include "terminal/truecolor_characters.h"
 
 // Global state for signal handlers
 static atomic_bool g_running = true;
@@ -35,11 +35,11 @@ static volatile sig_atomic_t g_terminal_session_active = 0;
 
 static const float TARGET_SIZE = 4.0f;
 
-static void set_atomic_flag(atomic_bool* flag, const bool value) {
+static void set_atomic_flag(atomic_bool *flag, const bool value) {
     *flag = value;
 }
 
-static bool get_atomic_flag(const atomic_bool* flag) {
+static bool get_atomic_flag(const atomic_bool *flag) {
     return *flag;
 }
 
@@ -60,7 +60,7 @@ static void resize_handler(int sig) {
 }
 #endif
 
-static void write_signal_literal(int fd, const char* data, size_t size) {
+static void write_signal_literal(int fd, const char *data, size_t size) {
     while (size > 0) {
         ssize_t written = write(fd, data, size);
         if (written < 0) {
@@ -76,33 +76,32 @@ static void write_signal_literal(int fd, const char* data, size_t size) {
 
 static void write_signal_name(int sig) {
     switch (sig) {
-        case SIGABRT:
-            write_signal_literal(STDERR_FILENO, "SIGABRT", 7);
-            break;
+    case SIGABRT:
+        write_signal_literal(STDERR_FILENO, "SIGABRT", 7);
+        break;
 #ifdef SIGBUS
-        case SIGBUS:
-            write_signal_literal(STDERR_FILENO, "SIGBUS", 6);
-            break;
+    case SIGBUS:
+        write_signal_literal(STDERR_FILENO, "SIGBUS", 6);
+        break;
 #endif
-        case SIGFPE:
-            write_signal_literal(STDERR_FILENO, "SIGFPE", 6);
-            break;
-        case SIGILL:
-            write_signal_literal(STDERR_FILENO, "SIGILL", 6);
-            break;
-        case SIGSEGV:
-            write_signal_literal(STDERR_FILENO, "SIGSEGV", 7);
-            break;
-        default:
-            write_signal_literal(STDERR_FILENO, "unknown", 7);
-            break;
+    case SIGFPE:
+        write_signal_literal(STDERR_FILENO, "SIGFPE", 6);
+        break;
+    case SIGILL:
+        write_signal_literal(STDERR_FILENO, "SIGILL", 6);
+        break;
+    case SIGSEGV:
+        write_signal_literal(STDERR_FILENO, "SIGSEGV", 7);
+        break;
+    default:
+        write_signal_literal(STDERR_FILENO, "unknown", 7);
+        break;
     }
 }
 
 static void fatal_signal_handler(int sig) {
     static const char prefix[] = "\r\nFatal signal: ";
-    static const char suffix[] =
-        " while rendering. Terminal recovery was attempted.\r\n";
+    static const char suffix[] = " while rendering. Terminal recovery was attempted.\r\n";
 
     if (g_terminal_session_active) {
         terminal_restore_after_crash();
@@ -115,7 +114,7 @@ static void fatal_signal_handler(int sig) {
     _Exit(128 + sig);
 }
 
-static void record_fatal_report(FatalReport* report, const char* format, ...) {
+static void record_fatal_report(FatalReport *report, const char *format, ...) {
     if (report->active) {
         return;
     }
@@ -145,16 +144,16 @@ static inline double get_time_seconds(void) {
 }
 
 typedef struct RenderContext {
-    VulkanRenderer* renderer;
+    VulkanRenderer *renderer;
     mat4 model_matrix;
-    RenderMaterial* materials;
+    RenderMaterial *materials;
     uint32_t material_count;
     bool enable_lighting;
     bool use_triplanar_mapping;
 } RenderContext;
 
 typedef struct AnimationContext {
-    mat4* bone_matrices;
+    mat4 *bone_matrices;
     bool has_animations;
 } AnimationContext;
 
@@ -173,8 +172,7 @@ typedef struct TerminalSession {
     bool mouse_orbit_enabled;
 } TerminalSession;
 
-static float compute_model_scale_factor(const CameraSetup* camera_setup,
-                                        float model_scale_arg) {
+static float compute_model_scale_factor(const CameraSetup *camera_setup, float model_scale_arg) {
     if (camera_setup->model_scale <= 0.0f) {
         return 1.0f;
     }
@@ -182,7 +180,7 @@ static float compute_model_scale_factor(const CameraSetup* camera_setup,
     return (TARGET_SIZE / camera_setup->model_scale) * model_scale_arg;
 }
 
-static OutputMode output_mode_from_args(const Args* args) {
+static OutputMode output_mode_from_args(const Args *args) {
     if (args->use_kitty_shm) {
         return OUTPUT_MODE_KITTY_SHM;
     }
@@ -221,8 +219,7 @@ static OutputMode detect_output_mode(void) {
 }
 
 static bool output_mode_uses_kitty(const OutputMode output_mode) {
-    return output_mode == OUTPUT_MODE_KITTY_SHM ||
-           output_mode == OUTPUT_MODE_KITTY_DIRECT;
+    return output_mode == OUTPUT_MODE_KITTY_SHM || output_mode == OUTPUT_MODE_KITTY_DIRECT;
 }
 
 static bool output_mode_uses_character_cells(const OutputMode output_mode) {
@@ -233,8 +230,7 @@ static bool output_mode_uses_character_cells(const OutputMode output_mode) {
 
 static bool output_mode_supported_on_platform(const OutputMode output_mode) {
 #ifdef _WIN32
-    if (output_mode == OUTPUT_MODE_KITTY_SHM ||
-        output_mode == OUTPUT_MODE_KITTY_DIRECT ||
+    if (output_mode == OUTPUT_MODE_KITTY_SHM || output_mode == OUTPUT_MODE_KITTY_DIRECT ||
         output_mode == OUTPUT_MODE_SIXEL) {
         return false;
     }
@@ -242,59 +238,55 @@ static bool output_mode_supported_on_platform(const OutputMode output_mode) {
     return true;
 }
 
-static const char* output_mode_flag_name(const OutputMode output_mode) {
+static const char *output_mode_flag_name(const OutputMode output_mode) {
     switch (output_mode) {
-        case OUTPUT_MODE_KITTY_SHM:
-            return "--kitty";
-        case OUTPUT_MODE_KITTY_DIRECT:
-            return "--kitty-direct";
-        case OUTPUT_MODE_SIXEL:
-            return "--sixel";
-        default:
-            return "auto";
+    case OUTPUT_MODE_KITTY_SHM:
+        return "--kitty";
+    case OUTPUT_MODE_KITTY_DIRECT:
+        return "--kitty-direct";
+    case OUTPUT_MODE_SIXEL:
+        return "--sixel";
+    default:
+        return "auto";
     }
 }
 
-static void calculate_output_dimensions(const Args* args, OutputMode output_mode,
-                                        uint32_t* width, uint32_t* height) {
+static void calculate_output_dimensions(const Args *args, OutputMode output_mode, uint32_t *width,
+                                        uint32_t *height) {
     bool use_hash_characters =
         args->use_hash_characters && output_mode_uses_character_cells(output_mode);
-    calculate_render_dimensions(args->width, args->height,
-                                output_mode == OUTPUT_MODE_SIXEL,
-                                output_mode_uses_kitty(output_mode),
-                                use_hash_characters,
+    calculate_render_dimensions(args->width, args->height, output_mode == OUTPUT_MODE_SIXEL,
+                                output_mode_uses_kitty(output_mode), use_hash_characters,
                                 args->show_status_bar, width, height);
 }
 
-static void render_output_frame(OutputMode output_mode, const uint8_t* framebuffer,
-                                uint32_t width, uint32_t height,
-                                bool use_hash_characters) {
-    bool hash_for_characters =
-        use_hash_characters && output_mode_uses_character_cells(output_mode);
+static void render_output_frame(OutputMode output_mode, const uint8_t *framebuffer, uint32_t width,
+                                uint32_t height, bool use_hash_characters) {
+    bool hash_for_characters = use_hash_characters && output_mode_uses_character_cells(output_mode);
     switch (output_mode) {
-        case OUTPUT_MODE_KITTY_SHM:
-            render_kitty_shm(framebuffer, width, height);
-            break;
-        case OUTPUT_MODE_KITTY_DIRECT:
-            render_kitty(framebuffer, width, height);
-            break;
-        case OUTPUT_MODE_SIXEL:
-            render_sixel(framebuffer, width, height);
-            break;
-        case OUTPUT_MODE_PALETTE_CHARACTERS:
-            render_palette_characters(framebuffer, width, height, hash_for_characters);
-            break;
-        case OUTPUT_MODE_BLOCK_CHARACTERS:
-            render_block_characters(framebuffer, width, height, hash_for_characters);
-            break;
-        case OUTPUT_MODE_TRUECOLOR_CHARACTERS:
-        case OUTPUT_MODE_AUTO:
-            render_truecolor_characters(framebuffer, width, height, hash_for_characters);
-            break;
+    case OUTPUT_MODE_KITTY_SHM:
+        render_kitty_shm(framebuffer, width, height);
+        break;
+    case OUTPUT_MODE_KITTY_DIRECT:
+        render_kitty(framebuffer, width, height);
+        break;
+    case OUTPUT_MODE_SIXEL:
+        render_sixel(framebuffer, width, height);
+        break;
+    case OUTPUT_MODE_PALETTE_CHARACTERS:
+        render_palette_characters(framebuffer, width, height, hash_for_characters);
+        break;
+    case OUTPUT_MODE_BLOCK_CHARACTERS:
+        render_block_characters(framebuffer, width, height, hash_for_characters);
+        break;
+    case OUTPUT_MODE_TRUECOLOR_CHARACTERS:
+    case OUTPUT_MODE_AUTO:
+        render_truecolor_characters(framebuffer, width, height, hash_for_characters);
+        break;
     }
 }
 
-static void terminal_session_begin(TerminalSession* session, bool mouse_orbit) {
+static void terminal_session_begin(TerminalSession *session, bool mouse_orbit) {
     session->active = true;
     session->mouse_orbit_enabled = mouse_orbit;
     g_terminal_session_active = 1;
@@ -310,7 +302,7 @@ static void terminal_session_begin(TerminalSession* session, bool mouse_orbit) {
     }
 }
 
-static void terminal_session_end(TerminalSession* session) {
+static void terminal_session_end(TerminalSession *session) {
     if (!session->active) {
         return;
     }
@@ -321,12 +313,12 @@ static void terminal_session_end(TerminalSession* session) {
     session->mouse_orbit_enabled = false;
 }
 
-static void refresh_camera_matrices(Camera* camera, mat4 view, mat4 projection) {
+static void refresh_camera_matrices(Camera *camera, mat4 view, mat4 projection) {
     camera_view_matrix(camera, view);
     camera_projection_matrix(camera, projection);
 }
 
-static bool initialize_bone_matrices(mat4** out_bone_matrices) {
+static bool initialize_bone_matrices(mat4 **out_bone_matrices) {
     *out_bone_matrices = aligned_malloc(MAX_BONES * sizeof(mat4));
     if (!*out_bone_matrices) {
         return false;
@@ -342,11 +334,9 @@ static float calculate_frame_fps(float delta_time) {
     return delta_time > 0.0f ? 1.0f / delta_time : 0.0f;
 }
 
-static bool resize_renderer_if_needed(const Args* args, OutputMode output_mode,
-                                      VulkanRenderer* renderer,
-                                      DcatMutex* shared_state_mutex,
-                                      Camera* camera, uint32_t* width,
-                                      uint32_t* height, mat4 view,
+static bool resize_renderer_if_needed(const Args *args, OutputMode output_mode,
+                                      VulkanRenderer *renderer, DcatMutex *shared_state_mutex,
+                                      Camera *camera, uint32_t *width, uint32_t *height, mat4 view,
                                       mat4 projection) {
 #ifdef _WIN32
     g_resize_pending = 1;
@@ -377,8 +367,7 @@ static bool resize_renderer_if_needed(const Args* args, OutputMode output_mode,
     return true;
 }
 
-static const char* get_animation_name(const AnimationContext* anim_ctx,
-                                      const Mesh* mesh,
+static const char *get_animation_name(const AnimationContext *anim_ctx, const Mesh *mesh,
                                       int current_animation_index) {
     if (!anim_ctx->has_animations || current_animation_index < 0 ||
         current_animation_index >= (int)mesh->animations.count) {
@@ -388,23 +377,21 @@ static const char* get_animation_name(const AnimationContext* anim_ctx,
     return mesh->animations.data[current_animation_index].name;
 }
 
-static void setup_model_transform(const Mesh* mesh, const CameraSetup* camera_setup,
-                                   float model_scale_arg, mat4 out_matrix) {
-    float model_scale_factor = compute_model_scale_factor(camera_setup,
-                                                          model_scale_arg);
+static void setup_model_transform(const Mesh *mesh, const CameraSetup *camera_setup,
+                                  float model_scale_arg, mat4 out_matrix) {
+    float model_scale_factor = compute_model_scale_factor(camera_setup, model_scale_arg);
     vec3 model_center;
     glm_vec3_zero(model_center);
 
     if (camera_setup->model_scale > 0.0f) {
-        glm_vec3_copy((float*)camera_setup->target, model_center);
+        glm_vec3_copy((float *)camera_setup->target, model_center);
     }
 
     glm_mat4_identity(out_matrix);
-    glm_mat4_mul(out_matrix, (vec4*)mesh->coordinate_system_transform, out_matrix);
+    glm_mat4_mul(out_matrix, (vec4 *)mesh->coordinate_system_transform, out_matrix);
 
     mat4 scale_mat;
-    glm_scale_make(scale_mat, (vec3){model_scale_factor, model_scale_factor,
-                                      model_scale_factor});
+    glm_scale_make(scale_mat, (vec3){model_scale_factor, model_scale_factor, model_scale_factor});
     glm_mat4_mul(out_matrix, scale_mat, out_matrix);
 
     mat4 translate_mat;
@@ -414,12 +401,11 @@ static void setup_model_transform(const Mesh* mesh, const CameraSetup* camera_se
     glm_mat4_mul(out_matrix, translate_mat, out_matrix);
 }
 
-static void setup_camera_position(const CameraSetup* camera_setup, float model_scale_arg,
-                                   float camera_distance_arg, vec3 out_position) {
-    const float model_scale_factor = compute_model_scale_factor(camera_setup,
-                                                          model_scale_arg);
+static void setup_camera_position(const CameraSetup *camera_setup, float model_scale_arg,
+                                  float camera_distance_arg, vec3 out_position) {
+    const float model_scale_factor = compute_model_scale_factor(camera_setup, model_scale_arg);
     vec3 camera_offset;
-    glm_vec3_sub((float*)camera_setup->position, (float*)camera_setup->target, camera_offset);
+    glm_vec3_sub((float *)camera_setup->position, (float *)camera_setup->target, camera_offset);
     glm_vec3_scale(camera_offset, model_scale_factor, camera_offset);
 
     vec3 camera_target;
@@ -434,86 +420,91 @@ static void setup_camera_position(const CameraSetup* camera_setup, float model_s
     glm_vec3_add(camera_target, camera_offset, out_position);
 }
 
-static void process_input_devices(const KeyState* key_state,
-                                   Camera* camera, const float delta_time, float* move_speed) {
+static void process_input_devices(const KeyState *key_state, Camera *camera, const float delta_time,
+                                  float *move_speed) {
     if (key_state->q) {
         set_atomic_flag(&g_running, false);
         return;
     }
 
-    if (key_state->v) *move_speed /= (1.0f + delta_time);
-    if (key_state->b) *move_speed *= (1.0f + delta_time);
+    if (key_state->v)
+        *move_speed /= (1.0f + delta_time);
+    if (key_state->b)
+        *move_speed *= (1.0f + delta_time);
 
     float speed = (*move_speed) * delta_time;
-    if (key_state->ctrl) speed *= 0.25f;
+    if (key_state->ctrl)
+        speed *= 0.25f;
 
-    if (key_state->w) camera_move_forward(camera, speed);
-    if (key_state->s) camera_move_backward(camera, speed);
-    if (key_state->a) camera_move_left(camera, speed);
-    if (key_state->d) camera_move_right(camera, speed);
-    if (key_state->space) camera_move_up(camera, speed);
-    if (key_state->shift) camera_move_down(camera, speed);
+    if (key_state->w)
+        camera_move_forward(camera, speed);
+    if (key_state->s)
+        camera_move_backward(camera, speed);
+    if (key_state->a)
+        camera_move_left(camera, speed);
+    if (key_state->d)
+        camera_move_right(camera, speed);
+    if (key_state->space)
+        camera_move_up(camera, speed);
+    if (key_state->shift)
+        camera_move_down(camera, speed);
 
     if (key_state->mouse_dx != 0 || key_state->mouse_dy != 0) {
         const float ROTATION_SENSITIVITY = 2.0f;
         const float sensitivity = ROTATION_SENSITIVITY * 0.001f;
         camera_rotate(camera, key_state->mouse_dx * sensitivity,
-                     -key_state->mouse_dy * sensitivity);
+                      -key_state->mouse_dy * sensitivity);
     }
 
     float rot_speed = 2.0f * delta_time;
-    if (key_state->i) camera_rotate(camera, 0.0f, rot_speed);
-    if (key_state->k) camera_rotate(camera, 0.0f, -rot_speed);
-    if (key_state->j) camera_rotate(camera, -rot_speed, 0.0f);
-    if (key_state->l) camera_rotate(camera, rot_speed, 0.0f);
+    if (key_state->i)
+        camera_rotate(camera, 0.0f, rot_speed);
+    if (key_state->k)
+        camera_rotate(camera, 0.0f, -rot_speed);
+    if (key_state->j)
+        camera_rotate(camera, -rot_speed, 0.0f);
+    if (key_state->l)
+        camera_rotate(camera, rot_speed, 0.0f);
 }
 
-static bool render_frame(RenderContext* ctx, const AnimationContext* anim_ctx,
-                         const Mesh* mesh, mat4* view, mat4* projection,
-                         OutputMode output_mode, bool show_status_bar,
-                         bool use_hash_characters,
-                         uint32_t width, uint32_t height,
-                         float fps, float move_speed, const vec3 camera_position,
+static bool render_frame(RenderContext *ctx, const AnimationContext *anim_ctx, const Mesh *mesh,
+                         mat4 *view, mat4 *projection, OutputMode output_mode, bool show_status_bar,
+                         bool use_hash_characters, uint32_t width, uint32_t height, float fps,
+                         float move_speed, const vec3 camera_position,
                          int current_animation_index) {
     mat4 mvp;
     glm_mat4_mul(*projection, *view, mvp);
     glm_mat4_mul(mvp, ctx->model_matrix, mvp);
 
-    const uint8_t* framebuffer = NULL;
-    const mat4* bone_matrix_ptr = NULL;
+    const uint8_t *framebuffer = NULL;
+    const mat4 *bone_matrix_ptr = NULL;
     uint32_t bone_count = 0;
 
     if (anim_ctx->has_animations) {
-        bone_matrix_ptr = (const mat4*)anim_ctx->bone_matrices;
+        bone_matrix_ptr = (const mat4 *)anim_ctx->bone_matrices;
         bone_count = (uint32_t)mesh->skeleton.bones.count;
     }
 
-    if (!vulkan_renderer_render(
-        ctx->renderer, mesh, &mvp, &ctx->model_matrix,
-        ctx->materials, ctx->material_count,
-        ctx->enable_lighting,
-        camera_position, ctx->use_triplanar_mapping,
-        bone_matrix_ptr, bone_count, view, projection,
-        &framebuffer
-    )) {
+    if (!vulkan_renderer_render(ctx->renderer, mesh, &mvp, &ctx->model_matrix, ctx->materials,
+                                ctx->material_count, ctx->enable_lighting, camera_position,
+                                ctx->use_triplanar_mapping, bone_matrix_ptr, bone_count, view,
+                                projection, &framebuffer)) {
         return false;
     }
 
     if (framebuffer) {
-        render_output_frame(output_mode, framebuffer, width, height,
-                           use_hash_characters);
+        render_output_frame(output_mode, framebuffer, width, height, use_hash_characters);
 
         if (show_status_bar) {
             draw_status_bar(fps, move_speed, camera_position,
-                            get_animation_name(anim_ctx, mesh,
-                                               current_animation_index));
+                            get_animation_name(anim_ctx, mesh, current_animation_index));
         }
     }
 
     return true;
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     Args args = parse_args(argc, argv);
     if (!validate_args(&args)) {
         return 1;
@@ -576,18 +567,18 @@ int main(int argc, char* argv[]) {
     calculate_output_dimensions(&args, output_mode, &width, &height);
     g_resize_pending = 0;
 
-    VulkanRenderer* renderer = NULL;
+    VulkanRenderer *renderer = NULL;
     Mesh mesh;
     mesh_init(&mesh);
-    MaterialInfo* model_materials = NULL;
+    MaterialInfo *model_materials = NULL;
     size_t model_material_count = 0;
-    Texture* diffuse_textures = NULL;
-    Texture* normal_textures = NULL;
-    RenderMaterial* render_materials = NULL;
+    Texture *diffuse_textures = NULL;
+    Texture *normal_textures = NULL;
+    RenderMaterial *render_materials = NULL;
     Mesh skydome_mesh;
     mesh_init(&skydome_mesh);
     Texture skydome_texture = {0};
-    mat4* bone_matrices = NULL;
+    mat4 *bone_matrices = NULL;
     bool has_uvs = false;
     bool has_animations = false;
     bool has_skydome = false;
@@ -600,9 +591,9 @@ int main(int argc, char* argv[]) {
 
     renderer = vulkan_renderer_create(width, height);
     if (!renderer || !vulkan_renderer_initialize(renderer)) {
-        const char* renderer_error = renderer ? vulkan_renderer_get_last_error(renderer) : NULL;
-        fprintf(stderr, "%s\n", renderer_error ? renderer_error
-                                              : "Failed to initialize Vulkan renderer");
+        const char *renderer_error = renderer ? vulkan_renderer_get_last_error(renderer) : NULL;
+        fprintf(stderr, "%s\n",
+                renderer_error ? renderer_error : "Failed to initialize Vulkan renderer");
         goto cleanup;
     }
     vulkan_renderer_set_light_direction(renderer, (vec3){0.0f, -1.0f, -0.5f});
@@ -630,8 +621,8 @@ int main(int argc, char* argv[]) {
     }
 
     for (size_t i = 0; i < model_material_count; i++) {
-        load_diffuse_texture(args.model_path, args.texture_path,
-                             &model_materials[i], &diffuse_textures[i]);
+        load_diffuse_texture(args.model_path, args.texture_path, &model_materials[i],
+                             &diffuse_textures[i]);
         load_normal_texture(args.normal_map_path, &model_materials[i], &normal_textures[i]);
 
         render_materials[i].diffuse = &diffuse_textures[i];
@@ -648,9 +639,9 @@ int main(int argc, char* argv[]) {
     has_skydome = load_skydome(args.skydome_path, &skydome_mesh, &skydome_texture);
     if (has_skydome) {
         if (!vulkan_renderer_set_skydome(renderer, &skydome_mesh, &skydome_texture)) {
-            const char* renderer_error = vulkan_renderer_get_last_error(renderer);
-            fprintf(stderr, "%s\n", renderer_error ? renderer_error
-                                                  : "Failed to upload skydome resources");
+            const char *renderer_error = vulkan_renderer_get_last_error(renderer);
+            fprintf(stderr, "%s\n",
+                    renderer_error ? renderer_error : "Failed to upload skydome resources");
             goto cleanup;
         }
     }
@@ -662,8 +653,7 @@ int main(int argc, char* argv[]) {
     setup_model_transform(&mesh, &camera_setup, args.model_scale, model_matrix);
 
     vec3 camera_position;
-    setup_camera_position(&camera_setup, args.model_scale, args.camera_distance,
-                          camera_position);
+    setup_camera_position(&camera_setup, args.model_scale, args.camera_distance, camera_position);
 
     vec3 camera_target;
     glm_vec3_zero(camera_target);
@@ -690,11 +680,17 @@ int main(int argc, char* argv[]) {
 
     double last_frame_time = get_time_seconds();
 
-    InputThreadData input_data = {
-        &camera, renderer, &anim_state, &mesh, &shared_state_mutex, &g_running,
-        args.fps_controls, args.mouse_orbit, args.mouse_sensitivity, has_animations,
-        &key_state
-    };
+    InputThreadData input_data = {&camera,
+                                  renderer,
+                                  &anim_state,
+                                  &mesh,
+                                  &shared_state_mutex,
+                                  &g_running,
+                                  args.fps_controls,
+                                  args.mouse_orbit,
+                                  args.mouse_sensitivity,
+                                  has_animations,
+                                  &key_state};
     if (!dcat_thread_create(&input_thread, input_thread_func, &input_data)) {
         record_fatal_report(&fatal_report, "Failed to start input thread");
         goto cleanup;
@@ -711,19 +707,16 @@ int main(int argc, char* argv[]) {
     };
     glm_mat4_copy(model_matrix, render_ctx.model_matrix);
 
-    AnimationContext anim_ctx = {
-        bone_matrices, has_animations
-    };
+    AnimationContext anim_ctx = {bone_matrices, has_animations};
 
     float total_spin = 0.0f;
     mat4 base_model_matrix;
     glm_mat4_copy(render_ctx.model_matrix, base_model_matrix);
 
     while (get_atomic_flag(&g_running)) {
-        if (!resize_renderer_if_needed(&args, output_mode, renderer,
-                                       &shared_state_mutex, &camera,
+        if (!resize_renderer_if_needed(&args, output_mode, renderer, &shared_state_mutex, &camera,
                                        &width, &height, view, projection)) {
-            const char* renderer_error = vulkan_renderer_get_last_error(renderer);
+            const char *renderer_error = vulkan_renderer_get_last_error(renderer);
             record_fatal_report(&fatal_report, "%s",
                                 renderer_error ? renderer_error
                                                : "Failed to resize Vulkan renderer");
@@ -745,8 +738,7 @@ int main(int argc, char* argv[]) {
 
         dcat_mutex_lock(&shared_state_mutex);
         if (args.fps_controls) {
-            process_input_devices(&key_state, &camera, delta_time,
-                                  &move_speed);
+            process_input_devices(&key_state, &camera, delta_time, &move_speed);
         }
         vec3 camera_forward;
         camera_forward_direction(&camera, camera_forward);
@@ -760,16 +752,13 @@ int main(int argc, char* argv[]) {
         }
         dcat_mutex_unlock(&shared_state_mutex);
 
-        if (!render_frame(&render_ctx, &anim_ctx, &mesh, &view, &projection,
-                          output_mode, args.show_status_bar,
-                          args.use_hash_characters, width, height,
-                          calculate_frame_fps(delta_time), move_speed,
-                          camera_position_snapshot,
+        if (!render_frame(&render_ctx, &anim_ctx, &mesh, &view, &projection, output_mode,
+                          args.show_status_bar, args.use_hash_characters, width, height,
+                          calculate_frame_fps(delta_time), move_speed, camera_position_snapshot,
                           current_animation_index_snapshot)) {
-            const char* renderer_error = vulkan_renderer_get_last_error(renderer);
+            const char *renderer_error = vulkan_renderer_get_last_error(renderer);
             record_fatal_report(&fatal_report, "%s",
-                                renderer_error ? renderer_error
-                                               : "Rendering failed");
+                                renderer_error ? renderer_error : "Rendering failed");
             goto cleanup;
         }
 

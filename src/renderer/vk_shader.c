@@ -49,34 +49,32 @@ static void get_executable_directory(char *out, const size_t out_size) {
     last_slash[1] = '\0';
 }
 
-char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size) {
+char *read_shader_file(VulkanRenderer *r, const char *filename, size_t *out_size) {
     enum { MAX_SHADER_FILENAME_LEN = 255, MAX_SHADER_DIR_LEN = 240 };
 #ifdef _WIN32
-    const char* search_paths[] = {
-        "",  // Will be replaced with exe_dir/shaders/
-        "",  // Will be replaced with exe_dir
+    const char *search_paths[] = {
+        "", // Will be replaced with exe_dir/shaders/
+        "", // Will be replaced with exe_dir
         "./shaders/",
         "../share/dcat/shaders/",
     };
 #else
-    const char* search_paths[] = {
-        "",  // Will be replaced with exe_dir/shaders/
-        "",  // Will be replaced with exe_dir (for build directory)
-        "./shaders/",
-        "/usr/local/share/dcat/shaders/",
-        "/usr/share/dcat/shaders/"
-    };
+    const char *search_paths[] = {"", // Will be replaced with exe_dir/shaders/
+                                  "", // Will be replaced with exe_dir (for build directory)
+                                  "./shaders/", "/usr/local/share/dcat/shaders/",
+                                  "/usr/share/dcat/shaders/"};
 #endif
 
     // Get executable directory
     char exe_dir[4096] = {0};
     get_executable_directory(exe_dir, sizeof(exe_dir));
-    
+
     // Try shader directory first if set
     if (r->shader_directory[0]) {
         char path[512];
-        snprintf(path, sizeof(path), "%s%.*s", r->shader_directory, MAX_SHADER_FILENAME_LEN, filename);
-        FILE* f = fopen(path, "rb");
+        snprintf(path, sizeof(path), "%s%.*s", r->shader_directory, MAX_SHADER_FILENAME_LEN,
+                 filename);
+        FILE *f = fopen(path, "rb");
         if (f) {
             fseek(f, 0, SEEK_END);
             const long file_size = ftell(f);
@@ -88,7 +86,7 @@ char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size
             }
 
             *out_size = (size_t)file_size;
-            char* buffer = malloc(*out_size);
+            char *buffer = malloc(*out_size);
             if (!buffer) {
                 fclose(f);
                 return NULL;
@@ -104,20 +102,23 @@ char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size
             return buffer;
         }
     }
-    
+
     // Try various paths
     for (size_t i = 0; i < (sizeof(search_paths) / sizeof(search_paths[0])); i++) {
         char path[512];
         if (i == 0 && exe_dir[0]) {
-            snprintf(path, sizeof(path), "%.*sshaders/%.*s", MAX_SHADER_DIR_LEN, exe_dir, MAX_SHADER_FILENAME_LEN, filename);
+            snprintf(path, sizeof(path), "%.*sshaders/%.*s", MAX_SHADER_DIR_LEN, exe_dir,
+                     MAX_SHADER_FILENAME_LEN, filename);
         } else if (i == 1 && exe_dir[0]) {
-            snprintf(path, sizeof(path), "%.*s%.*s", MAX_SHADER_DIR_LEN, exe_dir, MAX_SHADER_FILENAME_LEN, filename);
+            snprintf(path, sizeof(path), "%.*s%.*s", MAX_SHADER_DIR_LEN, exe_dir,
+                     MAX_SHADER_FILENAME_LEN, filename);
         } else {
-            snprintf(path, sizeof(path), "%s%.*s", search_paths[i], MAX_SHADER_FILENAME_LEN, filename);
+            snprintf(path, sizeof(path), "%s%.*s", search_paths[i], MAX_SHADER_FILENAME_LEN,
+                     filename);
         }
         normalize_path_separators(path);
-        
-        FILE* f = fopen(path, "rb");
+
+        FILE *f = fopen(path, "rb");
         if (f) {
             fseek(f, 0, SEEK_END);
             const long file_size = ftell(f);
@@ -129,7 +130,7 @@ char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size
             }
 
             *out_size = (size_t)file_size;
-            char* buffer = malloc(*out_size);
+            char *buffer = malloc(*out_size);
             if (!buffer) {
                 fclose(f);
                 continue;
@@ -142,9 +143,9 @@ char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size
             }
 
             fclose(f);
-            
+
             // Cache shader directory
-            const char* last_slash = strrchr(path, '/');
+            const char *last_slash = strrchr(path, '/');
             if (last_slash) {
                 const size_t dir_len = last_slash - path + 1;
                 if (dir_len < sizeof(r->shader_directory)) {
@@ -156,16 +157,16 @@ char* read_shader_file(VulkanRenderer* r, const char* filename, size_t* out_size
             return buffer;
         }
     }
-    
+
     fprintf(stderr, "Failed to find shader file: %s\n", filename);
     return NULL;
 }
 
-VkShaderModule create_shader_module(VulkanRenderer* r, const char* code, size_t size) {
+VkShaderModule create_shader_module(VulkanRenderer *r, const char *code, size_t size) {
     VkShaderModuleCreateInfo create_info = {.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
     create_info.codeSize = size;
-    create_info.pCode = (const uint32_t*)code;
-    
+    create_info.pCode = (const uint32_t *)code;
+
     VkShaderModule shader_module;
     if (vkCreateShaderModule(r->device, &create_info, NULL, &shader_module) != VK_SUCCESS) {
         fprintf(stderr, "Failed to create shader module\n");

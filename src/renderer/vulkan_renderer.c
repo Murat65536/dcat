@@ -9,50 +9,73 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char* vk_result_to_string(VkResult result) {
+static const char *vk_result_to_string(VkResult result) {
     switch (result) {
-        case VK_SUCCESS: return "VK_SUCCESS";
-        case VK_NOT_READY: return "VK_NOT_READY";
-        case VK_TIMEOUT: return "VK_TIMEOUT";
-        case VK_EVENT_SET: return "VK_EVENT_SET";
-        case VK_EVENT_RESET: return "VK_EVENT_RESET";
-        case VK_INCOMPLETE: return "VK_INCOMPLETE";
-        case VK_ERROR_OUT_OF_HOST_MEMORY: return "VK_ERROR_OUT_OF_HOST_MEMORY";
-        case VK_ERROR_OUT_OF_DEVICE_MEMORY: return "VK_ERROR_OUT_OF_DEVICE_MEMORY";
-        case VK_ERROR_INITIALIZATION_FAILED: return "VK_ERROR_INITIALIZATION_FAILED";
-        case VK_ERROR_DEVICE_LOST: return "VK_ERROR_DEVICE_LOST";
-        case VK_ERROR_MEMORY_MAP_FAILED: return "VK_ERROR_MEMORY_MAP_FAILED";
-        case VK_ERROR_LAYER_NOT_PRESENT: return "VK_ERROR_LAYER_NOT_PRESENT";
-        case VK_ERROR_EXTENSION_NOT_PRESENT: return "VK_ERROR_EXTENSION_NOT_PRESENT";
-        case VK_ERROR_FEATURE_NOT_PRESENT: return "VK_ERROR_FEATURE_NOT_PRESENT";
-        case VK_ERROR_INCOMPATIBLE_DRIVER: return "VK_ERROR_INCOMPATIBLE_DRIVER";
-        case VK_ERROR_TOO_MANY_OBJECTS: return "VK_ERROR_TOO_MANY_OBJECTS";
-        case VK_ERROR_FORMAT_NOT_SUPPORTED: return "VK_ERROR_FORMAT_NOT_SUPPORTED";
-        case VK_ERROR_FRAGMENTED_POOL: return "VK_ERROR_FRAGMENTED_POOL";
-        case VK_ERROR_SURFACE_LOST_KHR: return "VK_ERROR_SURFACE_LOST_KHR";
-        case VK_ERROR_OUT_OF_DATE_KHR: return "VK_ERROR_OUT_OF_DATE_KHR";
-        case VK_SUBOPTIMAL_KHR: return "VK_SUBOPTIMAL_KHR";
-        default: return "VK_ERROR_UNKNOWN";
+    case VK_SUCCESS:
+        return "VK_SUCCESS";
+    case VK_NOT_READY:
+        return "VK_NOT_READY";
+    case VK_TIMEOUT:
+        return "VK_TIMEOUT";
+    case VK_EVENT_SET:
+        return "VK_EVENT_SET";
+    case VK_EVENT_RESET:
+        return "VK_EVENT_RESET";
+    case VK_INCOMPLETE:
+        return "VK_INCOMPLETE";
+    case VK_ERROR_OUT_OF_HOST_MEMORY:
+        return "VK_ERROR_OUT_OF_HOST_MEMORY";
+    case VK_ERROR_OUT_OF_DEVICE_MEMORY:
+        return "VK_ERROR_OUT_OF_DEVICE_MEMORY";
+    case VK_ERROR_INITIALIZATION_FAILED:
+        return "VK_ERROR_INITIALIZATION_FAILED";
+    case VK_ERROR_DEVICE_LOST:
+        return "VK_ERROR_DEVICE_LOST";
+    case VK_ERROR_MEMORY_MAP_FAILED:
+        return "VK_ERROR_MEMORY_MAP_FAILED";
+    case VK_ERROR_LAYER_NOT_PRESENT:
+        return "VK_ERROR_LAYER_NOT_PRESENT";
+    case VK_ERROR_EXTENSION_NOT_PRESENT:
+        return "VK_ERROR_EXTENSION_NOT_PRESENT";
+    case VK_ERROR_FEATURE_NOT_PRESENT:
+        return "VK_ERROR_FEATURE_NOT_PRESENT";
+    case VK_ERROR_INCOMPATIBLE_DRIVER:
+        return "VK_ERROR_INCOMPATIBLE_DRIVER";
+    case VK_ERROR_TOO_MANY_OBJECTS:
+        return "VK_ERROR_TOO_MANY_OBJECTS";
+    case VK_ERROR_FORMAT_NOT_SUPPORTED:
+        return "VK_ERROR_FORMAT_NOT_SUPPORTED";
+    case VK_ERROR_FRAGMENTED_POOL:
+        return "VK_ERROR_FRAGMENTED_POOL";
+    case VK_ERROR_SURFACE_LOST_KHR:
+        return "VK_ERROR_SURFACE_LOST_KHR";
+    case VK_ERROR_OUT_OF_DATE_KHR:
+        return "VK_ERROR_OUT_OF_DATE_KHR";
+    case VK_SUBOPTIMAL_KHR:
+        return "VK_SUBOPTIMAL_KHR";
+    default:
+        return "VK_ERROR_UNKNOWN";
     }
 }
 
-static void set_wireframe_mode(atomic_bool* wireframe_mode, bool enabled) {
+static void set_wireframe_mode(atomic_bool *wireframe_mode, bool enabled) {
     *wireframe_mode = enabled;
 }
 
-static bool get_wireframe_mode(const atomic_bool* wireframe_mode) {
+static bool get_wireframe_mode(const atomic_bool *wireframe_mode) {
     return *wireframe_mode;
 }
 
-void vulkan_renderer_clear_error(VulkanRenderer* r) {
-    if (!r) return;
+void vulkan_renderer_clear_error(VulkanRenderer *r) {
+    if (!r)
+        return;
 
     r->last_error_code = VK_SUCCESS;
     r->last_error_message[0] = '\0';
 }
 
-void vulkan_renderer_set_error(VulkanRenderer* r, VkResult result,
-                               const char* operation, const char* format, ...) {
+void vulkan_renderer_set_error(VulkanRenderer *r, VkResult result, const char *operation,
+                               const char *format, ...) {
     if (!r || r->last_error_message[0] != '\0') {
         return;
     }
@@ -65,21 +88,22 @@ void vulkan_renderer_set_error(VulkanRenderer* r, VkResult result,
     vsnprintf(detail, sizeof(detail), format, args);
     va_end(args);
 
-    snprintf(r->last_error_message, sizeof(r->last_error_message),
-             "%s: %s (%s, %d)", operation, detail, vk_result_to_string(result), result);
+    snprintf(r->last_error_message, sizeof(r->last_error_message), "%s: %s (%s, %d)", operation,
+             detail, vk_result_to_string(result), result);
 }
 
-const char* vulkan_renderer_get_last_error(const VulkanRenderer* r) {
+const char *vulkan_renderer_get_last_error(const VulkanRenderer *r) {
     return (r && r->last_error_message[0] != '\0') ? r->last_error_message : NULL;
 }
 
-VkResult vulkan_renderer_get_last_error_code(const VulkanRenderer* r) {
+VkResult vulkan_renderer_get_last_error_code(const VulkanRenderer *r) {
     return r ? r->last_error_code : VK_SUCCESS;
 }
 
-VulkanRenderer* vulkan_renderer_create(uint32_t width, uint32_t height) {
-    VulkanRenderer* r = calloc(1, sizeof(VulkanRenderer));
-    if (!r) return NULL;
+VulkanRenderer *vulkan_renderer_create(uint32_t width, uint32_t height) {
+    VulkanRenderer *r = calloc(1, sizeof(VulkanRenderer));
+    if (!r)
+        return NULL;
 
     r->width = width;
     r->height = height;
@@ -89,30 +113,47 @@ VulkanRenderer* vulkan_renderer_create(uint32_t width, uint32_t height) {
     return r;
 }
 
-void vulkan_renderer_destroy(VulkanRenderer* r) {
-    if (!r) return;
+void vulkan_renderer_destroy(VulkanRenderer *r) {
+    if (!r)
+        return;
     cleanup(r);
     free(r);
 }
 
-bool vulkan_renderer_initialize(VulkanRenderer* r) {
+bool vulkan_renderer_initialize(VulkanRenderer *r) {
     vulkan_renderer_clear_error(r);
-    if (!create_instance(r)) return false;
-    if (!select_physical_device(r)) return false;
-    if (!create_logical_device(r)) return false;
-    if (!create_command_pool(r)) return false;
-    if (!create_descriptor_pool(r)) return false;
-    if (!create_descriptor_set_layout(r)) return false;
-    if (!create_pipeline_layout(r)) return false;
-    if (!create_render_pass(r)) return false;
-    if (!create_graphics_pipeline(r)) return false;
-    if (!create_render_targets(r)) return false;
-    if (!create_framebuffer(r)) return false;
-    if (!create_staging_buffers(r)) return false;
-    if (!create_uniform_buffers(r)) return false;
-    if (!create_sampler(r)) return false;
-    if (!create_command_buffers(r)) return false;
-    if (!create_sync_objects(r)) return false;
+    if (!create_instance(r))
+        return false;
+    if (!select_physical_device(r))
+        return false;
+    if (!create_logical_device(r))
+        return false;
+    if (!create_command_pool(r))
+        return false;
+    if (!create_descriptor_pool(r))
+        return false;
+    if (!create_descriptor_set_layout(r))
+        return false;
+    if (!create_pipeline_layout(r))
+        return false;
+    if (!create_render_pass(r))
+        return false;
+    if (!create_graphics_pipeline(r))
+        return false;
+    if (!create_render_targets(r))
+        return false;
+    if (!create_framebuffer(r))
+        return false;
+    if (!create_staging_buffers(r))
+        return false;
+    if (!create_uniform_buffers(r))
+        return false;
+    if (!create_sampler(r))
+        return false;
+    if (!create_command_buffers(r))
+        return false;
+    if (!create_sync_objects(r))
+        return false;
 
     create_skydome_pipeline(r);
 
@@ -124,19 +165,19 @@ bool vulkan_renderer_initialize(VulkanRenderer* r) {
     return true;
 }
 
-void vulkan_renderer_set_light_direction(VulkanRenderer* r, const float* direction) {
-    glm_vec3_normalize_to((float*)direction, r->normalized_light_dir);
+void vulkan_renderer_set_light_direction(VulkanRenderer *r, const float *direction) {
+    glm_vec3_normalize_to((float *)direction, r->normalized_light_dir);
 }
 
-void vulkan_renderer_set_wireframe_mode(VulkanRenderer* r, bool enabled) {
+void vulkan_renderer_set_wireframe_mode(VulkanRenderer *r, bool enabled) {
     set_wireframe_mode(&r->wireframe_mode, enabled);
 }
 
-bool vulkan_renderer_get_wireframe_mode(const VulkanRenderer* r) {
+bool vulkan_renderer_get_wireframe_mode(const VulkanRenderer *r) {
     return get_wireframe_mode(&r->wireframe_mode);
 }
 
-bool vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height) {
+bool vulkan_renderer_resize(VulkanRenderer *r, uint32_t width, uint32_t height) {
     vulkan_renderer_clear_error(r);
 
     VkResult result = vkDeviceWaitIdle(r->device);
@@ -173,13 +214,13 @@ bool vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height) 
     return true;
 }
 
-void vulkan_renderer_wait_idle(const VulkanRenderer* r) {
+void vulkan_renderer_wait_idle(const VulkanRenderer *r) {
     if (r && r->device != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(r->device);
     }
 }
 
-bool vulkan_renderer_set_skydome(VulkanRenderer* r, const Mesh* mesh, const Texture* texture) {
+bool vulkan_renderer_set_skydome(VulkanRenderer *r, const Mesh *mesh, const Texture *texture) {
     vulkan_renderer_clear_error(r);
     r->skydome_mesh = mesh;
     r->skydome_texture = texture;
@@ -198,12 +239,10 @@ bool vulkan_renderer_set_skydome(VulkanRenderer* r, const Mesh* mesh, const Text
         VkDeviceSize index_size = sizeof(uint32_t) * mesh->indices.count;
 
         if (!upload_buffer_via_staging(r, mesh->vertices.data, vertex_size,
-                                       VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                                       &r->skydome_vertex_buffer,
+                                       VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, &r->skydome_vertex_buffer,
                                        &r->skydome_vertex_buffer_alloc) ||
             !upload_buffer_via_staging(r, mesh->indices.data, index_size,
-                                       VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                                       &r->skydome_index_buffer,
+                                       VK_BUFFER_USAGE_INDEX_BUFFER_BIT, &r->skydome_index_buffer,
                                        &r->skydome_index_buffer_alloc)) {
             return false;
         }
@@ -218,7 +257,8 @@ bool vulkan_renderer_set_skydome(VulkanRenderer* r, const Mesh* mesh, const Text
     return true;
 }
 
-static void cleanup_material_fragment_uniform_buffers(const VulkanRenderer* r, MaterialGPUData* mat) {
+static void cleanup_material_fragment_uniform_buffers(const VulkanRenderer *r,
+                                                      MaterialGPUData *mat) {
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         if (mat->fragment_uniform_buffers[i] != VK_NULL_HANDLE) {
             vkDestroyBuffer(r->device, mat->fragment_uniform_buffers[i], NULL);
@@ -232,18 +272,17 @@ static void cleanup_material_fragment_uniform_buffers(const VulkanRenderer* r, M
     }
 }
 
-static bool allocate_descriptor_sets_from_pool(VulkanRenderer* r, VkDescriptorPool descriptor_pool,
+static bool allocate_descriptor_sets_from_pool(VulkanRenderer *r, VkDescriptorPool descriptor_pool,
                                                VkDescriptorSetLayout layout,
-                                               VkDescriptorSet* descriptor_sets,
-                                               const char* detail) {
+                                               VkDescriptorSet *descriptor_sets,
+                                               const char *detail) {
     VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         layouts[i] = layout;
     }
 
-    VkDescriptorSetAllocateInfo alloc_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
-    };
+    VkDescriptorSetAllocateInfo alloc_info = {.sType =
+                                                  VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     alloc_info.descriptorPool = descriptor_pool;
     alloc_info.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
     alloc_info.pSetLayouts = layouts;
@@ -271,7 +310,7 @@ static uint32_t next_material_descriptor_capacity(uint32_t current_capacity,
     return capacity;
 }
 
-static bool rebuild_material_descriptor_pool(VulkanRenderer* r, uint32_t material_count,
+static bool rebuild_material_descriptor_pool(VulkanRenderer *r, uint32_t material_count,
                                              uint32_t material_capacity) {
     VkResult result = vkDeviceWaitIdle(r->device);
     if (result != VK_SUCCESS) {
@@ -294,7 +333,7 @@ static bool rebuild_material_descriptor_pool(VulkanRenderer* r, uint32_t materia
         return false;
     }
 
-    VkDescriptorSet* new_material_sets = NULL;
+    VkDescriptorSet *new_material_sets = NULL;
     if (material_count > 0) {
         size_t total_sets = (size_t)material_count * MAX_FRAMES_IN_FLIGHT;
         new_material_sets = calloc(total_sets, sizeof(*new_material_sets));
@@ -306,9 +345,10 @@ static bool rebuild_material_descriptor_pool(VulkanRenderer* r, uint32_t materia
         }
 
         for (uint32_t m = 0; m < material_count; m++) {
-            if (!allocate_descriptor_sets_from_pool(r, new_pool, r->descriptor_set_layout,
-                                                    &new_material_sets[m * MAX_FRAMES_IN_FLIGHT],
-                                                    "Failed to allocate material descriptor sets")) {
+            if (!allocate_descriptor_sets_from_pool(
+                    r, new_pool, r->descriptor_set_layout,
+                    &new_material_sets[m * MAX_FRAMES_IN_FLIGHT],
+                    "Failed to allocate material descriptor sets")) {
                 free(new_material_sets);
                 vkDestroyDescriptorPool(r->device, new_pool, NULL);
                 return false;
@@ -328,8 +368,7 @@ static bool rebuild_material_descriptor_pool(VulkanRenderer* r, uint32_t materia
     }
 
     for (uint32_t m = 0; m < material_count; m++) {
-        memcpy(r->material_gpu[m].descriptor_sets,
-               &new_material_sets[m * MAX_FRAMES_IN_FLIGHT],
+        memcpy(r->material_gpu[m].descriptor_sets, &new_material_sets[m * MAX_FRAMES_IN_FLIGHT],
                sizeof(r->material_gpu[m].descriptor_sets));
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             r->material_gpu[m].descriptor_sets_dirty[i] = true;
@@ -345,13 +384,14 @@ static bool rebuild_material_descriptor_pool(VulkanRenderer* r, uint32_t materia
 }
 
 // Ensure per-material GPU resources are allocated for the given material count
-static bool ensure_material_gpu(VulkanRenderer* r, const uint32_t material_count) {
-    if (r->material_gpu_count >= material_count) return true;
+static bool ensure_material_gpu(VulkanRenderer *r, const uint32_t material_count) {
+    if (r->material_gpu_count >= material_count)
+        return true;
 
     const uint32_t old_material_count = r->material_gpu_count;
 
     // Grow the array
-    MaterialGPUData* new_mats = calloc(material_count, sizeof(MaterialGPUData));
+    MaterialGPUData *new_mats = calloc(material_count, sizeof(MaterialGPUData));
     if (!new_mats) {
         vulkan_renderer_set_error(r, VK_ERROR_OUT_OF_HOST_MEMORY, "calloc",
                                   "Failed to allocate material GPU data");
@@ -365,16 +405,14 @@ static bool ensure_material_gpu(VulkanRenderer* r, const uint32_t material_count
 
     // Allocate fragment UBOs for new materials before rebuilding descriptor sets.
     for (uint32_t m = old_material_count; m < material_count; m++) {
-        MaterialGPUData* mat = &r->material_gpu[m];
+        MaterialGPUData *mat = &r->material_gpu[m];
 
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             mat->descriptor_sets_dirty[i] = true;
-            if (!create_buffer(r, sizeof(FragmentUniforms),
-                               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                               &mat->fragment_uniform_buffers[i],
-                               &mat->fragment_uniform_buffer_allocs[i])) {
+            if (!create_buffer(
+                    r, sizeof(FragmentUniforms), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                    &mat->fragment_uniform_buffers[i], &mat->fragment_uniform_buffer_allocs[i])) {
                 for (uint32_t cleanup_idx = old_material_count; cleanup_idx <= m; cleanup_idx++) {
                     cleanup_material_fragment_uniform_buffers(r, &r->material_gpu[cleanup_idx]);
                 }
@@ -383,8 +421,8 @@ static bool ensure_material_gpu(VulkanRenderer* r, const uint32_t material_count
         }
     }
 
-    const uint32_t new_capacity = next_material_descriptor_capacity(
-        r->descriptor_pool_material_capacity, material_count);
+    const uint32_t new_capacity =
+        next_material_descriptor_capacity(r->descriptor_pool_material_capacity, material_count);
     if (!rebuild_material_descriptor_pool(r, material_count, new_capacity)) {
         for (uint32_t m = old_material_count; m < material_count; m++) {
             cleanup_material_fragment_uniform_buffers(r, &r->material_gpu[m]);
@@ -396,28 +434,16 @@ static bool ensure_material_gpu(VulkanRenderer* r, const uint32_t material_count
     return true;
 }
 
-bool vulkan_renderer_render(
-    VulkanRenderer* r,
-    const Mesh* mesh,
-    mat4* mvp,
-    mat4* model,
-    const RenderMaterial* materials,
-    uint32_t material_count,
-    bool enable_lighting,
-    const vec3 camera_pos,
-    bool use_triplanar_mapping,
-    const mat4* bone_matrices,
-    uint32_t bone_count,
-    mat4* view,
-    mat4* projection,
-    const uint8_t** out_framebuffer
-) {
+bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4 *model,
+                            const RenderMaterial *materials, uint32_t material_count,
+                            bool enable_lighting, const vec3 camera_pos, bool use_triplanar_mapping,
+                            const mat4 *bone_matrices, uint32_t bone_count, mat4 *view,
+                            mat4 *projection, const uint8_t **out_framebuffer) {
     vulkan_renderer_clear_error(r);
     *out_framebuffer = NULL;
 
-    VkResult vk_result = vkWaitForFences(r->device, 1,
-                                         &r->in_flight_fences[r->current_frame],
-                                         VK_TRUE, UINT64_MAX);
+    VkResult vk_result =
+        vkWaitForFences(r->device, 1, &r->in_flight_fences[r->current_frame], VK_TRUE, UINT64_MAX);
     if (vk_result != VK_SUCCESS) {
         vulkan_renderer_set_error(r, vk_result, "vkWaitForFences",
                                   "Failed to wait for in-flight fence");
@@ -425,7 +451,7 @@ bool vulkan_renderer_render(
     }
 
     // Read framebuffer from the frame that just completed
-    const uint8_t* result = NULL;
+    const uint8_t *result = NULL;
     uint32_t ready_staging_idx = r->frame_staging_buffers[r->current_frame];
 
     if (r->frame_ready[r->current_frame]) {
@@ -435,19 +461,16 @@ bool vulkan_renderer_render(
         range.size = VK_WHOLE_SIZE;
         vk_result = vkInvalidateMappedMemoryRanges(r->device, 1, &range);
         if (vk_result != VK_SUCCESS) {
-            vulkan_renderer_set_error(r, vk_result,
-                                      "vkInvalidateMappedMemoryRanges",
+            vulkan_renderer_set_error(r, vk_result, "vkInvalidateMappedMemoryRanges",
                                       "Failed to invalidate staging buffer memory");
             return false;
         }
-        result = (const uint8_t*)r->staging_buffer_allocs[ready_staging_idx].mapped;
+        result = (const uint8_t *)r->staging_buffer_allocs[ready_staging_idx].mapped;
     }
 
-    vk_result = vkResetFences(r->device, 1,
-                              &r->in_flight_fences[r->current_frame]);
+    vk_result = vkResetFences(r->device, 1, &r->in_flight_fences[r->current_frame]);
     if (vk_result != VK_SUCCESS) {
-        vulkan_renderer_set_error(r, vk_result, "vkResetFences",
-                                  "Failed to reset in-flight fence");
+        vulkan_renderer_set_error(r, vk_result, "vkResetFences", "Failed to reset in-flight fence");
         return false;
     }
 
@@ -456,15 +479,15 @@ bool vulkan_renderer_render(
     r->frame_staging_buffers[r->current_frame] = write_staging_idx;
 
     // Ensure material GPU resources
-    if (material_count == 0) material_count = 1;
+    if (material_count == 0)
+        material_count = 1;
     if (!ensure_material_gpu(r, material_count)) {
         return false;
     }
 
     // Upload textures for each material
     for (uint32_t m = 0; m < material_count; m++) {
-        if (!update_material_texture(r, &r->material_gpu[m],
-                                     materials[m].diffuse,
+        if (!update_material_texture(r, &r->material_gpu[m], materials[m].diffuse,
                                      materials[m].normal)) {
             return false;
         }
@@ -472,8 +495,7 @@ bool vulkan_renderer_render(
 
     // Update vertex/index buffers
     if (r->cached_mesh_generation != mesh->generation || r->vertex_buffer == VK_NULL_HANDLE) {
-        if (!update_vertex_buffer(r, &mesh->vertices) ||
-            !update_index_buffer(r, &mesh->indices)) {
+        if (!update_vertex_buffer(r, &mesh->vertices) || !update_index_buffer(r, &mesh->indices)) {
             return false;
         }
         r->cached_mesh_generation = mesh->generation;
@@ -481,19 +503,30 @@ bool vulkan_renderer_render(
 
     // Update descriptor sets for each material
     for (uint32_t m = 0; m < material_count; m++) {
-        MaterialGPUData* mat = &r->material_gpu[m];
+        MaterialGPUData *mat = &r->material_gpu[m];
         if (mat->descriptor_sets_dirty[r->current_frame]) {
-            VkDescriptorBufferInfo uniform_info = {r->uniform_buffers[r->current_frame], 0, sizeof(Uniforms)};
-            VkDescriptorImageInfo diffuse_info = {r->sampler, mat->diffuse_image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-            VkDescriptorImageInfo normal_info = {r->sampler, mat->normal_image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-            VkDescriptorBufferInfo frag_uniform_info = {mat->fragment_uniform_buffers[r->current_frame], 0, sizeof(FragmentUniforms)};
+            VkDescriptorBufferInfo uniform_info = {r->uniform_buffers[r->current_frame], 0,
+                                                   sizeof(Uniforms)};
+            VkDescriptorImageInfo diffuse_info = {r->sampler, mat->diffuse_image_view,
+                                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+            VkDescriptorImageInfo normal_info = {r->sampler, mat->normal_image_view,
+                                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+            VkDescriptorBufferInfo frag_uniform_info = {
+                mat->fragment_uniform_buffers[r->current_frame], 0, sizeof(FragmentUniforms)};
 
             VkWriteDescriptorSet writes[4] = {
-                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, mat->descriptor_sets[r->current_frame], 0, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, NULL, &uniform_info, NULL},
-                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, mat->descriptor_sets[r->current_frame], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &diffuse_info, NULL, NULL},
-                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, mat->descriptor_sets[r->current_frame], 2, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &normal_info, NULL, NULL},
-                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, mat->descriptor_sets[r->current_frame], 3, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, NULL, &frag_uniform_info, NULL}
-            };
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL,
+                 mat->descriptor_sets[r->current_frame], 0, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                 NULL, &uniform_info, NULL},
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL,
+                 mat->descriptor_sets[r->current_frame], 1, 0, 1,
+                 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &diffuse_info, NULL, NULL},
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL,
+                 mat->descriptor_sets[r->current_frame], 2, 0, 1,
+                 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &normal_info, NULL, NULL},
+                {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL,
+                 mat->descriptor_sets[r->current_frame], 3, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                 NULL, &frag_uniform_info, NULL}};
 
             vkUpdateDescriptorSets(r->device, 4, writes, 0, NULL);
             mat->descriptor_sets_dirty[r->current_frame] = false;
@@ -528,7 +561,7 @@ bool vulkan_renderer_render(
         FragmentUniforms frag_uniforms = {0};
         glm_vec3_copy(r->normalized_light_dir, frag_uniforms.light_dir);
         frag_uniforms.enable_lighting = enable_lighting ? 1 : 0;
-        glm_vec3_copy((float*)camera_pos, frag_uniforms.camera_pos);
+        glm_vec3_copy((float *)camera_pos, frag_uniforms.camera_pos);
         frag_uniforms.use_triplanar_mapping = use_triplanar_mapping ? 1 : 0;
         frag_uniforms.alpha_cutoff = 0.5f;
         frag_uniforms.specular_strength = materials[m].specular_strength;
@@ -545,28 +578,28 @@ bool vulkan_renderer_render(
 
         // Fill/rim are derived from key light direction so camera-linked key
         // lighting remains visually obvious while orbiting.
-        vec3 fill_dir = {
-            -frag_uniforms.light_dir[0],
-            -frag_uniforms.light_dir[1] - 0.2f,
-            -frag_uniforms.light_dir[2]
-        };
+        vec3 fill_dir = {-frag_uniforms.light_dir[0], -frag_uniforms.light_dir[1] - 0.2f,
+                         -frag_uniforms.light_dir[2]};
         glm_vec3_normalize(fill_dir);
         glm_vec4_copy((vec4){fill_dir[0], fill_dir[1], fill_dir[2], 0.18f},
                       frag_uniforms.fill_light_dir);
 
-        vec3 rim_dir = {
-            -frag_uniforms.light_dir[0],
-            -frag_uniforms.light_dir[1],
-            -frag_uniforms.light_dir[2]
-        };
+        vec3 rim_dir = {-frag_uniforms.light_dir[0], -frag_uniforms.light_dir[1],
+                        -frag_uniforms.light_dir[2]};
         glm_vec3_normalize(rim_dir);
         glm_vec4_copy((vec4){rim_dir[0], rim_dir[1], rim_dir[2], 0.22f},
                       frag_uniforms.rim_light_dir);
 
         switch (materials[m].alpha_mode) {
-            case ALPHA_MODE_MASK: frag_uniforms.alpha_mode = 1; break;
-            case ALPHA_MODE_BLEND: frag_uniforms.alpha_mode = 2; break;
-            default: frag_uniforms.alpha_mode = 0; break;
+        case ALPHA_MODE_MASK:
+            frag_uniforms.alpha_mode = 1;
+            break;
+        case ALPHA_MODE_BLEND:
+            frag_uniforms.alpha_mode = 2;
+            break;
+        default:
+            frag_uniforms.alpha_mode = 0;
+            break;
         }
 
         memcpy(r->material_gpu[m].fragment_uniform_buffer_allocs[r->current_frame].mapped,
@@ -611,7 +644,8 @@ bool vulkan_renderer_render(
         r->skydome_vertex_buffer != VK_NULL_HANDLE && r->skydome_index_buffer != VK_NULL_HANDLE &&
         view != NULL && projection != NULL) {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->skydome_pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->skydome_pipeline_layout, 0, 1, &r->skydome_descriptor_sets[r->current_frame], 0, NULL);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->skydome_pipeline_layout, 0,
+                                1, &r->skydome_descriptor_sets[r->current_frame], 0, NULL);
 
         mat4 sky_view;
         glm_mat4_copy(*view, sky_view);
@@ -619,7 +653,8 @@ bool vulkan_renderer_render(
 
         mat4 sky_mvp;
         glm_mat4_mul(*projection, sky_view, sky_mvp);
-        vkCmdPushConstants(cmd, r->skydome_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), sky_mvp);
+        vkCmdPushConstants(cmd, r->skydome_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                           sizeof(mat4), sky_mvp);
 
         VkBuffer vb[] = {r->skydome_vertex_buffer};
         VkDeviceSize offsets[] = {0};
@@ -632,7 +667,8 @@ bool vulkan_renderer_render(
     VkPipeline active_pipeline =
         get_wireframe_mode(&r->wireframe_mode) ? r->wireframe_pipeline : r->graphics_pipeline;
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline);
-    vkCmdPushConstants(cmd, r->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &push_constants);
+    vkCmdPushConstants(cmd, r->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                       sizeof(PushConstants), &push_constants);
 
     VkBuffer vbs[] = {r->vertex_buffer};
     VkDeviceSize vb_offsets[] = {0};
@@ -641,37 +677,42 @@ bool vulkan_renderer_render(
 
     if (mesh->submeshes.count > 0) {
         for (size_t i = 0; i < mesh->submeshes.count; i++) {
-            const SubMesh* sm = &mesh->submeshes.data[i];
+            const SubMesh *sm = &mesh->submeshes.data[i];
             uint32_t mat_idx = sm->material_index < material_count ? sm->material_index : 0;
-            if (materials[mat_idx].alpha_mode == ALPHA_MODE_BLEND) continue;
+            if (materials[mat_idx].alpha_mode == ALPHA_MODE_BLEND)
+                continue;
 
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->pipeline_layout, 0, 1,
-                                   &r->material_gpu[mat_idx].descriptor_sets[r->current_frame], 0, NULL);
+                                    &r->material_gpu[mat_idx].descriptor_sets[r->current_frame], 0,
+                                    NULL);
             vkCmdDrawIndexed(cmd, sm->index_count, 1, sm->index_offset, 0, 0);
         }
 
         bool has_blend = false;
         for (size_t i = 0; i < mesh->submeshes.count; i++) {
-            const SubMesh* sm = &mesh->submeshes.data[i];
+            const SubMesh *sm = &mesh->submeshes.data[i];
             uint32_t mat_idx = sm->material_index < material_count ? sm->material_index : 0;
-            if (materials[mat_idx].alpha_mode != ALPHA_MODE_BLEND) continue;
+            if (materials[mat_idx].alpha_mode != ALPHA_MODE_BLEND)
+                continue;
 
             if (!has_blend) {
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->blend_pipeline);
-                vkCmdPushConstants(cmd, r->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &push_constants);
+                vkCmdPushConstants(cmd, r->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                                   sizeof(PushConstants), &push_constants);
                 vkCmdBindVertexBuffers(cmd, 0, 1, vbs, vb_offsets);
                 vkCmdBindIndexBuffer(cmd, r->index_buffer, 0, VK_INDEX_TYPE_UINT32);
                 has_blend = true;
             }
 
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->pipeline_layout, 0, 1,
-                                   &r->material_gpu[mat_idx].descriptor_sets[r->current_frame], 0, NULL);
+                                    &r->material_gpu[mat_idx].descriptor_sets[r->current_frame], 0,
+                                    NULL);
             vkCmdDrawIndexed(cmd, sm->index_count, 1, sm->index_offset, 0, 0);
         }
     } else {
         // Fallback: single draw for the whole mesh
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->pipeline_layout, 0, 1,
-                               &r->material_gpu[0].descriptor_sets[r->current_frame], 0, NULL);
+                                &r->material_gpu[0].descriptor_sets[r->current_frame], 0, NULL);
         vkCmdDrawIndexed(cmd, (uint32_t)mesh->indices.count, 1, 0, 0, 0);
     }
 
@@ -685,7 +726,8 @@ bool vulkan_renderer_render(
     region.imageExtent.height = r->height;
     region.imageExtent.depth = 1;
 
-    vkCmdCopyImageToBuffer(cmd, r->color_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, r->staging_buffers[write_staging_idx], 1, &region);
+    vkCmdCopyImageToBuffer(cmd, r->color_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           r->staging_buffers[write_staging_idx], 1, &region);
 
     VkBufferMemoryBarrier buffer_barrier = {.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
     buffer_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -695,7 +737,8 @@ bool vulkan_renderer_render(
     buffer_barrier.buffer = r->staging_buffers[write_staging_idx];
     buffer_barrier.size = VK_WHOLE_SIZE;
 
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, NULL, 1, &buffer_barrier, 0, NULL);
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0,
+                         NULL, 1, &buffer_barrier, 0, NULL);
 
     vk_result = vkEndCommandBuffer(cmd);
     if (vk_result != VK_SUCCESS) {
@@ -708,8 +751,8 @@ bool vulkan_renderer_render(
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &cmd;
 
-    vk_result = vkQueueSubmit(r->graphics_queue, 1, &submit_info,
-                              r->in_flight_fences[r->current_frame]);
+    vk_result =
+        vkQueueSubmit(r->graphics_queue, 1, &submit_info, r->in_flight_fences[r->current_frame]);
     if (vk_result != VK_SUCCESS) {
         vulkan_renderer_set_error(r, vk_result, "vkQueueSubmit",
                                   "Failed to submit render command buffer");

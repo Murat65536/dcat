@@ -1,13 +1,13 @@
 #ifndef DCAT_INPUT_HANDLER_H
 #define DCAT_INPUT_HANDLER_H
 
+#include "../core/threading.h"
+#include "../graphics/animation.h"
+#include "../graphics/camera.h"
+#include "../graphics/model.h"
+#include "../renderer/vulkan_renderer.h"
 #include <stdatomic.h>
 #include <stdbool.h>
-#include "../core/threading.h"
-#include "../graphics/camera.h"
-#include "../graphics/animation.h"
-#include "../renderer/vulkan_renderer.h"
-#include "../graphics/model.h"
 
 typedef enum MouseButton {
     MOUSE_BUTTON_LEFT = 0,
@@ -35,24 +35,24 @@ typedef struct KeyState {
 } KeyState;
 
 typedef struct InputThreadData {
-    Camera* camera;
-    VulkanRenderer* renderer;
-    AnimationState* anim_state;
-    Mesh* mesh;
-    DcatMutex* state_mutex;
-    atomic_bool* running;
+    Camera *camera;
+    VulkanRenderer *renderer;
+    AnimationState *anim_state;
+    Mesh *mesh;
+    DcatMutex *state_mutex;
+    atomic_bool *running;
     bool fps_controls;
     bool mouse_orbit;
     float mouse_sensitivity;
     bool has_animations;
-    KeyState* key_state;
+    KeyState *key_state;
 } InputThreadData;
 
 // Input thread function
 #ifdef _WIN32
-unsigned __stdcall input_thread_func(void* arg);
+unsigned __stdcall input_thread_func(void *arg);
 #else
-void* input_thread_func(void* arg);
+void *input_thread_func(void *arg);
 #endif
 
 #endif

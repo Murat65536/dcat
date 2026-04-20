@@ -1,9 +1,9 @@
 #include "terminal/block_characters.h"
 #include "terminal/terminal.h"
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
 // Persistent buffer for variable-length output
 static char *render_buf = NULL;
@@ -27,7 +27,7 @@ void render_block_characters(const uint8_t *buffer, const uint32_t width, const 
                              const bool use_hash_characters) {
     if (use_hash_characters) {
         const size_t max_size = (sizeof(FRAME_BEGIN) - 1) + (size_t)height * width +
-                          (height > 0 ? height - 1 : 0) + (sizeof(FRAME_END) - 1);
+                                (height > 0 ? height - 1 : 0) + (sizeof(FRAME_END) - 1);
 
         if (render_buf_size < max_size) {
             free(render_buf);
@@ -61,7 +61,7 @@ void render_block_characters(const uint8_t *buffer, const uint32_t width, const 
     // Worst case: every cell is a 3-byte block char
     // Header(12) + rows * width * 3 + newlines(rows-1) + footer(9)
     const size_t max_size = (sizeof(FRAME_BEGIN) - 1) + (size_t)rows * width * 3 +
-                      (rows > 0 ? rows - 1 : 0) + (sizeof(FRAME_END) - 1);
+                            (rows > 0 ? rows - 1 : 0) + (sizeof(FRAME_END) - 1);
 
     if (render_buf_size < max_size) {
         free(render_buf);

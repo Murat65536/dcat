@@ -2,11 +2,11 @@
 #include "vk_memory.h"
 #include <stdio.h>
 
-bool create_command_pool(VulkanRenderer* r) {
+bool create_command_pool(VulkanRenderer *r) {
     VkCommandPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     pool_info.queueFamilyIndex = r->graphics_queue_family;
     pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    
+
     if (vkCreateCommandPool(r->device, &pool_info, NULL, &r->command_pool) != VK_SUCCESS) {
         fprintf(stderr, "Failed to create command pool\n");
         return false;
@@ -14,12 +14,13 @@ bool create_command_pool(VulkanRenderer* r) {
     return true;
 }
 
-bool create_descriptor_pool_with_capacity(VulkanRenderer* r, const uint32_t material_capacity,
-                                          VkDescriptorPool* out_pool) {
+bool create_descriptor_pool_with_capacity(VulkanRenderer *r, const uint32_t material_capacity,
+                                          VkDescriptorPool *out_pool) {
     // Pool sized for per-material descriptor sets plus skydome.
     VkDescriptorPoolSize pool_sizes[2] = {
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         (1 + material_capacity) * MAX_FRAMES_IN_FLIGHT},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (2 * material_capacity + 1) * MAX_FRAMES_IN_FLIGHT},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (1 + material_capacity) * MAX_FRAMES_IN_FLIGHT},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+         (2 * material_capacity + 1) * MAX_FRAMES_IN_FLIGHT},
     };
 
     VkDescriptorPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
@@ -38,7 +39,7 @@ bool create_descriptor_pool_with_capacity(VulkanRenderer* r, const uint32_t mate
     return true;
 }
 
-bool create_descriptor_pool(VulkanRenderer* r) {
+bool create_descriptor_pool(VulkanRenderer *r) {
     uint32_t material_capacity = r->descriptor_pool_material_capacity;
     if (material_capacity < INITIAL_MATERIAL_DESCRIPTOR_CAPACITY) {
         material_capacity = INITIAL_MATERIAL_DESCRIPTOR_CAPACITY;
@@ -52,38 +53,43 @@ bool create_descriptor_pool(VulkanRenderer* r) {
     return true;
 }
 
-bool create_render_targets(VulkanRenderer* r) {
+bool create_render_targets(VulkanRenderer *r) {
     // Color image
     if (!create_image(r, r->width, r->height, VK_FORMAT_R8G8B8A8_UNORM,
-                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
-                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &r->color_image, &r->color_image_alloc)) {
+                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                          VK_IMAGE_USAGE_STORAGE_BIT,
+                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &r->color_image,
+                      &r->color_image_alloc)) {
         return false;
     }
-    r->color_image_view = create_image_view(r, r->color_image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+    r->color_image_view =
+        create_image_view(r, r->color_image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
     if (r->color_image_view == VK_NULL_HANDLE) {
         cleanup_render_targets(r);
         return false;
     }
-    
+
     // Depth image
     if (!create_image(r, r->width, r->height, VK_FORMAT_D32_SFLOAT,
                       VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &r->depth_image, &r->depth_image_alloc)) {
+                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &r->depth_image,
+                      &r->depth_image_alloc)) {
         cleanup_render_targets(r);
         return false;
     }
-    r->depth_image_view = create_image_view(r, r->depth_image, VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT);
+    r->depth_image_view =
+        create_image_view(r, r->depth_image, VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT);
     if (r->depth_image_view == VK_NULL_HANDLE) {
         cleanup_render_targets(r);
         return false;
     }
-    
+
     return true;
 }
 
-bool create_framebuffer(VulkanRenderer* r) {
+bool create_framebuffer(VulkanRenderer *r) {
     VkImageView attachments[2] = {r->color_image_view, r->depth_image_view};
-    
+
     VkFramebufferCreateInfo fb_info = {.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
     fb_info.renderPass = r->render_pass;
     fb_info.attachmentCount = 2;
@@ -91,17 +97,16 @@ bool create_framebuffer(VulkanRenderer* r) {
     fb_info.width = r->width;
     fb_info.height = r->height;
     fb_info.layers = 1;
-    
+
     VkResult result = vkCreateFramebuffer(r->device, &fb_info, NULL, &r->framebuffer);
     if (result != VK_SUCCESS) {
-        vulkan_renderer_set_error(r, result, "vkCreateFramebuffer",
-                                  "Failed to create framebuffer");
+        vulkan_renderer_set_error(r, result, "vkCreateFramebuffer", "Failed to create framebuffer");
         return false;
     }
     return true;
 }
 
-bool create_staging_buffers(VulkanRenderer* r) {
+bool create_staging_buffers(VulkanRenderer *r) {
     VkDeviceSize buffer_size = r->width * r->height * 4;
     buffer_size = align_up(buffer_size, r->non_coherent_atom_size);
 
@@ -111,7 +116,8 @@ bool create_staging_buffers(VulkanRenderer* r) {
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
                            &r->staging_buffers[i], &r->staging_buffer_allocs[i])) {
             if (!create_buffer(r, buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                                &r->staging_buffers[i], &r->staging_buffer_allocs[i])) {
                 return false;
             }
@@ -120,10 +126,11 @@ bool create_staging_buffers(VulkanRenderer* r) {
     return true;
 }
 
-bool create_uniform_buffers(VulkanRenderer* r) {
+bool create_uniform_buffers(VulkanRenderer *r) {
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         if (!create_buffer(r, sizeof(Uniforms), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                            &r->uniform_buffers[i], &r->uniform_buffer_allocs[i])) {
             return false;
         }
@@ -131,7 +138,7 @@ bool create_uniform_buffers(VulkanRenderer* r) {
     return true;
 }
 
-bool create_sampler(VulkanRenderer* r) {
+bool create_sampler(VulkanRenderer *r) {
     VkSamplerCreateInfo sampler_info = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
     sampler_info.magFilter = VK_FILTER_LINEAR;
     sampler_info.minFilter = VK_FILTER_LINEAR;
@@ -140,7 +147,7 @@ bool create_sampler(VulkanRenderer* r) {
     sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-    
+
     if (vkCreateSampler(r->device, &sampler_info, NULL, &r->sampler) != VK_SUCCESS) {
         fprintf(stderr, "Failed to create sampler\n");
         return false;
@@ -148,12 +155,13 @@ bool create_sampler(VulkanRenderer* r) {
     return true;
 }
 
-bool create_command_buffers(VulkanRenderer* r) {
-    VkCommandBufferAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+bool create_command_buffers(VulkanRenderer *r) {
+    VkCommandBufferAllocateInfo alloc_info = {.sType =
+                                                  VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     alloc_info.commandPool = r->command_pool;
     alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     alloc_info.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
-    
+
     if (vkAllocateCommandBuffers(r->device, &alloc_info, r->command_buffers) != VK_SUCCESS) {
         fprintf(stderr, "Failed to allocate command buffers\n");
         return false;
@@ -161,10 +169,10 @@ bool create_command_buffers(VulkanRenderer* r) {
     return true;
 }
 
-bool create_sync_objects(VulkanRenderer* r) {
+bool create_sync_objects(VulkanRenderer *r) {
     VkFenceCreateInfo fence_info = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    
+
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         if (vkCreateFence(r->device, &fence_info, NULL, &r->in_flight_fences[i]) != VK_SUCCESS) {
             fprintf(stderr, "Failed to create fence\n");
@@ -174,7 +182,7 @@ bool create_sync_objects(VulkanRenderer* r) {
     return true;
 }
 
-void cleanup_render_targets(VulkanRenderer* r) {
+void cleanup_render_targets(VulkanRenderer *r) {
     if (r->framebuffer != VK_NULL_HANDLE) {
         vkDestroyFramebuffer(r->device, r->framebuffer, NULL);
         r->framebuffer = VK_NULL_HANDLE;
@@ -199,7 +207,7 @@ void cleanup_render_targets(VulkanRenderer* r) {
     }
 }
 
-static void cleanup_material_gpu(const VulkanRenderer* r, const MaterialGPUData* m) {
+static void cleanup_material_gpu(const VulkanRenderer *r, const MaterialGPUData *m) {
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         if (m->fragment_uniform_buffers[i] != VK_NULL_HANDLE) {
             vkDestroyBuffer(r->device, m->fragment_uniform_buffers[i], NULL);
@@ -231,7 +239,7 @@ static void cleanup_material_gpu(const VulkanRenderer* r, const MaterialGPUData*
     }
 }
 
-void cleanup(VulkanRenderer* r) {
+void cleanup(VulkanRenderer *r) {
     if (r->device != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(r->device);
     }

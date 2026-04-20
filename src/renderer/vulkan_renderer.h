@@ -1,11 +1,11 @@
 #ifndef DCAT_VULKAN_RENDERER_H
 #define DCAT_VULKAN_RENDERER_H
 
-#include <vulkan/vulkan.h>
 #include <cglm/cglm.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdatomic.h>
+#include <vulkan/vulkan.h>
 
 #include "../core/types.h"
 #include "../graphics/model.h"
@@ -49,8 +49,8 @@ typedef struct FragmentUniforms {
 
 // Per-material render data passed from main to renderer
 typedef struct RenderMaterial {
-    const Texture* diffuse;
-    const Texture* normal;
+    const Texture *diffuse;
+    const Texture *normal;
     AlphaMode alpha_mode;
     float specular_strength;
     float shininess;
@@ -63,7 +63,7 @@ typedef struct VulkanAllocation {
     VkDeviceMemory memory;
     VkDeviceSize offset;
     VkDeviceSize size;
-    void* mapped;
+    void *mapped;
 } VulkanAllocation;
 
 // Per-material GPU resources
@@ -73,14 +73,14 @@ typedef struct MaterialGPUData {
     VkImageView diffuse_image_view;
     uint32_t cached_diffuse_width;
     uint32_t cached_diffuse_height;
-    const void* cached_diffuse_data_ptr;
+    const void *cached_diffuse_data_ptr;
 
     VkImage normal_image;
     VulkanAllocation normal_image_alloc;
     VkImageView normal_image_view;
     uint32_t cached_normal_width;
     uint32_t cached_normal_height;
-    const void* cached_normal_data_ptr;
+    const void *cached_normal_data_ptr;
 
     VkDescriptorSet descriptor_sets[MAX_FRAMES_IN_FLIGHT];
     bool descriptor_sets_dirty[MAX_FRAMES_IN_FLIGHT];
@@ -120,13 +120,13 @@ typedef struct VulkanRenderer {
     VkPipelineLayout skydome_pipeline_layout;
     VkPipeline skydome_pipeline;
     VkDescriptorSet skydome_descriptor_sets[MAX_FRAMES_IN_FLIGHT];
-    const Mesh* skydome_mesh;
-    const Texture* skydome_texture;
+    const Mesh *skydome_mesh;
+    const Texture *skydome_texture;
 
     VkImage skydome_image;
     VulkanAllocation skydome_image_alloc;
     VkImageView skydome_image_view;
-    const void* cached_skydome_data_ptr;
+    const void *cached_skydome_data_ptr;
 
     // Command buffers and sync
     VkCommandBuffer command_buffers[MAX_FRAMES_IN_FLIGHT];
@@ -155,7 +155,7 @@ typedef struct VulkanRenderer {
     VulkanAllocation uniform_buffer_allocs[MAX_FRAMES_IN_FLIGHT];
 
     // Per-material GPU data
-    MaterialGPUData* material_gpu;
+    MaterialGPUData *material_gpu;
     uint32_t material_gpu_count;
 
     VkSampler sampler;
@@ -185,53 +185,42 @@ typedef struct VulkanRenderer {
 } VulkanRenderer;
 
 // Create/destroy
-VulkanRenderer* vulkan_renderer_create(uint32_t width, uint32_t height);
-void vulkan_renderer_destroy(VulkanRenderer* r);
+VulkanRenderer *vulkan_renderer_create(uint32_t width, uint32_t height);
+void vulkan_renderer_destroy(VulkanRenderer *r);
 
 // Initialize
-bool vulkan_renderer_initialize(VulkanRenderer* r);
-void vulkan_renderer_clear_error(VulkanRenderer* r);
-void vulkan_renderer_set_error(VulkanRenderer* r, VkResult result,
-                               const char* operation, const char* format, ...);
-const char* vulkan_renderer_get_last_error(const VulkanRenderer* r);
-VkResult vulkan_renderer_get_last_error_code(const VulkanRenderer* r);
+bool vulkan_renderer_initialize(VulkanRenderer *r);
+void vulkan_renderer_clear_error(VulkanRenderer *r);
+void vulkan_renderer_set_error(VulkanRenderer *r, VkResult result, const char *operation,
+                               const char *format, ...);
+const char *vulkan_renderer_get_last_error(const VulkanRenderer *r);
+VkResult vulkan_renderer_get_last_error_code(const VulkanRenderer *r);
 
 // Resize
-bool vulkan_renderer_resize(VulkanRenderer* r, uint32_t width, uint32_t height);
+bool vulkan_renderer_resize(VulkanRenderer *r, uint32_t width, uint32_t height);
 
 // Set light direction
-void vulkan_renderer_set_light_direction(VulkanRenderer* r, const float* direction);
+void vulkan_renderer_set_light_direction(VulkanRenderer *r, const float *direction);
 
 // Wireframe mode
-void vulkan_renderer_set_wireframe_mode(VulkanRenderer* r, bool enabled);
-bool vulkan_renderer_get_wireframe_mode(const VulkanRenderer* r);
+void vulkan_renderer_set_wireframe_mode(VulkanRenderer *r, bool enabled);
+bool vulkan_renderer_get_wireframe_mode(const VulkanRenderer *r);
 
 // Render and return framebuffer
-bool vulkan_renderer_render(
-    VulkanRenderer* r,
-    const Mesh* mesh,
-    mat4* mvp,
-    mat4* model,
-    const RenderMaterial* materials,
-    uint32_t material_count,
-    bool enable_lighting,
-    const vec3 camera_pos,
-    bool use_triplanar_mapping,
-    const mat4* bone_matrices,
-    uint32_t bone_count,
-    mat4* view,
-    mat4* projection,
-    const uint8_t** out_framebuffer
-);
+bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4 *model,
+                            const RenderMaterial *materials, uint32_t material_count,
+                            bool enable_lighting, const vec3 camera_pos, bool use_triplanar_mapping,
+                            const mat4 *bone_matrices, uint32_t bone_count, mat4 *view,
+                            mat4 *projection, const uint8_t **out_framebuffer);
 
 // Set skydome
-bool vulkan_renderer_set_skydome(VulkanRenderer* r, const Mesh* mesh, const Texture* texture);
+bool vulkan_renderer_set_skydome(VulkanRenderer *r, const Mesh *mesh, const Texture *texture);
 
 // Wait for idle
-void vulkan_renderer_wait_idle(const VulkanRenderer* r);
+void vulkan_renderer_wait_idle(const VulkanRenderer *r);
 
 // Get frame size
-static size_t vulkan_renderer_get_frame_size(const VulkanRenderer* r) {
+static size_t vulkan_renderer_get_frame_size(const VulkanRenderer *r) {
     return r->width * r->height * 4;
 }
 

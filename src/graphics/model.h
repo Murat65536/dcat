@@ -19,21 +19,21 @@ typedef struct Mesh {
 } Mesh;
 
 // Initialize mesh to empty state
-void mesh_init(Mesh* mesh);
+void mesh_init(Mesh *mesh);
 
 // Free all mesh resources
-void mesh_free(Mesh* mesh);
+void mesh_free(Mesh *mesh);
 
 // Calculate optimal camera setup for viewing the model
-void calculate_camera_setup(const VertexArray* vertices, CameraSetup* setup);
+void calculate_camera_setup(const VertexArray *vertices, CameraSetup *setup);
 
 // Load 3D model from file using Assimp
-bool load_model(const char* path, Mesh* mesh, bool* out_has_uvs,
-                MaterialInfo** out_materials, size_t* out_material_count);
+bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **out_materials,
+                size_t *out_material_count);
 
 // Material info management
-void material_info_init(MaterialInfo* info);
-void material_info_free(MaterialInfo* info);
-void materials_free(MaterialInfo* materials, size_t count);
+void material_info_init(MaterialInfo *info);
+void material_info_free(MaterialInfo *info);
+void materials_free(MaterialInfo *materials, size_t count);
 
 #endif

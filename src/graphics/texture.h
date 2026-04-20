@@ -1,34 +1,34 @@
 #ifndef DCAT_TEXTURE_H
 #define DCAT_TEXTURE_H
 
-#include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 typedef struct Texture {
     uint32_t width;
     uint32_t height;
-    uint8_t* data;       // RGBA, 4 bytes per pixel
+    uint8_t *data; // RGBA, 4 bytes per pixel
     size_t data_size;
     bool has_transparency;
 } Texture;
 
 // Initialize to a default 1x1 gray texture
-void texture_init_default(Texture* tex);
+void texture_init_default(Texture *tex);
 
 // Create a flat normal map (blue pointing up)
-void texture_create_flat_normal_map(Texture* tex);
+void texture_create_flat_normal_map(Texture *tex);
 
 // Load texture from file
-bool texture_from_file(Texture* tex, const char* path);
+bool texture_from_file(Texture *tex, const char *path);
 
 // Load texture from memory buffer
-bool texture_from_memory(Texture* tex, const unsigned char* buffer, size_t size);
+bool texture_from_memory(Texture *tex, const unsigned char *buffer, size_t size);
 
 // Free texture data
-void texture_free(Texture* tex);
+void texture_free(Texture *tex);
 
 // Recompute has_transparency from RGBA pixel data.
-void texture_update_transparency(Texture* tex);
+void texture_update_transparency(Texture *tex);
 
 #endif // DCAT_TEXTURE_H

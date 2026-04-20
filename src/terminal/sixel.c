@@ -1,9 +1,9 @@
 #include "sixel.h"
-#include "terminal.h"
 #include "core/platform_compat.h"
+#include "terminal.h"
 #ifdef _WIN32
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 #else
 #include <sixel.h>
 #include <stdlib.h>
@@ -71,9 +71,8 @@ void render_sixel(const uint8_t *buffer, uint32_t width, uint32_t height) {
     if (sixel_dither_new(&sixel_dith, 256, NULL) != SIXEL_OK)
         return;
 
-    sixel_dither_initialize(sixel_dith, sixel_pixels, width, height,
-                            SIXEL_PIXELFORMAT_RGBA8888, SIXEL_LARGE_NORM,
-                            SIXEL_REP_CENTER_BOX, SIXEL_QUALITY_LOW);
+    sixel_dither_initialize(sixel_dith, sixel_pixels, width, height, SIXEL_PIXELFORMAT_RGBA8888,
+                            SIXEL_LARGE_NORM, SIXEL_REP_CENTER_BOX, SIXEL_QUALITY_LOW);
 
     sixel_encode(sixel_pixels, width, height, 4, sixel_dith, sixel_out);
 }

@@ -1,18 +1,18 @@
 #include "kitty_shm.h"
-#include "terminal.h"
 #include "core/platform_compat.h"
+#include "terminal.h"
 #ifdef _WIN32
 #include <stdbool.h>
 #include <stdint.h>
 #else
+#include <errno.h>
+#include <fcntl.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
-#include <unistd.h>
-#include <errno.h>
-#include <fcntl.h>
 #include <sys/mman.h>
+#include <unistd.h>
 #endif
 
 #ifdef _WIN32
@@ -29,8 +29,7 @@ bool detect_kitty_shm_support(void) {
 
 #else
 
-static const char b64[] =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 static int b64_encode(const char *src, int len, char *dst) {
     int i = 0, j = 0;
@@ -84,7 +83,8 @@ void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height) {
     kitty_frame++;
 
     int fd = shm_open(shm_name, O_RDWR | O_CREAT, 0600);
-    if (fd == -1) return;
+    if (fd == -1)
+        return;
 
     if (ftruncate(fd, (off_t)data_size) == -1) {
         close(fd);
@@ -96,7 +96,8 @@ void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height) {
     while (remaining > 0) {
         ssize_t written = write(fd, src, remaining);
         if (written < 0) {
-            if (errno == EINTR) continue;
+            if (errno == EINTR)
+                continue;
             close(fd);
             return;
         }
@@ -109,9 +110,8 @@ void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height) {
     int name_b64_len = b64_encode(shm_name, strlen(shm_name), name_b64);
 
     char cmd[512];
-    int cmd_len = snprintf(cmd, sizeof(cmd),
-        "\x1b[H\x1b_Gf=32,a=T,t=s,i=1,p=1,s=%u,v=%u,q=2,C=1;",
-        width, height);
+    int cmd_len = snprintf(cmd, sizeof(cmd), "\x1b[H\x1b_Gf=32,a=T,t=s,i=1,p=1,s=%u,v=%u,q=2,C=1;",
+                           width, height);
     memcpy(cmd + cmd_len, name_b64, name_b64_len);
     cmd_len += name_b64_len;
     memcpy(cmd + cmd_len, "\x1b\\", 2);
@@ -127,7 +127,8 @@ bool detect_kitty_shm_support(void) {
     static const uint8_t pixel[4] = {0, 0, 0, 0};
 
     int fd = shm_open(shm_name, O_CREAT | O_RDWR, 0600);
-    if (fd == -1) return false;
+    if (fd == -1)
+        return false;
 
     bool ok = ftruncate(fd, 4) == 0;
     if (ok) {

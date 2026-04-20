@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-void animation_state_init(AnimationState* state) {
+void animation_state_init(AnimationState *state) {
     state->current_animation_index = 0;
     state->current_time = 0.0f;
     state->playing = true;
@@ -12,14 +12,14 @@ void animation_state_init(AnimationState* state) {
     state->last_computed_time = -1.0f;
 }
 
-void bone_map_init(BoneMap* map) {
+void bone_map_init(BoneMap *map) {
     memset(map->buckets, 0, sizeof(map->buckets));
     map->entries = NULL;
     map->count = 0;
     map->capacity = 0;
 }
 
-void bone_map_free(BoneMap* map) {
+void bone_map_free(BoneMap *map) {
     for (size_t i = 0; i < map->count; i++) {
         free(map->entries[i].name);
     }
@@ -27,10 +27,11 @@ void bone_map_free(BoneMap* map) {
     bone_map_init(map);
 }
 
-int bone_map_find(const BoneMap* map, const char* name) {
-    if (!map || !name) return -1;
+int bone_map_find(const BoneMap *map, const char *name) {
+    if (!map || !name)
+        return -1;
     uint32_t hash = bone_hash(name) % BONE_MAP_SIZE;
-    BoneMapEntry* entry = map->buckets[hash];
+    BoneMapEntry *entry = map->buckets[hash];
     while (entry) {
         if (strcmp(entry->name, name) == 0) {
             return entry->index;
@@ -40,12 +41,12 @@ int bone_map_find(const BoneMap* map, const char* name) {
     return -1;
 }
 
-void bone_map_insert(BoneMap* map, const char* name, int index) {
+void bone_map_insert(BoneMap *map, const char *name, int index) {
     if (map->count >= map->capacity) {
         map->capacity = map->capacity ? map->capacity * 2 : 32;
-        const BoneMapEntry* old_entries = map->entries;
+        const BoneMapEntry *old_entries = map->entries;
         map->entries = realloc(map->entries, map->capacity * sizeof(BoneMapEntry));
-        
+
         // If realloc moved the memory, rebuild all bucket pointers
         if (map->entries != old_entries && old_entries != NULL) {
             // Clear buckets
@@ -58,7 +59,7 @@ void bone_map_insert(BoneMap* map, const char* name, int index) {
             }
         }
     }
-    BoneMapEntry* entry = &map->entries[map->count];
+    BoneMapEntry *entry = &map->entries[map->count];
     entry->name = str_dup(name);
     entry->index = index;
 
@@ -69,35 +70,39 @@ void bone_map_insert(BoneMap* map, const char* name, int index) {
 }
 
 // Bone animation map functions (same implementation as bone map)
-void bone_anim_map_init(BoneAnimationMap* map) {
-    bone_map_init((BoneMap*)map);
+void bone_anim_map_init(BoneAnimationMap *map) {
+    bone_map_init((BoneMap *)map);
 }
 
-void bone_anim_map_free(BoneAnimationMap* map) {
-    bone_map_free((BoneMap*)map);
+void bone_anim_map_free(BoneAnimationMap *map) {
+    bone_map_free((BoneMap *)map);
 }
 
-int bone_anim_map_find(const BoneAnimationMap* map, const char* name) {
-    return bone_map_find((const BoneMap*)map, name);
+int bone_anim_map_find(const BoneAnimationMap *map, const char *name) {
+    return bone_map_find((const BoneMap *)map, name);
 }
 
-void bone_anim_map_insert(BoneAnimationMap* map, const char* name, int index) {
-    bone_map_insert((BoneMap*)map, name, index);
+void bone_anim_map_insert(BoneAnimationMap *map, const char *name, int index) {
+    bone_map_insert((BoneMap *)map, name, index);
 }
 
 // Binary search for the last key whose time <= the given time.
 // 'data' points to the first element of a key array; each element begins with float time.
-static int find_key_index(const void* data, const size_t count, const size_t stride, const float time) {
-    if (count == 0) return -1;
-    if (count == 1 || time <= *(const float*)data) return 0;
-    if (time >= *(const float*)((const char*)data + (count - 1) * stride)) return (int)count - 1;
+static int find_key_index(const void *data, const size_t count, const size_t stride,
+                          const float time) {
+    if (count == 0)
+        return -1;
+    if (count == 1 || time <= *(const float *)data)
+        return 0;
+    if (time >= *(const float *)((const char *)data + (count - 1) * stride))
+        return (int)count - 1;
 
     int left = 0;
     int right = (int)count - 1;
 
     while (left < right - 1) {
         const int mid = (left + right) / 2;
-        const float mid_time = *(const float*)((const char*)data + mid * stride);
+        const float mid_time = *(const float *)((const char *)data + mid * stride);
         if (mid_time <= time) {
             left = mid;
         } else {
@@ -108,10 +113,10 @@ static int find_key_index(const void* data, const size_t count, const size_t str
     return left;
 }
 
-static void interpolate_vec3_keys(const VectorKeyArray* keys, float time,
-                                  const vec3 default_value, vec3 out) {
+static void interpolate_vec3_keys(const VectorKeyArray *keys, float time, const vec3 default_value,
+                                  vec3 out) {
     if (keys->count == 0) {
-        glm_vec3_copy((float*)default_value, out);
+        glm_vec3_copy((float *)default_value, out);
         return;
     }
     if (keys->count == 1) {
@@ -137,15 +142,15 @@ static void interpolate_vec3_keys(const VectorKeyArray* keys, float time,
     glm_vec3_lerp(keys->data[index].value, keys->data[next_index].value, factor, out);
 }
 
-void interpolate_position(const VectorKeyArray* keys, const float time, vec3 out) {
+void interpolate_position(const VectorKeyArray *keys, const float time, vec3 out) {
     interpolate_vec3_keys(keys, time, (vec3){0.0f, 0.0f, 0.0f}, out);
 }
 
-void interpolate_scale(const VectorKeyArray* keys, const float time, vec3 out) {
+void interpolate_scale(const VectorKeyArray *keys, const float time, vec3 out) {
     interpolate_vec3_keys(keys, time, (vec3){1.0f, 1.0f, 1.0f}, out);
 }
 
-void interpolate_rotation(const QuaternionKeyArray* keys, const float time, versor out) {
+void interpolate_rotation(const QuaternionKeyArray *keys, const float time, versor out) {
     if (keys->count == 0) {
         glm_quat_identity(out);
         return;
@@ -154,105 +159,106 @@ void interpolate_rotation(const QuaternionKeyArray* keys, const float time, vers
         glm_quat_copy(keys->data[0].value, out);
         return;
     }
-    
+
     const int index = find_key_index(keys->data, keys->count, sizeof(QuaternionKey), time);
     const int next_index = index + 1;
-    
+
     if (next_index >= (int)keys->count) {
         glm_quat_copy(keys->data[index].value, out);
         return;
     }
-    
+
     const float delta_time = keys->data[next_index].time - keys->data[index].time;
     float factor = 0.0f;
     if (delta_time > 0.00001f) {
         factor = (time - keys->data[index].time) / delta_time;
     }
     factor = clampf(factor, 0.0f, 1.0f);
-    
+
     versor start, end;
     glm_quat_copy(keys->data[index].value, start);
     glm_quat_copy(keys->data[next_index].value, end);
-    
+
     if (glm_quat_dot(start, end) < 0.0f) {
         glm_vec4_negate(end);
     }
-    
+
     glm_quat_slerp(start, end, factor, out);
     glm_quat_normalize(out);
 }
 
-static void compute_bone_transform(const Skeleton* skeleton, const Animation* animation,
+static void compute_bone_transform(const Skeleton *skeleton, const Animation *animation,
                                    int bone_index, float time, mat4 parent_transform,
-                                   mat4* bone_matrices) {
-    const BoneNode* node = &skeleton->bone_hierarchy.data[bone_index];
+                                   mat4 *bone_matrices) {
+    const BoneNode *node = &skeleton->bone_hierarchy.data[bone_index];
     mat4 node_transform;
-    glm_mat4_copy((vec4*)node->transformation, node_transform);
+    glm_mat4_copy((vec4 *)node->transformation, node_transform);
 
     // Fast O(1) lookup using hash map instead of O(n) linear search
-    const BoneAnimation* bone_anim = NULL;
+    const BoneAnimation *bone_anim = NULL;
     if (animation->bone_anim_map.count > 0) {
         const int anim_idx = bone_anim_map_find(&animation->bone_anim_map, node->name);
         if (anim_idx >= 0 && anim_idx < (int)animation->bone_animations.count) {
             bone_anim = &animation->bone_animations.data[anim_idx];
         }
     }
-    
+
     if (bone_anim) {
         vec3 position, scale;
         versor rotation;
-        
+
         if (bone_anim->position_keys.count == 0) {
-            glm_vec3_copy((float*)node->initial_position, position);
+            glm_vec3_copy((float *)node->initial_position, position);
         } else {
             interpolate_position(&bone_anim->position_keys, time, position);
         }
-        
+
         if (bone_anim->rotation_keys.count == 0) {
-            glm_quat_copy((float*)node->initial_rotation, rotation);
+            glm_quat_copy((float *)node->initial_rotation, rotation);
         } else {
             interpolate_rotation(&bone_anim->rotation_keys, time, rotation);
         }
-        
+
         if (bone_anim->scale_keys.count == 0) {
-            glm_vec3_copy((float*)node->initial_scale, scale);
+            glm_vec3_copy((float *)node->initial_scale, scale);
         } else {
             interpolate_scale(&bone_anim->scale_keys, time, scale);
         }
-        
+
         mat4 translation_matrix, rotation_matrix, scale_matrix;
         glm_translate_make(translation_matrix, position);
         glm_quat_mat4(rotation, rotation_matrix);
         glm_scale_make(scale_matrix, scale);
-        
+
         glm_mat4_mul(translation_matrix, rotation_matrix, node_transform);
         glm_mat4_mul(node_transform, scale_matrix, node_transform);
     }
-    
+
     mat4 global_transform;
     glm_mat4_mul(parent_transform, node_transform, global_transform);
-    
+
     int bone_idx = bone_map_find(&skeleton->bone_map, node->name);
     if (bone_idx >= 0 && bone_idx < MAX_BONES) {
         mat4 temp;
-        glm_mat4_mul((vec4*)skeleton->global_inverse_transform, global_transform, temp);
+        glm_mat4_mul((vec4 *)skeleton->global_inverse_transform, global_transform, temp);
         glm_mat4_mul(temp, skeleton->bones.data[bone_idx].offset_matrix, bone_matrices[bone_idx]);
     }
-    
+
     for (size_t i = 0; i < node->child_indices.count; i++) {
-        compute_bone_transform(skeleton, animation, node->child_indices.data[i],
-                              time, global_transform, bone_matrices);
+        compute_bone_transform(skeleton, animation, node->child_indices.data[i], time,
+                               global_transform, bone_matrices);
     }
 }
 
-void compute_bone_matrices(const Skeleton* skeleton, const Animation* animation,
-                           float time, mat4* bone_matrices) {
-    if (skeleton->bone_hierarchy.count == 0) return;
-    
+void compute_bone_matrices(const Skeleton *skeleton, const Animation *animation, float time,
+                           mat4 *bone_matrices) {
+    if (skeleton->bone_hierarchy.count == 0)
+        return;
+
     for (uint32_t i = 0; i < MAX_BONES; i++) {
         glm_mat4_identity(bone_matrices[i]);
     }
-    
+
     for (size_t i = 0; i < skeleton->bone_hierarchy.count; i++) {
         if (skeleton->bone_hierarchy.data[i].parent_index == -1) {
             mat4 identity;
@@ -262,22 +268,24 @@ void compute_bone_matrices(const Skeleton* skeleton, const Animation* animation,
     }
 }
 
-void update_animation(const Mesh* mesh, AnimationState* state, float delta_time, mat4* bone_matrices) {
+void update_animation(const Mesh *mesh, AnimationState *state, float delta_time,
+                      mat4 *bone_matrices) {
     if (!mesh->has_animations || mesh->animations.count == 0) {
         return;
     }
-    
+
     if (state->current_animation_index < 0 ||
         state->current_animation_index >= (int)mesh->animations.count) {
         state->current_animation_index = 0;
     }
-    
-    const Animation* animation = &mesh->animations.data[state->current_animation_index];
-    float ticks_per_second = animation->ticks_per_second != 0.0f ? animation->ticks_per_second : 25.0f;
-    
+
+    const Animation *animation = &mesh->animations.data[state->current_animation_index];
+    float ticks_per_second =
+        animation->ticks_per_second != 0.0f ? animation->ticks_per_second : 25.0f;
+
     if (state->playing) {
         state->current_time += delta_time * ticks_per_second;
-        
+
         if (animation->duration > 0.0f && state->current_time >= animation->duration) {
             state->current_time = fmodf(state->current_time, animation->duration);
         }
@@ -286,35 +294,35 @@ void update_animation(const Mesh* mesh, AnimationState* state, float delta_time,
     if (!bone_matrices) {
         return;
     }
-    
+
     if (state->current_animation_index == state->last_animation_index &&
         state->current_time == state->last_computed_time) {
         return;
     }
-    
+
     compute_bone_matrices(&mesh->skeleton, animation, state->current_time, bone_matrices);
     state->last_animation_index = state->current_animation_index;
     state->last_computed_time = state->current_time;
 }
 
-void skeleton_free(Skeleton* skeleton) {
+void skeleton_free(Skeleton *skeleton) {
     for (size_t i = 0; i < skeleton->bones.count; i++) {
         free(skeleton->bones.data[i].name);
     }
     free(skeleton->bones.data);
-    
+
     for (size_t i = 0; i < skeleton->bone_hierarchy.count; i++) {
         free(skeleton->bone_hierarchy.data[i].name);
         free(skeleton->bone_hierarchy.data[i].child_indices.data);
     }
     aligned_free(skeleton->bone_hierarchy.data);
-    
+
     bone_map_free(&skeleton->bone_map);
-    
+
     memset(skeleton, 0, sizeof(Skeleton));
 }
 
-void animation_free(Animation* animation) {
+void animation_free(Animation *animation) {
     free(animation->name);
     for (size_t i = 0; i < animation->bone_animations.count; i++) {
         free(animation->bone_animations.data[i].bone_name);
@@ -326,7 +334,7 @@ void animation_free(Animation* animation) {
     bone_anim_map_free(&animation->bone_anim_map);
 }
 
-void animation_array_free(AnimationArray* arr) {
+void animation_array_free(AnimationArray *arr) {
     for (size_t i = 0; i < arr->count; i++) {
         animation_free(&arr->data[i]);
     }
