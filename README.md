@@ -61,6 +61,9 @@ cmake -S cmake.deps -B .deps -G Ninja -D CMAKE_BUILD_TYPE=Release -D DCAT_VCPKG_
 cmake --build .deps --config Release
 ```
 
+If your vcpkg revision does not provide a `vips`/`libvips` port, `cmake.deps` automatically downloads the official
+`vips-dev-x64-all` bundle from `libvips/build-win64-mxe` and places it under `.deps\vcpkg_installed\x64-windows`.
+
 Then configure the main project with:
 
 ```powershell
