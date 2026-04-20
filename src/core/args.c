@@ -33,6 +33,17 @@ void print_usage(void) {
     printf("  -h, --help                 display this help and exit\n\n");
 }
 
+static char *next_option_value(const char *option, const int argc, char *argv[], int *index) {
+    if (*index + 1 >= argc) {
+        fprintf(stderr, "Missing value for %s\n", option);
+        print_usage();
+        return NULL;
+    }
+
+    (*index)++;
+    return argv[*index];
+}
+
 static bool parse_int_arg(const char *option, const char *value, int *out) {
     char *end = NULL;
     long parsed = 0;
@@ -74,31 +85,52 @@ Args parse_args(const int argc, char *argv[]) {
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-t") == 0 || strcmp(argv[i], "--texture") == 0) {
-            if (++i < argc)
-                args.texture_path = argv[i];
+            const char *option = argv[i];
+            char *value = next_option_value(option, argc, argv, &i);
+            if (!value)
+                exit(1);
+            args.texture_path = value;
         } else if (strcmp(argv[i], "-n") == 0 || strcmp(argv[i], "--normal-map") == 0) {
-            if (++i < argc)
-                args.normal_map_path = argv[i];
+            const char *option = argv[i];
+            char *value = next_option_value(option, argc, argv, &i);
+            if (!value)
+                exit(1);
+            args.normal_map_path = value;
         } else if (strcmp(argv[i], "--skydome") == 0) {
-            if (++i < argc)
-                args.skydome_path = argv[i];
+            const char *option = argv[i];
+            char *value = next_option_value(option, argc, argv, &i);
+            if (!value)
+                exit(1);
+            args.skydome_path = value;
         } else if (strcmp(argv[i], "-W") == 0 || strcmp(argv[i], "--width") == 0) {
-            if (++i < argc && !parse_int_arg("--width", argv[i], &args.width))
+            const char *option = argv[i];
+            char *value = next_option_value(option, argc, argv, &i);
+            if (!value || !parse_int_arg(option, value, &args.width))
                 exit(1);
         } else if (strcmp(argv[i], "-H") == 0 || strcmp(argv[i], "--height") == 0) {
-            if (++i < argc && !parse_int_arg("--height", argv[i], &args.height))
+            const char *option = argv[i];
+            char *value = next_option_value(option, argc, argv, &i);
+            if (!value || !parse_int_arg(option, value, &args.height))
                 exit(1);
         } else if (strcmp(argv[i], "--camera-distance") == 0) {
-            if (++i < argc && !parse_float_arg("--camera-distance", argv[i], &args.camera_distance))
+            const char *option = argv[i];
+            char *value = next_option_value(option, argc, argv, &i);
+            if (!value || !parse_float_arg(option, value, &args.camera_distance))
                 exit(1);
         } else if (strcmp(argv[i], "--model-scale") == 0) {
-            if (++i < argc && !parse_float_arg("--model-scale", argv[i], &args.model_scale))
+            const char *option = argv[i];
+            char *value = next_option_value(option, argc, argv, &i);
+            if (!value || !parse_float_arg(option, value, &args.model_scale))
                 exit(1);
         } else if (strcmp(argv[i], "--spin") == 0) {
-            if (++i < argc && !parse_float_arg("--spin", argv[i], &args.spin_speed))
+            const char *option = argv[i];
+            char *value = next_option_value(option, argc, argv, &i);
+            if (!value || !parse_float_arg(option, value, &args.spin_speed))
                 exit(1);
         } else if (strcmp(argv[i], "-f") == 0 || strcmp(argv[i], "--fps") == 0) {
-            if (++i < argc && !parse_int_arg("--fps", argv[i], &args.target_fps))
+            const char *option = argv[i];
+            char *value = next_option_value(option, argc, argv, &i);
+            if (!value || !parse_int_arg(option, value, &args.target_fps))
                 exit(1);
         } else if (strcmp(argv[i], "--no-lighting") == 0) {
             args.no_lighting = true;
@@ -107,10 +139,10 @@ Args parse_args(const int argc, char *argv[]) {
         } else if (strcmp(argv[i], "--mouse-orbit") == 0) {
             args.mouse_orbit = true;
         } else if (strcmp(argv[i], "--mouse-sensitivity") == 0) {
-            if (++i < argc) {
-                if (!parse_float_arg("--mouse-sensitivity", argv[i], &args.mouse_sensitivity))
-                    exit(1);
-            }
+            const char *option = argv[i];
+            char *value = next_option_value(option, argc, argv, &i);
+            if (!value || !parse_float_arg(option, value, &args.mouse_sensitivity))
+                exit(1);
         } else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--status-bar") == 0) {
             args.show_status_bar = true;
         } else if (strcmp(argv[i], "-S") == 0 || strcmp(argv[i], "--sixel") == 0) {
@@ -153,12 +185,12 @@ bool validate_args(const Args *args) {
         return false;
     }
 
-    if (args->width > 65535) {
+    if (args->width != -1 && (args->width <= 0 || args->width > 65535)) {
         fprintf(stderr, "Invalid width: %d (must be 1-65535)\n", args->width);
         return false;
     }
 
-    if (args->height > 65535) {
+    if (args->height != -1 && (args->height <= 0 || args->height > 65535)) {
         fprintf(stderr, "Invalid height: %d (must be 1-65535)\n", args->height);
         return false;
     }
