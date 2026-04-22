@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(dcat VERSION 0.1.0 LANGUAGES C)
+project(dcat VERSION 0.1.0 LANGUAGES C CXX)
 
 include(CheckCCompilerFlag)
 include(GNUInstallDirs)
@@ -13,6 +13,24 @@ set(DCAT_VCPKG_TRIPLET "x64-windows" CACHE STRING "vcpkg triplet used by cmake.d
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
+
+if(WIN32 AND CMAKE_C_COMPILER)
+  # When using CLion's bundled CMake with MSYS2, it doesn't automatically know to search 
+  # inside the MSYS2 environment (e.g. C:/msys64/clang64). We tell it to look at the 
+  # parent directory of the compiler (the sysroot).
+  get_filename_component(_compiler_bin "${CMAKE_C_COMPILER}" DIRECTORY)
+  get_filename_component(_sysroot "${_compiler_bin}" DIRECTORY)
+  list(APPEND CMAKE_PREFIX_PATH "${_sysroot}")
+endif()
+
+if(WIN32 AND NOT DEFINED PKG_CONFIG_EXECUTABLE)
+  find_program(PKG_CONFIG_EXECUTABLE NAMES pkg-config pkgconf
+    HINTS
+      "C:/msys64/clang64/bin"
+      "C:/msys64/mingw64/bin"
+      "C:/msys64/usr/bin"
+  )
+endif()
 
 if(USE_BUNDLED AND NOT DEPS_PREFIX)
   if(WIN32)
@@ -234,6 +252,7 @@ set(dcat_sources
 )
 
 add_executable(dcat ${dcat_sources})
+set_target_properties(dcat PROPERTIES LINKER_LANGUAGE CXX)
 target_include_directories(dcat PRIVATE "${CMAKE_SOURCE_DIR}/src")
 
 if(MSVC)
@@ -328,30 +347,25 @@ set(shader_sources
 )
 
 set(shader_outputs "")
-set(shader_args "")
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  list(APPEND shader_args -g)
-endif()
 
 foreach(shader IN LISTS shader_sources)
   set(shader_input "${CMAKE_SOURCE_DIR}/shaders/${shader}")
   set(shader_output "${CMAKE_CURRENT_BINARY_DIR}/${shader}.spv")
   add_custom_command(
     OUTPUT "${shader_output}"
-    COMMAND "${GLSLC}" ${shader_args} "${shader_input}" -o "${shader_output}"
+    COMMAND "${GLSLC}" $<$<CONFIG:Debug>:-g> "${shader_input}" -o "${shader_output}"
     DEPENDS "${shader_input}"
     VERBATIM
   )
   list(APPEND shader_outputs "${shader_output}")
 endforeach()
 
-add_custom_target(dcat_shaders ALL DEPENDS ${shader_outputs})
-add_dependencies(dcat dcat_shaders)
-
-add_custom_command(TARGET dcat POST_BUILD
+add_custom_target(dcat_shaders ALL
   COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:dcat>/shaders"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${shader_outputs} "$<TARGET_FILE_DIR:dcat>/shaders"
+  DEPENDS ${shader_outputs}
 )
+add_dependencies(dcat dcat_shaders)
 
 if(WIN32)
   set(_deps_runtime_dlls "")

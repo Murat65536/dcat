@@ -18,6 +18,8 @@ jobs:
             buildtype: Debug
           - os: windows-latest
             buildtype: Release
+          - os: windows-latest
+            buildtype: Debug
     runs-on: ${{ matrix.os }}
 
     steps:
