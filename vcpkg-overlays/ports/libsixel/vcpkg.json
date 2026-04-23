@@ -1,0 +1,5 @@
+{
+  "name": "libsixel",
+  "version-string": "1.10.5",
+  "description": "Minimal CMake-packaged libsixel build for dcat"
+}

@@ -658,8 +658,9 @@ static void extract_embedded_texture(const struct aiScene *scene, MaterialInfo *
     if (!tex_path || tex_path[0] != '*')
         return;
 
-    const int tex_index = atoi(tex_path + 1);
-    if (tex_index < 0 || tex_index >= (int)scene->mNumTextures)
+    char *endptr;
+    const long tex_index = strtol(tex_path + 1, &endptr, 10);
+    if (endptr == (tex_path + 1) || *endptr != '\0' || tex_index < 0 || tex_index >= (long)scene->mNumTextures)
         return;
 
     const struct aiTexture *embedded_tex = scene->mTextures[tex_index];

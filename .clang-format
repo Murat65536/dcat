@@ -19,5 +19,5 @@ PointerAlignment: Right
 SpaceBeforeParens: ControlStatements
 AlignConsecutiveAssignments: false
 AlignConsecutiveDeclarations: false
-ReflowComments: true
+ReflowComments: IndentOnly
 ...

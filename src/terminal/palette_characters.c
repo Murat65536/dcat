@@ -38,7 +38,7 @@ static void init_u8_table(void) {
     u8_table_initialized = true;
 }
 
-static uint8_t rgb_to_256(uint8_t r, uint8_t g, uint8_t b) {
+static uint8_t rgb_to_256(const uint8_t r, const uint8_t g, const uint8_t b) {
     // Check if grayscale
     if (r == g && g == b) {
         if (r < 8)
@@ -64,11 +64,11 @@ static uint8_t rgb_to_256(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void render_palette_characters(const uint8_t *buffer, uint32_t width, uint32_t height,
-                               bool use_hash_characters) {
+                               const bool use_hash_characters) {
     init_u8_table();
     if (use_hash_characters) {
-        size_t num_cells = (size_t)width * height;
-        size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_cells * 12 +
+        const size_t num_cells = (size_t)width * height;
+        const size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_cells * 12 +
                              (height > 0 ? height - 1 : 0) + (sizeof(FRAME_END) - 1);
 
         if (render_buf_size < needed_size) {
@@ -84,7 +84,7 @@ void render_palette_characters(const uint8_t *buffer, uint32_t width, uint32_t h
         for (uint32_t y = 0; y < height; y++) {
             const uint8_t *row = buffer + (y * width * 4);
             for (uint32_t x = 0; x < width; x++) {
-                uint8_t idx = rgb_to_256(row[0], row[1], row[2]);
+                const uint8_t idx = rgb_to_256(row[0], row[1], row[2]);
                 memcpy(p, "\x1b[38;5;000m#", 12);
                 memcpy(p + 7, u8_3digit[idx], 3);
                 p += 12;
@@ -101,10 +101,10 @@ void render_palette_characters(const uint8_t *buffer, uint32_t width, uint32_t h
         return;
     }
 
-    uint32_t num_blocks = width * ((height + 1) / 2);
+    const uint32_t num_blocks = width * ((height + 1) / 2);
 
     if (!buffer_initialized || width != last_width || height != last_height) {
-        size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_blocks * 23 + (sizeof(FRAME_END) - 1);
+        const size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_blocks * 23 + (sizeof(FRAME_END) - 1);
 
         if (render_buf_size < needed_size) {
             free(render_buf);
@@ -136,17 +136,17 @@ void render_palette_characters(const uint8_t *buffer, uint32_t width, uint32_t h
     for (uint32_t y = 0; y < height; y += 2) {
         const uint8_t *row_upper = buffer + (y * width * 4);
         const uint8_t *row_lower = buffer + ((y + 1) * width * 4);
-        bool has_lower = (y + 1 < height);
+        const bool has_lower = (y + 1 < height);
 
         for (uint32_t x = 0; x < width; x++) {
-            uint8_t rU = row_upper[0], gU = row_upper[1], bU = row_upper[2];
+            const uint8_t rU = row_upper[0], gU = row_upper[1], bU = row_upper[2];
             row_upper += 4;
 
-            uint8_t idxU = rgb_to_256(rU, gU, bU);
+            const uint8_t idxU = rgb_to_256(rU, gU, bU);
 
             uint8_t idxL = 0;
             if (has_lower) {
-                uint8_t rL = row_lower[0], gL = row_lower[1], bL = row_lower[2];
+                const uint8_t rL = row_lower[0], gL = row_lower[1], bL = row_lower[2];
                 row_lower += 4;
                 idxL = rgb_to_256(rL, gL, bL);
             }

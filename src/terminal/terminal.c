@@ -211,7 +211,7 @@ void draw_status_bar(float fps, float speed, const float *pos, const char *anima
     }
 
 #ifdef _WIN32
-    int len = snprintf(buffer, sizeof(buffer),
+    const int len = snprintf(buffer, sizeof(buffer),
                        "\x1b[%u;1H\x1b[2K\x1b[7m FPS: %.1f | SPEED: "
                        "%.2f | POS: %.2f, %.2f, %.2f%s \x1b[0m\x1b[H",
                        rows, fps, speed, pos[0], pos[1], pos[2], anim_part);
@@ -337,7 +337,7 @@ void enable_raw_mode(void) {
     raw_mode_enabled = true;
 }
 
-void terminal_set_mouse_input_enabled(bool enabled) {
+void terminal_set_mouse_input_enabled(const bool enabled) {
 #ifdef _WIN32
     const HANDLE input_handle = GetStdHandle(STD_INPUT_HANDLE);
     if (input_handle == INVALID_HANDLE_VALUE || input_handle == NULL) {
@@ -385,7 +385,7 @@ void terminal_arm_recovery(void) {
     terminal_recovery_fd = choose_terminal_recovery_fd();
     terminal_recovery_armed = 1;
 #if HAVE_SANITIZER_DEATH_CALLBACK
-    if (!terminal_sanitizer_callback_installed && sanitizer_set_death_callback != NULL) {
+    if (!terminal_sanitizer_callback_installed) {
         sanitizer_set_death_callback(terminal_recovery_callback);
         terminal_sanitizer_callback_installed = true;
     }
@@ -400,7 +400,7 @@ void terminal_disarm_recovery(void) {
     terminal_recovery_armed = 0;
 }
 
-void write_terminal_recovery_sequence(int fd) {
+void write_terminal_recovery_sequence(const int fd) {
     terminal_write_fd(fd, TERMINAL_RECOVERY_SEQUENCE, sizeof(TERMINAL_RECOVERY_SEQUENCE) - 1);
 }
 

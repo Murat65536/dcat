@@ -1,0 +1,2 @@
+The port exposes the CMake package `unofficial-vips` and target
+`unofficial::vips::vips`.

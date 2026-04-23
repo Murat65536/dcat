@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *vk_result_to_string(VkResult result) {
+static const char *vk_result_to_string(const VkResult result) {
     switch (result) {
     case VK_SUCCESS:
         return "VK_SUCCESS";
@@ -97,7 +97,7 @@ void vulkan_renderer_clear_error(VulkanRenderer *r) {
     r->last_error_message[0] = '\0';
 }
 
-void vulkan_renderer_set_error(VulkanRenderer *r, VkResult result, const char *operation,
+void vulkan_renderer_set_error(VulkanRenderer *r, const VkResult result, const char *operation,
                                const char *format, ...) {
     if (!r || r->last_error_message[0] != '\0') {
         return;

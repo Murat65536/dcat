@@ -9,7 +9,6 @@
 #include <poll.h>
 #include <unistd.h>
 #endif
-#include <cglm/cglm.h>
 
 static const float ROTATION_AMOUNT = GLM_PI / 8.0f;
 static const float ZOOM_AMOUNT = 0.05f;
@@ -186,23 +185,23 @@ static void update_windows_keyboard_state(const InputThreadData *data, WindowsIn
         return;
     }
 
-    bool w_down = windows_key_pressed('W');
-    bool a_down = windows_key_pressed('A');
-    bool s_down = windows_key_pressed('S');
-    bool d_down = windows_key_pressed('D');
-    bool i_down = windows_key_pressed('I');
-    bool j_down = windows_key_pressed('J');
-    bool k_down = windows_key_pressed('K');
-    bool l_down = windows_key_pressed('L');
-    bool q_down = windows_key_pressed('Q');
-    bool m_down = windows_key_pressed('M');
-    bool v_down = windows_key_pressed('V');
-    bool b_down = windows_key_pressed('B');
-    bool e_down = windows_key_pressed('E');
-    bool r_down = windows_key_pressed('R');
-    bool one_down = windows_key_pressed('1');
-    bool two_down = windows_key_pressed('2');
-    bool p_down = windows_key_pressed('P');
+    const bool w_down = windows_key_pressed('W');
+    const bool a_down = windows_key_pressed('A');
+    const bool s_down = windows_key_pressed('S');
+    const bool d_down = windows_key_pressed('D');
+    const bool i_down = windows_key_pressed('I');
+    const bool j_down = windows_key_pressed('J');
+    const bool k_down = windows_key_pressed('K');
+    const bool l_down = windows_key_pressed('L');
+    const bool q_down = windows_key_pressed('Q');
+    const bool m_down = windows_key_pressed('M');
+    const bool v_down = windows_key_pressed('V');
+    const bool b_down = windows_key_pressed('B');
+    const bool e_down = windows_key_pressed('E');
+    const bool r_down = windows_key_pressed('R');
+    const bool one_down = windows_key_pressed('1');
+    const bool two_down = windows_key_pressed('2');
+    const bool p_down = windows_key_pressed('P');
 
     key_state->w = w_down;
     key_state->a = a_down;
@@ -288,12 +287,12 @@ static void handle_windows_mouse_event(const InputThreadData *data, WindowsInput
         return;
     }
 
-    bool left_down = (event->dwButtonState & FROM_LEFT_1ST_BUTTON_PRESSED) != 0;
-    bool middle_down = (event->dwButtonState & FROM_LEFT_2ND_BUTTON_PRESSED) != 0;
-    bool right_down = (event->dwButtonState & RIGHTMOST_BUTTON_PRESSED) != 0;
+    const bool left_down = (event->dwButtonState & FROM_LEFT_1ST_BUTTON_PRESSED) != 0;
+    const bool middle_down = (event->dwButtonState & FROM_LEFT_2ND_BUTTON_PRESSED) != 0;
+    const bool right_down = (event->dwButtonState & RIGHTMOST_BUTTON_PRESSED) != 0;
 
-    int mouse_x = event->dwMousePosition.X;
-    int mouse_y = event->dwMousePosition.Y;
+    const int mouse_x = event->dwMousePosition.X;
+    const int mouse_y = event->dwMousePosition.Y;
 
     if (event->dwEventFlags == 0) {
         state->last_mouse_x = mouse_x;

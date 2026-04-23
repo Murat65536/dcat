@@ -2,7 +2,7 @@
 #include "vk_memory.h"
 #include <string.h>
 
-static bool upload_texture_image(VulkanRenderer *r, const Texture *texture, VkFormat format,
+static bool upload_texture_image(VulkanRenderer *r, const Texture *texture, const VkFormat format,
                                  VkImage *image, VulkanAllocation *alloc, VkImageView *view,
                                  uint32_t *cached_w, uint32_t *cached_h) {
     if (*cached_w != texture->width || *cached_h != texture->height || *image == VK_NULL_HANDLE) {

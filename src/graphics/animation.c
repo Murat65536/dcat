@@ -30,8 +30,8 @@ void bone_map_free(BoneMap *map) {
 int bone_map_find(const BoneMap *map, const char *name) {
     if (!map || !name)
         return -1;
-    uint32_t hash = bone_hash(name) % BONE_MAP_SIZE;
-    BoneMapEntry *entry = map->buckets[hash];
+    const uint32_t hash = bone_hash(name) % BONE_MAP_SIZE;
+    const BoneMapEntry *entry = map->buckets[hash];
     while (entry) {
         if (strcmp(entry->name, name) == 0) {
             return entry->index;
@@ -41,11 +41,21 @@ int bone_map_find(const BoneMap *map, const char *name) {
     return -1;
 }
 
-void bone_map_insert(BoneMap *map, const char *name, int index) {
+void bone_map_insert(BoneMap *map, const char *name, const int index) {
+    if (!map || !name) {
+        return;
+    }
+
     if (map->count >= map->capacity) {
-        map->capacity = map->capacity ? map->capacity * 2 : 32;
+        const size_t new_capacity = map->capacity ? map->capacity * 2 : 32;
+        BoneMapEntry *new_entries = realloc(map->entries, new_capacity * sizeof(BoneMapEntry));
+        if (!new_entries) {
+            return;
+        }
+
         const BoneMapEntry *old_entries = map->entries;
-        map->entries = realloc(map->entries, map->capacity * sizeof(BoneMapEntry));
+        map->entries = new_entries;
+        map->capacity = new_capacity;
 
         // If realloc moved the memory, rebuild all bucket pointers
         if (map->entries != old_entries && old_entries != NULL) {
@@ -59,8 +69,14 @@ void bone_map_insert(BoneMap *map, const char *name, int index) {
             }
         }
     }
+
+    char *name_copy = str_dup(name);
+    if (!name_copy) {
+        return;
+    }
+
     BoneMapEntry *entry = &map->entries[map->count];
-    entry->name = str_dup(name);
+    entry->name = name_copy;
     entry->index = index;
 
     const uint32_t hash = bone_hash(name) % BONE_MAP_SIZE;

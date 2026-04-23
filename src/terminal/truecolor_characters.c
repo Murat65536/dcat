@@ -41,12 +41,12 @@ static void init_u8_table(void) {
     u8_table_initialized = true;
 }
 
-static inline void write_u8_3digit(char *p, uint8_t v) {
+static void write_u8_3digit(char *p, const uint8_t v) {
     memcpy(p, u8_3digit[v], 3);
 }
 
-void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t height,
-                                 bool use_hash_characters) {
+void render_truecolor_characters(const uint8_t *buffer, const uint32_t width, const uint32_t height,
+                                 const bool use_hash_characters) {
     init_u8_table();
     if (use_hash_characters) {
         const size_t num_cells = (size_t)width * height;
@@ -84,12 +84,12 @@ void render_truecolor_characters(const uint8_t *buffer, uint32_t width, uint32_t
         return;
     }
 
-    uint32_t num_blocks = width * ((height + 1) / 2);
+    const uint32_t num_blocks = width * ((height + 1) / 2);
 
     // Detect resize or first run
     if (!buffer_initialized || width != last_width || height != last_height) {
         // Each block: \x1b[38;2;RRR;GGG;BBB;48;2;RRR;GGG;BBBm▀ = 39 bytes
-        size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_blocks * 39 + (sizeof(FRAME_END) - 1);
+        const size_t needed_size = (sizeof(FRAME_BEGIN) - 1) + num_blocks * 39 + (sizeof(FRAME_END) - 1);
 
         if (render_buf_size < needed_size) {
             free(render_buf);

@@ -1,0 +1,8 @@
+#cmakedefine01 HAVE_SETJMP_H
+#cmakedefine01 HAVE_SYS_IOCTL_H
+#cmakedefine01 HAVE_SYS_SELECT_H
+#cmakedefine01 HAVE_SYS_SIGNAL_H
+#cmakedefine01 HAVE_SYS_TYPES_H
+#cmakedefine01 HAVE_TERMIOS_H
+#cmakedefine01 HAVE_UNISTD_H
+#define _POSIX_C_SOURCE 199309L

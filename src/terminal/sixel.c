@@ -1,29 +1,13 @@
 #include "sixel.h"
 #include "core/platform_compat.h"
 #include "terminal.h"
-#ifdef _WIN32
-#include <stdbool.h>
-#include <stdint.h>
-#else
 #include <sixel.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef _WIN32
 #include <unistd.h>
 #endif
-
-#ifdef _WIN32
-
-void render_sixel(const uint8_t *buffer, uint32_t width, uint32_t height) {
-    (void)buffer;
-    (void)width;
-    (void)height;
-}
-
-bool detect_sixel_support(void) {
-    return false;
-}
-
-#else
 
 static int sixel_write_cb(char *data, int size, void *priv) {
     (void)priv;
@@ -97,12 +81,11 @@ bool detect_sixel_support(void) {
     if (r > 0) {
         buffer[r] = '\0';
         char *p = strstr(buffer, "\x1b[?2;");
-        if (p && atoi(p + 5) == 0)
+        char *endptr;
+        if (p && strtol(p + 5, &endptr, 10) == 0 && endptr != (p + 5))
             found = true;
     }
 
     terminal_end_query_mode(&ts);
     return found;
 }
-
-#endif

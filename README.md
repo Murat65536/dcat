@@ -30,54 +30,51 @@ https://github.com/user-attachments/assets/ca47ea52-6a46-4ac2-8c9f-430fc9ea9865
 
 ## Build
 
-Linux/macOS:
+The project now uses repo-local `vcpkg` manifest mode by default.
+
+### Bootstrap `vcpkg`
+
+The presets expect a `vcpkg` checkout at `.deps/vcpkg`:
+
+```powershell
+git clone https://github.com/microsoft/vcpkg.git .deps/vcpkg
+.deps\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+```
+
+### Configure and build
+
+Release:
 
 ```sh
-cmake -S . -B build -G Ninja -D CMAKE_BUILD_TYPE=Release -D USE_BUNDLED=OFF -D USE_SANITIZERS=OFF
-cmake --build build --config Release
+cmake --preset release
+cmake --build --preset release
 ```
 
-Debug build with sanitizers:
+Debug:
 
 ```sh
-cmake -S . -B build-debug -G Ninja -D CMAKE_BUILD_TYPE=Debug -D USE_BUNDLED=OFF -D USE_SANITIZERS=ON
-cmake --build build-debug --config Debug
+cmake --preset debug
+cmake --build --preset debug
 ```
 
-Windows (MSVC, recommended):
+The manifest is pinned via `vcpkg.json` and uses local overlay ports under `vcpkg-overlays/ports` for awkward packages:
+- `libsixel` is built from a pinned upstream commit and exported as `unofficial-libsixel`
+- `vips` uses the official Windows prebuilt bundle and is exported as `unofficial-vips`
 
-```powershell
-# Run these in a Visual Studio Developer PowerShell (x64)
-cmake -S cmake.deps -B .deps -G Ninja -D CMAKE_BUILD_TYPE=Release -D DCAT_VCPKG_TRIPLET=x64-windows
-cmake --build .deps --config Release
-cmake -S . -B build -G Ninja -D CMAKE_BUILD_TYPE=Release -D USE_BUNDLED=ON -D DEPS_PREFIX="$PWD\.deps\vcpkg_installed\x64-windows" -D USE_SANITIZERS=OFF
-cmake --build build --config Release
-```
+Current note on `vips`:
+- Windows is managed directly through the overlay port
+- Linux/macOS still rely on system `pkg-config`/package-manager installs for `vips`
 
-### Build bundled dependencies only (Windows/MSVC)
-
-```powershell
-cmake -S cmake.deps -B .deps -G Ninja -D CMAKE_BUILD_TYPE=Release -D DCAT_VCPKG_TRIPLET=x64-windows
-cmake --build .deps --config Release
-```
-
-If your vcpkg revision does not provide a `vips`/`libvips` port, `cmake.deps` automatically downloads the official
-`vips-dev-x64-all` bundle from `libvips/build-win64-mxe` and places it under `.deps\vcpkg_installed\x64-windows`.
-
-Then configure the main project with:
-
-```powershell
-cmake -S . -B build -G Ninja -D CMAKE_BUILD_TYPE=Release -D USE_BUNDLED=ON -D DEPS_PREFIX="$PWD\.deps\vcpkg_installed\x64-windows"
-cmake --build build --config Release
-```
+Legacy path:
+- `cmake.deps` and `-DUSE_BUNDLED=ON` still work as a fallback for the old `.deps/vcpkg_installed/...` prefix flow
 
 Windows notes:
-- `--kitty`, `--kitty-direct`, and `--sixel` are not supported in native Windows mode.
-- Auto output mode falls back to character rendering modes on Windows.
-- `glslc` must still be available on `PATH` (for example from the Vulkan SDK).
+- `--kitty` and `--kitty-direct` are not supported in native Windows mode
+- Auto output mode falls back to character rendering modes on Windows
+- `glslc` must still be available on `PATH` or provided by the resolved dependency prefix
 
 Install:
 
 ```sh
-cmake --install build
+cmake --install build/release
 ```
