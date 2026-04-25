@@ -22,10 +22,55 @@ jobs:
         with:
           buildtype: 'Release'
 
-  release:
+  release-windows:
+    name: Windows Installer Release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: clang64
+          update: true
+          install: >-
+            mingw-w64-clang-x86_64-toolchain
+            mingw-w64-clang-x86_64-meson
+            mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-pkgconf
+            mingw-w64-clang-x86_64-vulkan-headers
+            mingw-w64-clang-x86_64-assimp
+            mingw-w64-clang-x86_64-cglm
+            mingw-w64-clang-x86_64-vips
+            mingw-w64-clang-x86_64-python
+
+      - name: Build dcat
+        shell: msys2 {0}
+        run: |
+          meson setup buildDir -Dbuildtype=release -Ddefault_library=static
+          meson compile -C buildDir
+
+      - name: Package DLLs
+        shell: msys2 {0}
+        run: |
+          python package.py
+
+      - name: Compile Inno Setup Script
+        run: |
+          iscc dcat.iss
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dcat-windows-installer
+          path: installer/dcat-windows-setup.exe
+
+  release-linux:
+    name: Linux Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    needs: [release-windows]
     steps:
       - uses: actions/checkout@v4
 
@@ -43,19 +88,25 @@ jobs:
           cp README.md dcat-linux/
           tar -czvf dcat-linux-x86_64.tar.gz dcat-linux
 
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dcat-windows-installer
+          path: .
+
       - name: Publish Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             TAG_NAME=${GITHUB_REF#refs/tags/}
-            gh release create "$TAG_NAME" dcat-linux-x86_64.tar.gz \
+            gh release create "$TAG_NAME" dcat-linux-x86_64.tar.gz dcat-windows-setup.exe \
               --title "Release $TAG_NAME" \
               --notes "Release $TAG_NAME"
           else
             gh release delete nightly --yes || true
             git push origin :nightly || true
-            gh release create nightly dcat-linux-x86_64.tar.gz \
+            gh release create nightly dcat-linux-x86_64.tar.gz dcat-windows-setup.exe \
               --prerelease \
               --title "Nightly Build" \
               --target main
