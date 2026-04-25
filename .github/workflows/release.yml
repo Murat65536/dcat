@@ -87,7 +87,7 @@ jobs:
         run: |
           mkdir -p dcat-linux/shaders
           cp build/dcat dcat-linux/
-          cp build/*.spv dcat-linux/shaders/
+          cp build/shaders/*.spv dcat-linux/shaders/
           cp LICENSE dcat-linux/
           cp README.md dcat-linux/
           tar -czvf dcat-linux-x86_64.tar.gz dcat-linux
