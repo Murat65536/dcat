@@ -1,0 +1,9 @@
+[wrap-git]
+directory = assimp
+url = https://github.com/assimp/assimp.git
+revision = v5.4.3
+depth = 1
+method = cmake
+
+[provide]
+dependency_names = assimp

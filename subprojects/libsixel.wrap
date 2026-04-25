@@ -1,0 +1,9 @@
+[wrap-git]
+directory = libsixel
+url = https://github.com/libsixel/libsixel.git
+revision = master
+depth = 1
+patch_directory = libsixel
+
+[provide]
+dependency_names = libsixel

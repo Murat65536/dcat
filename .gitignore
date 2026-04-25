@@ -71,6 +71,16 @@ cmake-build-*
 
 .cache/
 build/
+buildDir/
+build-*/
+dist/
+installer/
+
+# Meson subprojects
+subprojects/*
+!subprojects/*.wrap
+!subprojects/*.patch
+!subprojects/packagefiles/
 .vscode/
 .deps/
 .idea

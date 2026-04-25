@@ -1,2 +1,0 @@
-The port exposes the CMake package `unofficial-libsixel` and target
-`unofficial::libsixel::libsixel`.

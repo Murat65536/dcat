@@ -1,6 +1,0 @@
-{
-  "name": "vips",
-  "version-string": "8.18.2",
-  "description": "Windows-only libvips prebuilt bundle for dcat",
-  "supports": "windows & !static"
-}
