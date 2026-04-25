@@ -41,7 +41,7 @@ jobs:
             mingw-w64-clang-x86_64-vulkan-headers
             mingw-w64-clang-x86_64-assimp
             mingw-w64-clang-x86_64-cglm
-            mingw-w64-clang-x86_64-vips
+            mingw-w64-clang-x86_64-libvips
             mingw-w64-clang-x86_64-python
 
       - name: Build dcat
