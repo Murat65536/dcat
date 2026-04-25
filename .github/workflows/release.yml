@@ -39,6 +39,7 @@ jobs:
             mingw-w64-clang-x86_64-ninja
             mingw-w64-clang-x86_64-pkgconf
             mingw-w64-clang-x86_64-vulkan-headers
+            mingw-w64-clang-x86_64-vulkan-loader
             mingw-w64-clang-x86_64-assimp
             mingw-w64-clang-x86_64-cglm
             mingw-w64-clang-x86_64-libvips
