@@ -30,51 +30,57 @@ https://github.com/user-attachments/assets/ca47ea52-6a46-4ac2-8c9f-430fc9ea9865
 
 ## Build
 
-The project now uses repo-local `vcpkg` manifest mode by default.
+This project uses the [Meson](https://mesonbuild.com/) build system and depends on Vulkan, Assimp, cglm, libvips, and libsixel.
 
-### Bootstrap `vcpkg`
+### Linux
 
-The presets expect a `vcpkg` checkout at `.deps/vcpkg`:
-
-```powershell
-git clone https://github.com/microsoft/vcpkg.git .deps/vcpkg
-.deps\vcpkg\bootstrap-vcpkg.bat -disableMetrics
-```
-
-### Configure and build
-
-Release:
+Install the required dependencies (Ubuntu/Debian example):
 
 ```sh
-cmake --preset release
-cmake --build --preset release
+# Add LunarG Vulkan SDK repository for latest vulkan-headers
+wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
+sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-noble.list https://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list
+sudo apt-get update
+
+sudo apt-get install -y gcc meson ninja-build libvulkan-dev vulkan-headers shaderc vulkan-utility-libraries-dev libassimp-dev libcglm-dev libsixel-dev pkg-config libvips-dev
 ```
 
-Debug:
+Configure and build:
 
 ```sh
-cmake --preset debug
-cmake --build --preset debug
+# Release
+meson setup build --buildtype=release
+meson compile -C build
+
+# Debug
+meson setup build-debug --buildtype=debug
+meson compile -C build-debug
 ```
 
-The manifest is pinned via `vcpkg.json` and uses local overlay ports under `vcpkg-overlays/ports` for awkward packages:
-- `libsixel` is built from a pinned upstream commit and exported as `unofficial-libsixel`
-- `vips` uses the official Windows prebuilt bundle and is exported as `unofficial-vips`
+### Windows
 
-Current note on `vips`:
-- Windows is managed directly through the overlay port
-- Linux/macOS still rely on system `pkg-config`/package-manager installs for `vips`
+On Windows, the project is built using [MSYS2](https://www.msys2.org/) with the `clang64` environment.
 
-Legacy path:
-- `cmake.deps` and `-DUSE_BUNDLED=ON` still work as a fallback for the old `.deps/vcpkg_installed/...` prefix flow
-
-Windows notes:
-- `--kitty` and `--kitty-direct` are not supported in native Windows mode
-- Auto output mode falls back to character rendering modes on Windows
-- `glslc` must still be available on `PATH` or provided by the resolved dependency prefix
-
-Install:
+1. Install MSYS2.
+2. Open the **MSYS2 Clang x86_64** terminal.
+3. Install dependencies:
 
 ```sh
-cmake --install build/release
+pacman -S mingw-w64-clang-x86_64-toolchain mingw-w64-clang-x86_64-meson mingw-w64-clang-x86_64-ninja mingw-w64-clang-x86_64-cmake mingw-w64-clang-x86_64-pkgconf mingw-w64-clang-x86_64-vulkan-headers mingw-w64-clang-x86_64-vulkan-loader mingw-w64-clang-x86_64-shaderc mingw-w64-clang-x86_64-assimp mingw-w64-clang-x86_64-cglm mingw-w64-clang-x86_64-libvips mingw-w64-clang-x86_64-python git
 ```
+
+Configure and build:
+
+```sh
+# Release (recommended for standalone usage)
+meson setup buildDir --buildtype=release --default-library=static
+meson compile -C buildDir
+
+# Debug
+meson setup buildDir-debug --buildtype=debug
+meson compile -C buildDir-debug
+```
+
+### Windows Notes
+- `--kitty` and `--kitty-direct` are not supported in native Windows mode.
+- Auto output mode falls back to character rendering modes on Windows.
