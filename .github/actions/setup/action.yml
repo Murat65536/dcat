@@ -1,10 +1,10 @@
 name: 'Setup'
-description: 'Installs dependencies and builds the project with CMake on Linux and Windows (MSVC)'
+description: 'Installs dependencies and builds the project with Meson on Linux and Windows (MSYS2)'
 inputs:
   buildtype:
-    description: 'CMake build type (Release or Debug)'
+    description: 'Meson build type (release or debug)'
     required: true
-    default: 'Release'
+    default: 'release'
 
 runs:
   using: "composite"
@@ -23,7 +23,7 @@ runs:
       run: |
         sudo apt-get install -y \
           gcc \
-          cmake \
+          meson \
           ninja-build \
           libvulkan-dev \
           vulkan-headers \
@@ -35,39 +35,39 @@ runs:
           pkg-config \
           libvips-dev
 
-    - name: Setup MSVC developer environment
+    - name: Setup MSYS2
       if: runner.os == 'Windows'
-      uses: ilammy/msvc-dev-cmd@v1
+      uses: msys2/setup-msys2@v2
       with:
-        arch: x64
+        msystem: clang64
+        update: true
+        install: >-
+          mingw-w64-clang-x86_64-toolchain
+          mingw-w64-clang-x86_64-meson
+          mingw-w64-clang-x86_64-ninja
+          mingw-w64-clang-x86_64-cmake
+          mingw-w64-clang-x86_64-pkgconf
+          mingw-w64-clang-x86_64-vulkan-headers
+          mingw-w64-clang-x86_64-vulkan-loader
+          mingw-w64-clang-x86_64-shaderc
+          mingw-w64-clang-x86_64-assimp
+          mingw-w64-clang-x86_64-cglm
+          mingw-w64-clang-x86_64-libvips
+          mingw-w64-clang-x86_64-python
+          git
 
     - name: Configure + Build (Linux)
       if: runner.os == 'Linux'
       shell: bash
       run: |
-        cmake -S . -B build -G Ninja \
-          -D CMAKE_BUILD_TYPE=${{ inputs.buildtype }} \
-          -D USE_BUNDLED=OFF \
-          -D USE_SANITIZERS=OFF
-        cmake --build build --config ${{ inputs.buildtype }}
-
-    - name: Configure + Build bundled deps (Windows)
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: |
-        cmake -S cmake.deps -B .deps -G Ninja `
-          -D CMAKE_BUILD_TYPE=${{ inputs.buildtype }} `
-          -D DCAT_VCPKG_TRIPLET=x64-windows
-        cmake --build .deps --config ${{ inputs.buildtype }}
+        BUILDTYPE=$(echo "${{ inputs.buildtype }}" | tr '[:upper:]' '[:lower:]')
+        meson setup build -Dbuildtype=$BUILDTYPE
+        meson compile -C build
 
     - name: Configure + Build (Windows)
       if: runner.os == 'Windows'
-      shell: pwsh
+      shell: msys2 {0}
       run: |
-        $depsPrefix = Join-Path $env:GITHUB_WORKSPACE ".deps\vcpkg_installed\x64-windows"
-        cmake -S . -B build -G Ninja `
-          -D CMAKE_BUILD_TYPE=${{ inputs.buildtype }} `
-          -D USE_BUNDLED=ON `
-          -D USE_SANITIZERS=OFF `
-          -D DEPS_PREFIX="$depsPrefix"
-        cmake --build build --config ${{ inputs.buildtype }}
+        BUILDTYPE=$(echo "${{ inputs.buildtype }}" | tr '[:upper:]' '[:lower:]')
+        meson setup buildDir -Dbuildtype=$BUILDTYPE -Ddefault_library=static
+        meson compile -C buildDir
