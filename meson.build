@@ -11,10 +11,6 @@ project('dcat', ['c', 'cpp'],
 cc = meson.get_compiler('c')
 cxx = meson.get_compiler('cpp')
 
-if cc.get_id() == 'gcc' or cc.get_id() == 'clang'
-  add_project_link_arguments('-static', language: ['c', 'cpp'])
-endif
-
 # Dependencies
 vulkan_dep = dependency('vulkan', required: true)
 
