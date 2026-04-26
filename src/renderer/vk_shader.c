@@ -51,17 +51,25 @@ static void get_executable_directory(char *out, const size_t out_size) {
 
 char *read_shader_file(VulkanRenderer *r, const char *filename, size_t *out_size) {
     enum { MAX_SHADER_FILENAME_LEN = 255, MAX_SHADER_DIR_LEN = 240 };
+
+#ifndef SHADER_INSTALL_DIR
+#define SHADER_INSTALL_DIR "/usr/local/share/dcat/shaders"
+#endif
+
 #ifdef _WIN32
     const char *search_paths[] = {
         "", // Will be replaced with exe_dir/shaders/
         "", // Will be replaced with exe_dir
         "./shaders/",
         "../share/dcat/shaders/",
+        SHADER_INSTALL_DIR "/",
     };
 #else
     const char *search_paths[] = {"", // Will be replaced with exe_dir/shaders/
                                   "", // Will be replaced with exe_dir (for build directory)
-                                  "./shaders/", "/usr/local/share/dcat/shaders/",
+                                  "./shaders/",
+                                  SHADER_INSTALL_DIR "/",
+                                  "/usr/local/share/dcat/shaders/",
                                   "/usr/share/dcat/shaders/"};
 #endif
 

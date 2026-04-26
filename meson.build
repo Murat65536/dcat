@@ -19,11 +19,6 @@ cglm_dep = dependency('cglm', fallback: ['cglm', 'cglm_dep'])
 vips_dep = dependency('vips', fallback: ['vips', 'vips_dep'])
 sixel_dep = dependency('libsixel', fallback: ['libsixel', 'sixel_dep'])
 
-poly2tri_dep = cc.find_library('poly2tri', required: false)
-if not poly2tri_dep.found()
-  poly2tri_dep = dependency('poly2tri', fallback: ['poly2tri', 'poly2tri_dep'], required: false)
-endif
-
 threads_dep = dependency('threads')
 m_dep = cc.find_library('m', required: false)
 rt_dep = cc.find_library('rt', required: false)
@@ -43,16 +38,14 @@ endif
 if rt_dep.found()
   dcat_deps += rt_dep
 endif
-if poly2tri_dep.found()
-  dcat_deps += poly2tri_dep
-endif
 
 add_project_arguments('-DCGLM_FORCE_DEPTH_ZERO_TO_ONE', language: ['c', 'cpp'])
 
+shader_install_dir = get_option('prefix') / get_option('datadir') / 'dcat' / 'shaders'
+add_project_arguments('-DSHADER_INSTALL_DIR="' + shader_install_dir + '"', language: ['c', 'cpp'])
+
 if get_option('buildtype') == 'debug'
   add_project_arguments('-DDEBUG_BUILD=1', '-DVK_ENABLE_VALIDATION=1', language: ['c', 'cpp'])
-elif get_option('buildtype') == 'release'
-  add_project_arguments('-DNDEBUG=1', language: ['c', 'cpp'])
 endif
 
 if cc.get_id() == 'msvc'
@@ -60,13 +53,6 @@ if cc.get_id() == 'msvc'
     add_project_arguments('/experimental:c11atomics', language: 'c')
   endif
 else
-  if get_option('buildtype') == 'release'
-    foreach arg : ['-march=native', '-ffast-math', '-funroll-loops']
-      if cc.has_argument(arg)
-        add_project_arguments(arg, language: ['c', 'cpp'])
-      endif
-    endforeach
-  endif
   if get_option('profile')
     add_project_arguments('-pg', language: ['c', 'cpp'])
     add_project_link_arguments('-pg', language: ['c', 'cpp'])

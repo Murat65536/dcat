@@ -10,10 +10,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  windows-build:
-    name: Windows build validation
+  release-windows:
+    name: Windows Installer Release
     runs-on: windows-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
 
@@ -21,38 +20,6 @@ jobs:
         uses: ./.github/actions/setup
         with:
           buildtype: 'Release'
-
-  release-windows:
-    name: Windows Installer Release
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: clang64
-          update: true
-          install: >-
-            mingw-w64-clang-x86_64-toolchain
-            mingw-w64-clang-x86_64-meson
-            mingw-w64-clang-x86_64-ninja
-            mingw-w64-clang-x86_64-cmake
-            mingw-w64-clang-x86_64-pkgconf
-            mingw-w64-clang-x86_64-vulkan-headers
-            mingw-w64-clang-x86_64-vulkan-loader
-            mingw-w64-clang-x86_64-shaderc
-            mingw-w64-clang-x86_64-assimp
-            mingw-w64-clang-x86_64-cglm
-            mingw-w64-clang-x86_64-libvips
-            mingw-w64-clang-x86_64-python
-            git
-
-      - name: Build dcat
-        shell: msys2 {0}
-        run: |
-          meson setup buildDir -Dbuildtype=release -Ddefault_library=static
-          meson compile -C buildDir
 
       - name: Package DLLs
         shell: msys2 {0}

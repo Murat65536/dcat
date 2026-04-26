@@ -73,12 +73,12 @@ Configure and build:
 
 ```sh
 # Release (recommended for standalone usage)
-meson setup buildDir --buildtype=release --default-library=static
-meson compile -C buildDir
+meson setup build --buildtype=release --default-library=static
+meson compile -C build
 
 # Debug
-meson setup buildDir-debug --buildtype=debug
-meson compile -C buildDir-debug
+meson setup build-debug --buildtype=debug
+meson compile -C build-debug
 ```
 
 ### Windows Notes
