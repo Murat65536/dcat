@@ -253,7 +253,7 @@ static void compute_bone_transform(const Skeleton *skeleton, const Animation *an
     mat4 global_transform;
     glm_mat4_mul(parent_transform, node_transform, global_transform);
 
-    int bone_idx = bone_map_find(&skeleton->bone_map, node->name);
+    const int bone_idx = bone_map_find(&skeleton->bone_map, node->name);
     if (bone_idx >= 0 && bone_idx < MAX_BONES) {
         mat4 temp;
         glm_mat4_mul((vec4 *)skeleton->global_inverse_transform, global_transform, temp);

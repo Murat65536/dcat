@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
     tags:
       - 'v*'
   schedule:
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    needs: [release-windows]
+    needs: [ release-windows ]
     steps:
       - uses: actions/checkout@v4
 

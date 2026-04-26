@@ -2,9 +2,29 @@
 #include "vk_memory.h"
 #include <string.h>
 
+static bool texture_is_valid(const Texture *texture) {
+    return texture && texture->data && texture->width > 0 && texture->height > 0 &&
+           texture->data_size > 0;
+}
+
+static bool ensure_texture_fallback(Texture *texture, const bool normal_map) {
+    if (texture_is_valid(texture)) {
+        return true;
+    }
+
+    texture_free(texture);
+    if (normal_map) {
+        texture_create_flat_normal_map(texture);
+    } else {
+        texture_init_default(texture);
+    }
+
+    return texture->data != NULL && texture->data_size > 0;
+}
+
 static bool upload_texture_image(VulkanRenderer *r, const Texture *texture, const VkFormat format,
-                                 VkImage *image, VulkanAllocation *alloc, VkImageView *view,
-                                 uint32_t *cached_w, uint32_t *cached_h) {
+                                  VkImage *image, VulkanAllocation *alloc, VkImageView *view,
+                                  uint32_t *cached_w, uint32_t *cached_h) {
     if (*cached_w != texture->width || *cached_h != texture->height || *image == VK_NULL_HANDLE) {
         if (*view != VK_NULL_HANDLE) {
             vkDestroyImageView(r->device, *view, NULL);
@@ -58,6 +78,23 @@ static bool upload_texture_image(VulkanRenderer *r, const Texture *texture, cons
 
 bool update_material_texture(VulkanRenderer *r, MaterialGPUData *mat, const Texture *diffuse,
                              const Texture *normal) {
+    Texture fallback_diffuse = {0};
+    Texture fallback_normal = {0};
+
+    if (!texture_is_valid(diffuse)) {
+        diffuse = &fallback_diffuse;
+        if (!ensure_texture_fallback(&fallback_diffuse, false)) {
+            return false;
+        }
+    }
+    if (!texture_is_valid(normal)) {
+        normal = &fallback_normal;
+        if (!ensure_texture_fallback(&fallback_normal, true)) {
+            texture_free(&fallback_diffuse);
+            return false;
+        }
+    }
+
     // Check if diffuse needs update
     if (mat->cached_diffuse_data_ptr != diffuse->data ||
         mat->cached_diffuse_width != diffuse->width ||
@@ -95,6 +132,8 @@ bool update_material_texture(VulkanRenderer *r, MaterialGPUData *mat, const Text
         }
     }
 
+    texture_free(&fallback_diffuse);
+    texture_free(&fallback_normal);
     return true;
 }
 

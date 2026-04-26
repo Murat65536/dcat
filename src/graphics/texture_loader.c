@@ -15,7 +15,7 @@ bool load_diffuse_texture(const char *model_path, const char *texture_arg,
     }
 
     if (final_path[0] == '*') {
-        // Use pre-extracted embedded bytes if available (avoids re-parsing the model file)
+        // Use pre-extracted embedded bytes if available (avoids reparsing the model file)
         if (!texture_arg && material_info->embedded_diffuse &&
             material_info->embedded_diffuse_size > 0) {
             return texture_from_memory(out_texture, material_info->embedded_diffuse,

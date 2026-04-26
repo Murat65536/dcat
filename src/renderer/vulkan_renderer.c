@@ -460,6 +460,16 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
     vulkan_renderer_clear_error(r);
     *out_framebuffer = NULL;
 
+    static const RenderMaterial default_material = {
+        .diffuse = NULL,
+        .normal = NULL,
+        .alpha_mode = ALPHA_MODE_OPAQUE,
+        .specular_strength = 0.35f,
+        .shininess = 32.0f,
+        .base_color = {1.0f, 1.0f, 1.0f, 1.0f},
+        .use_diffuse_alpha_as_luster = false,
+    };
+
     VkResult vk_result =
         vkWaitForFences(r->device, 1, &r->in_flight_fences[r->current_frame], VK_TRUE, UINT64_MAX);
     if (vk_result != VK_SUCCESS) {
@@ -498,8 +508,10 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
     r->frame_staging_buffers[r->current_frame] = write_staging_idx;
 
     // Ensure material GPU resources
-    if (material_count == 0)
+    if (materials == NULL || material_count == 0) {
+        materials = &default_material;
         material_count = 1;
+    }
     if (!ensure_material_gpu(r, material_count)) {
         return false;
     }
@@ -653,7 +665,7 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
 
     vkCmdBeginRenderPass(cmd, &rp_info, VK_SUBPASS_CONTENTS_INLINE);
 
-    VkViewport viewport = {0, 0, (float)r->width, (float)r->height, 1, 0};
+    VkViewport viewport = {0, 0, (float)r->width, (float)r->height, 0.0f, 1.0f};
     VkRect2D scissor = {{0, 0}, {r->width, r->height}};
     vkCmdSetViewport(cmd, 0, 1, &viewport);
     vkCmdSetScissor(cmd, 0, 1, &scissor);

@@ -24,7 +24,7 @@ void mesh_free(Mesh *mesh) {
     mesh_init(mesh);
 }
 
-void materials_free(MaterialInfo *materials, size_t count) {
+void materials_free(MaterialInfo *materials, const size_t count) {
     if (!materials)
         return;
     for (size_t i = 0; i < count; i++) {
@@ -95,7 +95,7 @@ void calculate_camera_setup(const VertexArray *vertices, CameraSetup *setup) {
 }
 
 // Convert assimp matrix to cglm matrix
-static inline void ai_matrix_to_glm(const struct aiMatrix4x4 *from, mat4 to) {
+static void ai_matrix_to_glm(const struct aiMatrix4x4 *from, mat4 to) {
     to[0][0] = from->a1;
     to[1][0] = from->a2;
     to[2][0] = from->a3;
@@ -114,13 +114,13 @@ static inline void ai_matrix_to_glm(const struct aiMatrix4x4 *from, mat4 to) {
     to[3][3] = from->d4;
 }
 
-static inline void ai_vector_to_glm(const struct aiVector3D *v, vec3 out) {
+static void ai_vector_to_glm(const struct aiVector3D *v, vec3 out) {
     out[0] = v->x;
     out[1] = v->y;
     out[2] = v->z;
 }
 
-static inline void ai_quat_to_glm(const struct aiQuaternion *q, versor out) {
+static void ai_quat_to_glm(const struct aiQuaternion *q, versor out) {
     out[0] = q->x;
     out[1] = q->y;
     out[2] = q->z;
@@ -137,7 +137,7 @@ static void process_node(const struct aiNode *node, const struct aiScene *scene,
 
     for (unsigned int i = 0; i < node->mNumMeshes; i++) {
         const struct aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
-        uint32_t base_index = (uint32_t)vertices->count;
+        const uint32_t base_index = (uint32_t)vertices->count;
 
         if (mesh->mTextureCoords[uv_channel]) {
             *out_has_uvs = true;
@@ -194,7 +194,7 @@ static void process_node(const struct aiNode *node, const struct aiScene *scene,
         }
 
         // Process indices
-        uint32_t index_start = (uint32_t)indices->count;
+        const uint32_t index_start = (uint32_t)indices->count;
         for (unsigned int j = 0; j < mesh->mNumFaces; j++) {
             const struct aiFace *face = &mesh->mFaces[j];
             for (unsigned int k = 0; k < face->mNumIndices; k++) {
@@ -660,7 +660,8 @@ static void extract_embedded_texture(const struct aiScene *scene, MaterialInfo *
 
     char *endptr;
     const long tex_index = strtol(tex_path + 1, &endptr, 10);
-    if (endptr == (tex_path + 1) || *endptr != '\0' || tex_index < 0 || tex_index >= (long)scene->mNumTextures)
+    if (endptr == (tex_path + 1) || *endptr != '\0' || tex_index < 0 ||
+        tex_index >= (long)scene->mNumTextures)
         return;
 
     const struct aiTexture *embedded_tex = scene->mTextures[tex_index];

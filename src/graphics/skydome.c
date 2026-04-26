@@ -1,6 +1,5 @@
 #include "skydome.h"
 #include <math.h>
-#include <string.h>
 
 void generate_skydome(Mesh *mesh, float radius, int segments, int rings) {
     mesh_init(mesh);
