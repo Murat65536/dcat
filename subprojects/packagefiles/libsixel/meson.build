@@ -1,4 +1,4 @@
-project('libsixel', 'c', version: '1.10.5')
+project('libsixel', 'c', version: '1.10.5', default_options: ['werror=false', 'warning_level=0'])
 
 cc = meson.get_compiler('c')
 

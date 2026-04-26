@@ -14,25 +14,10 @@ cxx = meson.get_compiler('cpp')
 # Dependencies
 vulkan_dep = dependency('vulkan', required: true)
 
-assimp_dep = dependency('assimp', required: false)
-if not assimp_dep.found()
-  assimp_dep = dependency('assimp', fallback: ['assimp', 'assimp_dep'])
-endif
-
-cglm_dep = dependency('cglm', required: false)
-if not cglm_dep.found()
-  cglm_dep = dependency('cglm', fallback: ['cglm', 'cglm_dep'])
-endif
-
-vips_dep = dependency('vips', required: false)
-if not vips_dep.found()
-  vips_dep = dependency('vips', fallback: ['vips', 'vips_dep'])
-endif
-
-sixel_dep = dependency('libsixel', required: false)
-if not sixel_dep.found()
-  sixel_dep = dependency('libsixel', fallback: ['libsixel', 'sixel_dep'])
-endif
+assimp_dep = dependency('assimp', fallback: ['assimp', 'assimp_dep'])
+cglm_dep = dependency('cglm', fallback: ['cglm', 'cglm_dep'])
+vips_dep = dependency('vips', fallback: ['vips', 'vips_dep'])
+sixel_dep = dependency('libsixel', fallback: ['libsixel', 'sixel_dep'])
 
 poly2tri_dep = cc.find_library('poly2tri', required: false)
 if not poly2tri_dep.found()
@@ -66,10 +51,6 @@ add_project_arguments('-DCGLM_FORCE_DEPTH_ZERO_TO_ONE', language: ['c', 'cpp'])
 
 if get_option('buildtype') == 'debug'
   add_project_arguments('-DDEBUG_BUILD=1', '-DVK_ENABLE_VALIDATION=1', language: ['c', 'cpp'])
-  if get_option('use_sanitizers') and cc.get_id() != 'msvc'
-    add_project_arguments('-fsanitize=address,undefined', language: ['c', 'cpp'])
-    add_project_link_arguments('-fsanitize=address,undefined', language: ['c', 'cpp'])
-  endif
 elif get_option('buildtype') == 'release'
   add_project_arguments('-DNDEBUG=1', language: ['c', 'cpp'])
 endif
