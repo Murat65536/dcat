@@ -24,7 +24,7 @@ jobs:
       - name: Package DLLs
         shell: msys2 {0}
         run: |
-          python package.py
+          bash .github/scripts/package.sh
 
       - name: Compile Inno Setup Script
         run: |
