@@ -12,12 +12,19 @@ cp LICENSE README.md dist/ 2>/dev/null || true
 
 # 3. Find and copy all non-system DLLs
 echo "Collecting DLLs..."
-ldd buildDir/dcat.exe | grep '=>' | grep -v -i '/c/windows/' | awk '{print $3}' | while read -r dll_path; do
-    # Some paths might be empty if the library isn't found, but ldd usually reports "not found"
-    if [ -f "$dll_path" ]; then
-        echo "Copying $(basename "$dll_path")..."
-        cp "$dll_path" dist/
-    fi
+touch dist/.new_dll
+while [ -f dist/.new_dll ]; do
+    rm dist/.new_dll
+    for f in dist/*.exe dist/*.dll; do
+        if [ ! -f "$f" ]; then continue; fi
+        ldd "$f" 2>/dev/null | grep '=>' | grep -v -i '/c/windows/' | awk '{print $3}' | while read -r dll_path; do
+            if [ -f "$dll_path" ] && [ ! -f "dist/$(basename "$dll_path")" ]; then
+                echo "Copying $(basename "$dll_path")..."
+                cp "$dll_path" dist/
+                touch dist/.new_dll
+            fi
+        done
+    done
 done
 
 echo "Done! All DLLs copied to dist folder."
