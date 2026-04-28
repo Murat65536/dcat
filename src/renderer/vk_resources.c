@@ -17,8 +17,8 @@ bool create_command_pool(VulkanRenderer *r) {
 bool create_descriptor_pool_with_capacity(VulkanRenderer *r, const uint32_t material_capacity,
                                           VkDescriptorPool *out_pool) {
     // Pool sized for per-material descriptor sets plus skydome.
-    VkDescriptorPoolSize pool_sizes[2] = {
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (1 + material_capacity) * MAX_FRAMES_IN_FLIGHT},
+    const VkDescriptorPoolSize pool_sizes[2] = {
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (2 * material_capacity) * MAX_FRAMES_IN_FLIGHT},
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
          (2 * material_capacity + 1) * MAX_FRAMES_IN_FLIGHT},
     };
