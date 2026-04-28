@@ -169,7 +169,7 @@ bool detect_kitty_shm_support(void) {
     char buf[32];
     bool found = false;
 
-    ssize_t r = read(STDIN_FILENO, buf, sizeof(buf) - 1);
+    ssize_t r = terminal_read_query(buf, sizeof(buf) - 1, '\\');
     if (r > 0) {
         buf[r] = '\0';
         if (strstr(buf, "\x1b_Gi=31;OK"))

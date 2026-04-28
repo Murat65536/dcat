@@ -86,7 +86,7 @@ bool detect_kitty_support(void) {
     char buffer[32];
     bool found = false;
 
-    ssize_t r = read(STDIN_FILENO, buffer, sizeof(buffer) - 1);
+    ssize_t r = terminal_read_query(buffer, sizeof(buffer) - 1, '\\');
     if (r > 0) {
         buffer[r] = '\0';
         if (strstr(buffer, "\x1b_Gi=31;OK"))

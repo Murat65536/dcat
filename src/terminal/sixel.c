@@ -9,9 +9,24 @@
 #include <unistd.h>
 #endif
 
+static char *sixel_buffer = NULL;
+static size_t sixel_buffer_size = 0;
+static size_t sixel_buffer_cap = 0;
+
 static int sixel_write_cb(char *data, int size, void *priv) {
     (void)priv;
-    safe_write(data, (size_t)size);
+    if (sixel_buffer_size + size > sixel_buffer_cap) {
+        size_t new_cap = sixel_buffer_cap == 0 ? (1024 * 1024) : sixel_buffer_cap * 2;
+        while (sixel_buffer_size + size > new_cap) {
+            new_cap *= 2;
+        }
+        char *new_buf = (char *)realloc(sixel_buffer, new_cap);
+        if (!new_buf) return -1;
+        sixel_buffer = new_buf;
+        sixel_buffer_cap = new_cap;
+    }
+    memcpy(sixel_buffer + sixel_buffer_size, data, size);
+    sixel_buffer_size += size;
     return size;
 }
 
@@ -58,7 +73,11 @@ void render_sixel(const uint8_t *buffer, uint32_t width, uint32_t height) {
     sixel_dither_initialize(sixel_dith, sixel_pixels, width, height, SIXEL_PIXELFORMAT_RGBA8888,
                             SIXEL_LARGE_NORM, SIXEL_REP_CENTER_BOX, SIXEL_QUALITY_LOW);
 
+    sixel_buffer_size = 0;
     sixel_encode(sixel_pixels, width, height, 4, sixel_dith, sixel_out);
+    if (sixel_buffer_size > 0) {
+        safe_write(sixel_buffer, sixel_buffer_size);
+    }
 }
 
 bool detect_sixel_support(void) {
@@ -77,7 +96,7 @@ bool detect_sixel_support(void) {
     char buffer[64];
     bool found = false;
 
-    ssize_t r = read(STDIN_FILENO, buffer, sizeof(buffer) - 1);
+    ssize_t r = terminal_read_query(buffer, sizeof(buffer) - 1, 'S');
     if (r > 0) {
         buffer[r] = '\0';
         char *p = strstr(buffer, "\x1b[?2;");

@@ -14,6 +14,15 @@ bool create_instance(VulkanRenderer *r) {
     VkInstanceCreateInfo create_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     create_info.pApplicationInfo = &app_info;
 
+#ifdef _WIN32
+    const char *instance_extensions[] = {"VK_KHR_surface", "VK_KHR_win32_surface"};
+    create_info.enabledExtensionCount = 2;
+#else
+    const char *instance_extensions[] = {"VK_KHR_surface", "VK_KHR_xcb_surface"};
+    create_info.enabledExtensionCount = 2;
+#endif
+    create_info.ppEnabledExtensionNames = instance_extensions;
+
 #ifndef NDEBUG
     const char *validation_layers[] = {"VK_LAYER_KHRONOS_validation"};
     uint32_t layer_count;
@@ -147,6 +156,10 @@ bool create_logical_device(VulkanRenderer *r) {
     create_info.pQueueCreateInfos = &queue_create_info;
     create_info.queueCreateInfoCount = 1;
     create_info.pEnabledFeatures = &device_features;
+
+    const char *device_extensions[] = {"VK_KHR_swapchain"};
+    create_info.enabledExtensionCount = 1;
+    create_info.ppEnabledExtensionNames = device_extensions;
 
     if (vkCreateDevice(r->physical_device, &create_info, NULL, &r->device) != VK_SUCCESS) {
         fprintf(stderr, "Failed to create logical device\n");

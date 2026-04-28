@@ -231,8 +231,7 @@ static bool output_mode_uses_character_cells(const OutputMode output_mode) {
 
 static bool output_mode_supported_on_platform(const OutputMode output_mode) {
 #ifdef _WIN32
-    if (output_mode == OUTPUT_MODE_KITTY_SHM || output_mode == OUTPUT_MODE_KITTY_DIRECT ||
-        output_mode == OUTPUT_MODE_SIXEL) {
+    if (output_mode == OUTPUT_MODE_KITTY_SHM || output_mode == OUTPUT_MODE_KITTY_DIRECT) {
         return false;
     }
 #endif

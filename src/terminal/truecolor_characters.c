@@ -196,7 +196,7 @@ bool detect_truecolor_support(void) {
 
     char response[128];
     bool found = false;
-    ssize_t r = read(STDIN_FILENO, response, sizeof(response) - 1);
+    ssize_t r = terminal_read_query(response, sizeof(response) - 1, '\\');
     if (r > 0) {
         response[r] = '\0';
         // Success response: DCS 1 + r 524742=... ST

@@ -98,7 +98,7 @@ int bone_anim_map_find(const BoneAnimationMap *map, const char *name) {
     return bone_map_find((const BoneMap *)map, name);
 }
 
-void bone_anim_map_insert(BoneAnimationMap *map, const char *name, int index) {
+void bone_anim_map_insert(BoneAnimationMap *map, const char *name, const int index) {
     bone_map_insert((BoneMap *)map, name, index);
 }
 

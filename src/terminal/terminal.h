@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "core/platform_compat.h"
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -53,6 +54,8 @@ void terminal_disarm_recovery(void);
 void write_terminal_recovery_sequence(int fd);
 void terminal_restore_default_state(void);
 void terminal_restore_after_crash(void);
+
+ssize_t terminal_read_query(char *buffer, size_t size, char terminator);
 
 static void enter_alternate_screen(void) {
     safe_write("\x1b[?1049h", 8);

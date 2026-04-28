@@ -74,10 +74,48 @@ void get_terminal_size(uint32_t *cols, uint32_t *rows) {
 
 void get_terminal_size_pixels(uint32_t *width, uint32_t *height) {
 #ifdef _WIN32
+    static uint32_t cached_cols = 0, cached_rows = 0;
+    static uint32_t cached_pixel_width = 0, cached_pixel_height = 0;
+
     uint32_t cols, rows;
     get_terminal_size(&cols, &rows);
-    *width = cols;
-    *height = rows;
+
+    if (cols == cached_cols && rows == cached_rows && cached_pixel_width > 0) {
+        *width = cached_pixel_width;
+        *height = cached_pixel_height;
+        return;
+    }
+
+    if (isatty(STDOUT_FILENO) && isatty(STDIN_FILENO)) {
+        TermiosState ts;
+        if (terminal_begin_query_mode(&ts)) {
+            safe_write("\x1b[14t", 5);
+            char buf[64];
+            ssize_t r = terminal_read_query(buf, sizeof(buf) - 1, 't');
+            terminal_end_query_mode(&ts);
+            if (r > 0) {
+                buf[r] = '\0';
+                char *p = strstr(buf, "\x1b[4;");
+                unsigned int h = 0, w = 0;
+                if (p && sscanf(p, "\x1b[4;%u;%ut", &h, &w) == 2 && h > 0 && w > 0) {
+                    *width = w;
+                    *height = h;
+                    cached_cols = cols;
+                    cached_rows = rows;
+                    cached_pixel_width = w;
+                    cached_pixel_height = h;
+                    return;
+                }
+            }
+        }
+    }
+
+    *width = cols > 0 ? cols * 10 : DEFAULT_TERM_WIDTH * 10;
+    *height = rows > 0 ? rows * 20 : DEFAULT_TERM_HEIGHT * 20;
+    cached_cols = cols;
+    cached_rows = rows;
+    cached_pixel_width = *width;
+    cached_pixel_height = *height;
 #else
     struct winsize ws;
     if (get_winsize(&ws) && ws.ws_xpixel > 0 && ws.ws_ypixel > 0) {
@@ -181,6 +219,24 @@ void asan_on_error(void) {
 }
 
 static void terminal_write_fd(int fd, const char *data, size_t size) {
+#ifdef _WIN32
+    if (fd == STDOUT_FILENO) {
+        HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (hOut != INVALID_HANDLE_VALUE && hOut != NULL) {
+            DWORD written;
+            size_t remaining = size;
+            while (remaining > 0) {
+                DWORD to_write = remaining > (DWORD)0xFFFFFFFF ? (DWORD)0xFFFFFFFF : (DWORD)remaining;
+                if (!WriteFile(hOut, data, to_write, &written, NULL)) {
+                    break;
+                }
+                data += written;
+                remaining -= written;
+            }
+            return;
+        }
+    }
+#endif
     size_t remaining = size;
     while (remaining > 0) {
         const ssize_t written = write(fd, data, remaining);
@@ -386,7 +442,9 @@ void terminal_arm_recovery(void) {
     terminal_recovery_armed = 1;
 #if HAVE_SANITIZER_DEATH_CALLBACK
     if (!terminal_sanitizer_callback_installed) {
-        sanitizer_set_death_callback(terminal_recovery_callback);
+        if (sanitizer_set_death_callback) {
+            sanitizer_set_death_callback(terminal_recovery_callback);
+        }
         terminal_sanitizer_callback_installed = true;
     }
 #endif
@@ -412,4 +470,60 @@ void terminal_restore_default_state(void) {
 
 void terminal_restore_after_crash(void) {
     terminal_restore_default_state();
+}
+
+ssize_t terminal_read_query(char *buffer, size_t size, char terminator) {
+#ifdef _WIN32
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    if (hIn == INVALID_HANDLE_VALUE || hIn == NULL) return -1;
+
+    DWORD start_time = GetTickCount();
+    DWORD timeout = 100;
+    size_t total_read = 0;
+
+    while (total_read < size) {
+        if (GetTickCount() - start_time > timeout) {
+            break;
+        }
+
+        DWORD nevents = 0;
+        if (!GetNumberOfConsoleInputEvents(hIn, &nevents)) {
+            break;
+        }
+
+        if (nevents > 0) {
+            INPUT_RECORD ir;
+            DWORD read_events;
+            if (ReadConsoleInputA(hIn, &ir, 1, &read_events) && read_events == 1) {
+                if (ir.EventType == KEY_EVENT && ir.Event.KeyEvent.bKeyDown) {
+                    char ch = ir.Event.KeyEvent.uChar.AsciiChar;
+                    if (ch != 0) {
+                        buffer[total_read++] = ch;
+                        if (terminator != 0 && ch == terminator) {
+                            return (ssize_t)total_read;
+                        }
+                    }
+                }
+            }
+        } else {
+            Sleep(5);
+        }
+    }
+    return (ssize_t)total_read;
+#else
+    size_t total_read = 0;
+    while (total_read < size) {
+        char ch;
+        ssize_t r = read(STDIN_FILENO, &ch, 1);
+        if (r > 0) {
+            buffer[total_read++] = ch;
+            if (terminator != 0 && ch == terminator) {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+    return (ssize_t)total_read;
+#endif
 }

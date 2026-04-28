@@ -213,14 +213,14 @@ typedef struct CameraSetup {
 static char *str_dup(const char *s) {
     if (!s)
         return NULL;
-    size_t len = strlen(s) + 1;
+    const size_t len = strlen(s) + 1;
     char *copy = malloc(len);
     if (copy)
         memcpy(copy, s, len);
     return copy;
 }
 
-static float clampf(float val, float min_val, float max_val) {
+static float clampf(const float val, const float min_val, const float max_val) {
     if (val < min_val)
         return min_val;
     if (val > max_val)
