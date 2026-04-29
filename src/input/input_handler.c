@@ -341,13 +341,17 @@ static void poll_windows_console_events(InputThreadData *data, WindowsInputState
     }
 
     INPUT_RECORD records[16];
-    DWORD to_read = pending_count < 16 ? pending_count : 16;
+    const DWORD to_read = pending_count < 16 ? pending_count : 16;
     DWORD read_count = 0;
     if (!ReadConsoleInput(state->input_handle, records, to_read, &read_count) || read_count == 0) {
         return;
     }
 
     for (DWORD i = 0; i < read_count; i++) {
+        if (records[i].EventType == WINDOW_BUFFER_SIZE_EVENT && data->resize_pending_flag) {
+            *data->resize_pending_flag = 1;
+            continue;
+        }
         if (records[i].EventType == MOUSE_EVENT && data->mouse_orbit) {
             handle_windows_mouse_event(data, state, &records[i].Event.MouseEvent);
         }

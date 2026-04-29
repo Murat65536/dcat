@@ -359,7 +359,8 @@ void enable_raw_mode(void) {
 #ifdef _WIN32
     raw_mode_state.mode &=
         ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT | ENABLE_QUICK_EDIT_MODE);
-    raw_mode_state.mode |= ENABLE_EXTENDED_FLAGS | ENABLE_VIRTUAL_TERMINAL_INPUT;
+    raw_mode_state.mode |=
+        ENABLE_EXTENDED_FLAGS | ENABLE_VIRTUAL_TERMINAL_INPUT | ENABLE_WINDOW_INPUT;
 #else
     raw_mode_state.settings.c_lflag &= ~(ECHO | ICANON);
     raw_mode_state.settings.c_cc[VMIN] = 0;

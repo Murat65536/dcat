@@ -159,7 +159,7 @@ typedef struct AnimationContext {
 } AnimationContext;
 
 typedef enum OutputMode {
-    OUTPUT_MODE_AUTO = 0,
+    OUTPUT_MODE_AUTO,
     OUTPUT_MODE_KITTY_SHM,
     OUTPUT_MODE_KITTY_DIRECT,
     OUTPUT_MODE_SIXEL,
@@ -253,16 +253,16 @@ static const char *output_mode_flag_name(const OutputMode output_mode) {
 
 static void calculate_output_dimensions(const Args *args, OutputMode output_mode, uint32_t *width,
                                         uint32_t *height) {
-    bool use_hash_characters =
+    const bool use_hash_characters =
         args->use_hash_characters && output_mode_uses_character_cells(output_mode);
     calculate_render_dimensions(args->width, args->height, output_mode == OUTPUT_MODE_SIXEL,
                                 output_mode_uses_kitty(output_mode), use_hash_characters,
                                 args->show_status_bar, width, height);
 }
 
-static void render_output_frame(OutputMode output_mode, const uint8_t *framebuffer, uint32_t width,
-                                uint32_t height, bool use_hash_characters) {
-    bool hash_for_characters = use_hash_characters && output_mode_uses_character_cells(output_mode);
+static void render_output_frame(const OutputMode output_mode, const uint8_t *framebuffer, const uint32_t width,
+                                const uint32_t height, const bool use_hash_characters) {
+    const bool hash_for_characters = use_hash_characters && output_mode_uses_character_cells(output_mode);
     switch (output_mode) {
     case OUTPUT_MODE_KITTY_SHM:
         render_kitty_shm(framebuffer, width, height);
@@ -286,7 +286,7 @@ static void render_output_frame(OutputMode output_mode, const uint8_t *framebuff
     }
 }
 
-static void terminal_session_begin(TerminalSession *session, bool mouse_orbit) {
+static void terminal_session_begin(TerminalSession *session, const bool mouse_orbit) {
     session->active = true;
     session->mouse_orbit_enabled = mouse_orbit;
     g_terminal_session_active = 1;
@@ -313,7 +313,7 @@ static void terminal_session_end(TerminalSession *session) {
     session->mouse_orbit_enabled = false;
 }
 
-static void refresh_camera_matrices(Camera *camera, mat4 view, mat4 projection) {
+static void refresh_camera_matrices(const Camera *camera, mat4 view, mat4 projection) {
     camera_view_matrix(camera, view);
     camera_projection_matrix(camera, projection);
 }
@@ -330,7 +330,7 @@ static bool initialize_bone_matrices(mat4 **out_bone_matrices) {
     return true;
 }
 
-static float calculate_frame_fps(float delta_time) {
+static float calculate_frame_fps(const float delta_time) {
     return delta_time > 0.0f ? 1.0f / delta_time : 0.0f;
 }
 
@@ -370,13 +370,10 @@ static void pace_frame(const double frame_start_time, const double target_frame_
     }
 }
 
-static bool resize_renderer_if_needed(const Args *args, OutputMode output_mode,
+static bool resize_renderer_if_needed(const Args *args, const OutputMode output_mode,
                                       VulkanRenderer *renderer, DcatMutex *shared_state_mutex,
                                       Camera *camera, uint32_t *width, uint32_t *height, mat4 view,
                                       mat4 projection) {
-#ifdef _WIN32
-    g_resize_pending = 1;
-#endif
     if (!g_resize_pending) {
         return true;
     }
@@ -726,7 +723,8 @@ int main(int argc, char *argv[]) {
                                   args.mouse_orbit,
                                   args.mouse_sensitivity,
                                   has_animations,
-                                  &key_state};
+                                  &key_state,
+                                  &g_resize_pending};
     if (!dcat_thread_create(&input_thread, input_thread_func, &input_data)) {
         record_fatal_report(&fatal_report, "Failed to start input thread");
         goto cleanup;

@@ -6,6 +6,7 @@
 #include "../graphics/camera.h"
 #include "../graphics/model.h"
 #include "../renderer/vulkan_renderer.h"
+#include <signal.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 
@@ -46,6 +47,7 @@ typedef struct InputThreadData {
     float mouse_sensitivity;
     bool has_animations;
     KeyState *key_state;
+    volatile sig_atomic_t *resize_pending_flag;
 } InputThreadData;
 
 // Input thread function
