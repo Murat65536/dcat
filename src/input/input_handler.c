@@ -167,6 +167,8 @@ typedef struct WindowsInputState {
     bool prev_s;
     bool prev_e;
     bool prev_r;
+    bool has_focus;
+    int focus_seq_state;
 } WindowsInputState;
 
 static bool windows_key_pressed(int vk_code) {
@@ -182,6 +184,22 @@ static bool rising_edge(bool down, bool *prev_state) {
 static void update_windows_keyboard_state(const InputThreadData *data, WindowsInputState *state) {
     KeyState *key_state = data->key_state;
     if (!key_state) {
+        return;
+    }
+
+    if (!state->has_focus) {
+        memset(key_state, 0, sizeof(*key_state));
+        state->prev_q = false;
+        state->prev_m = false;
+        state->prev_1 = false;
+        state->prev_2 = false;
+        state->prev_p = false;
+        state->prev_a = false;
+        state->prev_d = false;
+        state->prev_w = false;
+        state->prev_s = false;
+        state->prev_e = false;
+        state->prev_r = false;
         return;
     }
 
@@ -278,7 +296,7 @@ static void handle_windows_mouse_event(const InputThreadData *data, WindowsInput
     }
 
     if (event->dwEventFlags == MOUSE_WHEELED) {
-        short wheel_delta = (short)HIWORD(event->dwButtonState);
+        const short wheel_delta = (short)HIWORD(event->dwButtonState);
         if (wheel_delta > 0) {
             camera_zoom(data->camera, ZOOM_AMOUNT);
         } else if (wheel_delta < 0) {
@@ -348,11 +366,29 @@ static void poll_windows_console_events(InputThreadData *data, WindowsInputState
     }
 
     for (DWORD i = 0; i < read_count; i++) {
+        if (records[i].EventType == KEY_EVENT && records[i].Event.KeyEvent.bKeyDown) {
+            const char ch = records[i].Event.KeyEvent.uChar.AsciiChar;
+            switch (state->focus_seq_state) {
+            case 0: state->focus_seq_state = (ch == '\x1b') ? 1 : 0; break;
+            case 1: state->focus_seq_state = (ch == '[')    ? 2 : 0; break;
+            case 2:
+                state->focus_seq_state = 0;
+                if      (ch == 'I') state->has_focus = true;
+                else if (ch == 'O') state->has_focus = false;
+                break;
+            default:;
+            }
+            continue;
+        }
+        if (records[i].EventType == FOCUS_EVENT) {
+            state->has_focus = records[i].Event.FocusEvent.bSetFocus;
+            continue;
+        }
         if (records[i].EventType == WINDOW_BUFFER_SIZE_EVENT && data->resize_pending_flag) {
             *data->resize_pending_flag = 1;
             continue;
         }
-        if (records[i].EventType == MOUSE_EVENT && data->mouse_orbit) {
+        if (records[i].EventType == MOUSE_EVENT && data->mouse_orbit && state->has_focus) {
             handle_windows_mouse_event(data, state, &records[i].Event.MouseEvent);
         }
     }
@@ -367,6 +403,7 @@ void *input_thread_func(void *arg) {
     InputThreadData *data = (InputThreadData *)arg;
 #ifdef _WIN32
     WindowsInputState windows_state = {0};
+    windows_state.has_focus = true;
     windows_state.input_handle = GetStdHandle(STD_INPUT_HANDLE);
 #else
     char buffer[512];

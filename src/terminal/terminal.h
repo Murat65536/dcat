@@ -76,7 +76,9 @@ static void disable_mouse_orbit_tracking(void) {
     safe_write("\x1b[?1016l\x1b[?1006l\x1b[?1005l\x1b[?1004l\x1b[?1003l\x1b[?1002l\x1b[?1000l", 56);
 }
 #ifdef _WIN32
-static void enable_kitty_keyboard(void) {}
+static void enable_kitty_keyboard(void) {
+    safe_write("\x1b[?1004h", 8);
+}
 static void disable_kitty_keyboard(void) {}
 #else
 static void enable_kitty_keyboard(void) {
