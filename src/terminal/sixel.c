@@ -51,7 +51,7 @@ void render_sixel(const uint8_t *buffer, uint32_t width, uint32_t height) {
 
     safe_write("\x1b[H", 3);
 
-    size_t data_size = (size_t)width * height * 4;
+    const size_t data_size = (size_t)width * height * 4;
 
     if (!sixel_out) {
         if (sixel_output_new(&sixel_out, sixel_write_cb, NULL, NULL) != SIXEL_OK)

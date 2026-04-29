@@ -1,6 +1,6 @@
 [wrap-git]
 directory = libsixel
-url = https://github.com/libsixel/libsixel.git
+url = https://github.com/saitoha/libsixel.git
 revision = master
 depth = 1
 patch_directory = libsixel
