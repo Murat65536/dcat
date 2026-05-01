@@ -87,9 +87,23 @@ dcat_sources = [
   'src/terminal/kitty_shm.c'
 ]
 
-executable('dcat',
+dcat_exe = executable('dcat',
   dcat_sources,
   include_directories: include_directories('src'),
   dependencies: dcat_deps,
   install: true
 )
+
+python = import('python').find_installation('python3', required: false)
+if not python.found()
+  python = find_program('python', required: false)
+endif
+
+if python.found()
+  test('pytest_cli',
+    python,
+    args: ['-m', 'pytest', meson.current_source_dir() / 'tests'],
+    env: ['DCAT_EXE=' + dcat_exe.full_path()],
+    depends: dcat_exe
+  )
+endif
