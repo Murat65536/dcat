@@ -218,15 +218,15 @@ void asan_on_error(void) {
     terminal_recovery_callback();
 }
 
-static void terminal_write_fd(int fd, const char *data, size_t size) {
+static void terminal_write_fd(const int fd, const char *data, const size_t size) {
 #ifdef _WIN32
     if (fd == STDOUT_FILENO) {
-        HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        const HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
         if (hOut != INVALID_HANDLE_VALUE && hOut != NULL) {
             DWORD written;
             size_t remaining = size;
             while (remaining > 0) {
-                DWORD to_write = remaining > (DWORD)0xFFFFFFFF ? (DWORD)0xFFFFFFFF : (DWORD)remaining;
+                const DWORD to_write = remaining > (DWORD)0xFFFFFFFF ? (DWORD)0xFFFFFFFF : (DWORD)remaining;
                 if (!WriteFile(hOut, data, to_write, &written, NULL)) {
                     break;
                 }
@@ -254,7 +254,7 @@ void safe_write(const char *data, size_t size) {
     terminal_write_fd(STDOUT_FILENO, data, size);
 }
 
-void draw_status_bar(float fps, float speed, const float *pos, const char *animation_name) {
+void draw_status_bar(const float fps, const float speed, const float *pos, const char *animation_name) {
     uint32_t cols, rows;
     get_terminal_size(&cols, &rows);
     if (rows == 0)

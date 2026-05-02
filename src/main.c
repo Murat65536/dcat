@@ -537,32 +537,114 @@ static bool render_frame(RenderContext *ctx, const AnimationContext *anim_ctx, c
     return true;
 }
 
-int main(int argc, char *argv[]) {
-    Args args = parse_args(argc, argv);
-    if (!validate_args(&args)) {
-        return 1;
+typedef struct AppContext {
+    Args args;
+    OutputMode output_mode;
+    uint32_t width;
+    uint32_t height;
+
+    VulkanRenderer *renderer;
+    Mesh mesh;
+    bool has_uvs;
+    bool has_animations;
+
+    MaterialInfo *model_materials;
+    size_t model_material_count;
+    Texture *diffuse_textures;
+    Texture *normal_textures;
+    RenderMaterial *render_materials;
+
+    Mesh skydome_mesh;
+    Texture skydome_texture;
+    bool has_skydome;
+
+    mat4 *bone_matrices;
+    AnimationState anim_state;
+
+    DcatMutex shared_state_mutex;
+    bool shared_state_mutex_initialized;
+
+    DcatThread input_thread;
+    bool input_thread_started;
+    InputThreadData input_data;
+
+    TerminalSession terminal_session;
+    FatalReport fatal_report;
+
+    Camera camera;
+    mat4 model_matrix;
+    float move_speed;
+    double target_frame_time;
+    KeyState key_state;
+} AppContext;
+
+static void app_cleanup(AppContext *app) {
+    set_atomic_flag(&g_running, false);
+    if (app->input_thread_started) {
+        dcat_thread_join(app->input_thread);
+    }
+    terminal_session_end(&app->terminal_session);
+    if (app->fatal_report.active) {
+        fprintf(stderr, "%s\n", app->fatal_report.message);
+    }
+    if (app->renderer) {
+        vulkan_renderer_wait_idle(app->renderer);
+    }
+    if (app->shared_state_mutex_initialized) {
+        dcat_mutex_destroy(&app->shared_state_mutex);
+    }
+
+    aligned_free(app->bone_matrices);
+    if (app->diffuse_textures) {
+        for (size_t i = 0; i < app->model_material_count; i++) {
+            texture_free(&app->diffuse_textures[i]);
+        }
+        free(app->diffuse_textures);
+    }
+    if (app->normal_textures) {
+        for (size_t i = 0; i < app->model_material_count; i++) {
+            texture_free(&app->normal_textures[i]);
+        }
+        free(app->normal_textures);
+    }
+    free(app->render_materials);
+    texture_free(&app->skydome_texture);
+    mesh_free(&app->skydome_mesh);
+    mesh_free(&app->mesh);
+    materials_free(app->model_materials, app->model_material_count);
+    if (app->renderer) {
+        vulkan_renderer_destroy(app->renderer);
+    }
+
+    vips_shutdown();
+}
+
+static bool app_init(AppContext *app, int argc, char *argv[]) {
+    memset(app, 0, sizeof(AppContext));
+
+    app->args = parse_args(argc, argv);
+    if (!validate_args(&app->args)) {
+        return false;
     }
 
     if (VIPS_INIT(argv[0])) {
         fprintf(stderr, "Failed to initialize libvips\n");
-        return 1;
+        return false;
     }
 
     set_atomic_flag(&g_running, true);
 
-    int exit_code = 1;
-    OutputMode output_mode = output_mode_from_args(&args);
-    if (output_mode == OUTPUT_MODE_AUTO) {
-        output_mode = detect_output_mode();
+    app->output_mode = output_mode_from_args(&app->args);
+    if (app->output_mode == OUTPUT_MODE_AUTO) {
+        app->output_mode = detect_output_mode();
     }
-    if (!output_mode_supported_on_platform(output_mode)) {
+    if (!output_mode_supported_on_platform(app->output_mode)) {
         fprintf(stderr,
                 "Output mode %s is not supported on native Windows. "
                 "Use --truecolor-characters, --palette-characters, or "
                 "--block-characters.\n",
-                output_mode_flag_name(output_mode));
-        vips_shutdown();
-        return 1;
+                output_mode_flag_name(app->output_mode));
+        return false;
     }
 
     signal(SIGINT, signal_handler);
@@ -595,166 +677,147 @@ int main(int argc, char *argv[]) {
     sigaction(SIGSEGV, &fatal_action, NULL);
 #endif
 
-    uint32_t width = 0;
-    uint32_t height = 0;
-    calculate_output_dimensions(&args, output_mode, &width, &height);
+    calculate_output_dimensions(&app->args, app->output_mode, &app->width, &app->height);
     g_resize_pending = 0;
 
-    VulkanRenderer *renderer = NULL;
-    Mesh mesh;
-    mesh_init(&mesh);
-    MaterialInfo *model_materials = NULL;
-    size_t model_material_count = 0;
-    Texture *diffuse_textures = NULL;
-    Texture *normal_textures = NULL;
-    RenderMaterial *render_materials = NULL;
-    Mesh skydome_mesh;
-    mesh_init(&skydome_mesh);
-    Texture skydome_texture = {0};
-    mat4 *bone_matrices = NULL;
-    bool has_uvs = false;
-    bool has_animations = false;
-    bool has_skydome = false;
-    DcatMutex shared_state_mutex;
-    bool shared_state_mutex_initialized = false;
-    DcatThread input_thread;
-    bool input_thread_started = false;
-    TerminalSession terminal_session = {0};
-    FatalReport fatal_report = {0};
+    mesh_init(&app->mesh);
+    mesh_init(&app->skydome_mesh);
 
-    renderer = vulkan_renderer_create(width, height);
-    if (!renderer || !vulkan_renderer_initialize(renderer)) {
-        const char *renderer_error = renderer ? vulkan_renderer_get_last_error(renderer) : NULL;
+    app->renderer = vulkan_renderer_create(app->width, app->height);
+    if (!app->renderer || !vulkan_renderer_initialize(app->renderer)) {
+        const char *renderer_error = app->renderer ? vulkan_renderer_get_last_error(app->renderer) : NULL;
         fprintf(stderr, "%s\n",
                 renderer_error ? renderer_error : "Failed to initialize Vulkan renderer");
-        goto cleanup;
+        return false;
     }
-    vulkan_renderer_set_light_direction(renderer, (vec3){0.0f, -1.0f, -0.5f});
+    vulkan_renderer_set_light_direction(app->renderer, (vec3){0.0f, -1.0f, -0.5f});
 
-    if (!load_model(args.model_path, &mesh, &has_uvs, &model_materials, &model_material_count)) {
-        fprintf(stderr, "Failed to load model: %s\n", args.model_path);
-        goto cleanup;
+    if (!load_model(app->args.model_path, &app->mesh, &app->has_uvs, &app->model_materials, &app->model_material_count)) {
+        fprintf(stderr, "Failed to load model: %s\n", app->args.model_path);
+        return false;
     }
 
-    AnimationState anim_state;
-    animation_state_init(&anim_state);
-    if (!initialize_bone_matrices(&bone_matrices)) {
+    animation_state_init(&app->anim_state);
+    if (!initialize_bone_matrices(&app->bone_matrices)) {
         fprintf(stderr, "Failed to allocate bone matrices\n");
-        goto cleanup;
+        return false;
     }
-    has_animations = mesh.has_animations && mesh.animations.count > 0;
+    app->has_animations = app->mesh.has_animations && app->mesh.animations.count > 0;
 
-    // Load textures for each material
-    diffuse_textures = calloc(model_material_count, sizeof(Texture));
-    normal_textures = calloc(model_material_count, sizeof(Texture));
-    render_materials = calloc(model_material_count, sizeof(RenderMaterial));
-    if (!diffuse_textures || !normal_textures || !render_materials) {
+    app->diffuse_textures = calloc(app->model_material_count, sizeof(Texture));
+    app->normal_textures = calloc(app->model_material_count, sizeof(Texture));
+    app->render_materials = calloc(app->model_material_count, sizeof(RenderMaterial));
+    if (!app->diffuse_textures || !app->normal_textures || !app->render_materials) {
         fprintf(stderr, "Failed to allocate material resources\n");
-        goto cleanup;
+        return false;
     }
 
-    for (size_t i = 0; i < model_material_count; i++) {
-        load_diffuse_texture(args.model_path, args.texture_path, &model_materials[i],
-                             &diffuse_textures[i]);
-        load_normal_texture(args.normal_map_path, &model_materials[i], &normal_textures[i]);
+    for (size_t i = 0; i < app->model_material_count; i++) {
+        load_diffuse_texture(app->args.model_path, app->args.texture_path, &app->model_materials[i],
+                             &app->diffuse_textures[i]);
+        load_normal_texture(app->args.normal_map_path, &app->model_materials[i], &app->normal_textures[i]);
 
-        render_materials[i].diffuse = &diffuse_textures[i];
-        render_materials[i].normal = &normal_textures[i];
-        render_materials[i].alpha_mode = model_materials[i].alpha_mode;
-        render_materials[i].specular_strength = model_materials[i].specular_strength;
-        render_materials[i].shininess = model_materials[i].shininess;
-        memcpy(render_materials[i].base_color, model_materials[i].base_color, sizeof(float) * 4);
-        render_materials[i].use_diffuse_alpha_as_luster =
-            render_materials[i].alpha_mode == ALPHA_MODE_OPAQUE &&
-            diffuse_textures[i].has_transparency;
+        app->render_materials[i].diffuse = &app->diffuse_textures[i];
+        app->render_materials[i].normal = &app->normal_textures[i];
+        app->render_materials[i].alpha_mode = app->model_materials[i].alpha_mode;
+        app->render_materials[i].specular_strength = app->model_materials[i].specular_strength;
+        app->render_materials[i].shininess = app->model_materials[i].shininess;
+        memcpy(app->render_materials[i].base_color, app->model_materials[i].base_color, sizeof(float) * 4);
+        app->render_materials[i].use_diffuse_alpha_as_luster =
+            app->render_materials[i].alpha_mode == ALPHA_MODE_OPAQUE &&
+            app->diffuse_textures[i].has_transparency;
     }
 
-    has_skydome = load_skydome(args.skydome_path, &skydome_mesh, &skydome_texture);
-    if (has_skydome) {
-        if (!vulkan_renderer_set_skydome(renderer, &skydome_mesh, &skydome_texture)) {
-            const char *renderer_error = vulkan_renderer_get_last_error(renderer);
+    app->has_skydome = load_skydome(app->args.skydome_path, &app->skydome_mesh, &app->skydome_texture);
+    if (app->has_skydome) {
+        if (!vulkan_renderer_set_skydome(app->renderer, &app->skydome_mesh, &app->skydome_texture)) {
+            const char *renderer_error = vulkan_renderer_get_last_error(app->renderer);
             fprintf(stderr, "%s\n",
                     renderer_error ? renderer_error : "Failed to upload skydome resources");
-            goto cleanup;
+            return false;
         }
     }
 
     CameraSetup camera_setup;
-    calculate_camera_setup(&mesh.vertices, &camera_setup);
+    calculate_camera_setup(&app->mesh.vertices, &camera_setup);
 
-    mat4 model_matrix;
-    setup_model_transform(&mesh, &camera_setup, args.model_scale, model_matrix);
+    setup_model_transform(&app->mesh, &camera_setup, app->args.model_scale, app->model_matrix);
 
     vec3 camera_position;
-    setup_camera_position(&camera_setup, args.model_scale, args.camera_distance, camera_position);
+    setup_camera_position(&camera_setup, app->args.model_scale, app->args.camera_distance, camera_position);
 
     vec3 camera_target;
     glm_vec3_zero(camera_target);
 
     const float MOVE_SPEED_BASE = 0.5f;
-    float move_speed = MOVE_SPEED_BASE * TARGET_SIZE;
-    double target_frame_time = 1.0 / args.target_fps;
+    app->move_speed = MOVE_SPEED_BASE * TARGET_SIZE;
+    app->target_frame_time = 1.0 / app->args.target_fps;
 
-    KeyState key_state = {0};
+    camera_init(&app->camera, app->width, app->height, camera_position, camera_target, 60.0f);
 
-    Camera camera;
-    camera_init(&camera, width, height, camera_position, camera_target, 60.0f);
-
-    mat4 view, projection;
-    refresh_camera_matrices(&camera, view, projection);
-
-    if (!dcat_mutex_init(&shared_state_mutex)) {
+    if (!dcat_mutex_init(&app->shared_state_mutex)) {
         fprintf(stderr, "Failed to initialize shared state mutex\n");
-        goto cleanup;
+        return false;
     }
-    shared_state_mutex_initialized = true;
+    app->shared_state_mutex_initialized = true;
 
-    terminal_session_begin(&terminal_session, args.mouse_orbit);
+    terminal_session_begin(&app->terminal_session, app->args.mouse_orbit);
 
-    double last_frame_time = get_time_seconds();
-
-    InputThreadData input_data = {&camera,
-                                  renderer,
-                                  &anim_state,
-                                  &mesh,
-                                  &shared_state_mutex,
-                                  &g_running,
-                                  args.fps_controls,
-                                  args.mouse_orbit,
-                                  args.mouse_sensitivity,
-                                  has_animations,
-                                  &key_state,
-                                  &g_resize_pending};
-    if (!dcat_thread_create(&input_thread, input_thread_func, &input_data)) {
-        record_fatal_report(&fatal_report, "Failed to start input thread");
-        goto cleanup;
-    }
-    input_thread_started = true;
-
-    RenderContext render_ctx = {
-        .renderer = renderer,
-        .model_matrix = {{0}},
-        .materials = render_materials,
-        .material_count = (uint32_t)model_material_count,
-        .enable_lighting = !args.no_lighting,
-        .use_triplanar_mapping = !has_uvs,
+    app->input_data = (InputThreadData){
+        &app->camera,
+        app->renderer,
+        &app->anim_state,
+        &app->mesh,
+        &app->shared_state_mutex,
+        &g_running,
+        app->args.fps_controls,
+        app->args.mouse_orbit,
+        app->args.mouse_sensitivity,
+        app->has_animations,
+        &app->key_state,
+        &g_resize_pending
     };
-    glm_mat4_copy(model_matrix, render_ctx.model_matrix);
 
-    AnimationContext anim_ctx = {bone_matrices, has_animations};
+    if (!dcat_thread_create(&app->input_thread, input_thread_func, &app->input_data)) {
+        record_fatal_report(&app->fatal_report, "Failed to start input thread");
+        return false;
+    }
+    app->input_thread_started = true;
+
+    return true;
+}
+
+static int app_run_loop(AppContext *app) {
+    RenderContext render_ctx = {
+        .renderer = app->renderer,
+        .model_matrix = {{0}},
+        .materials = app->render_materials,
+        .material_count = (uint32_t)app->model_material_count,
+        .enable_lighting = !app->args.no_lighting,
+        .use_triplanar_mapping = !app->has_uvs,
+    };
+    glm_mat4_copy(app->model_matrix, render_ctx.model_matrix);
+
+    AnimationContext anim_ctx = {app->bone_matrices, app->has_animations};
 
     float total_spin = 0.0f;
     mat4 base_model_matrix;
     glm_mat4_copy(render_ctx.model_matrix, base_model_matrix);
 
+    mat4 view, projection;
+    refresh_camera_matrices(&app->camera, view, projection);
+
+    double last_frame_time = get_time_seconds();
+    unsigned long long frame_count = 0;
+
     while (get_atomic_flag(&g_running)) {
-        if (!resize_renderer_if_needed(&args, output_mode, renderer, &shared_state_mutex, &camera,
-                                       &width, &height, view, projection)) {
-            const char *renderer_error = vulkan_renderer_get_last_error(renderer);
-            record_fatal_report(&fatal_report, "%s",
+        if (!resize_renderer_if_needed(&app->args, app->output_mode, app->renderer, &app->shared_state_mutex, &app->camera,
+                                       &app->width, &app->height, view, projection)) {
+            const char *renderer_error = vulkan_renderer_get_last_error(app->renderer);
+            record_fatal_report(&app->fatal_report, "%s",
                                 renderer_error ? renderer_error
                                                : "Failed to resize Vulkan renderer");
-            goto cleanup;
+            return 1;
         }
 
         double frame_start = get_time_seconds();
@@ -765,78 +828,55 @@ int main(int argc, char *argv[]) {
         vec3 camera_position_snapshot;
         int current_animation_index_snapshot = -1;
 
-        if (args.spin_speed != 0.0f && !args.fps_controls) {
-            total_spin += args.spin_speed * delta_time;
+        if (app->args.spin_speed != 0.0f && !app->args.fps_controls) {
+            total_spin += app->args.spin_speed * delta_time;
             mat4 rotation_mat;
             glm_rotate_make(rotation_mat, total_spin, (vec3){0.0f, 1.0f, 0.0f});
             glm_mat4_mul(rotation_mat, base_model_matrix, render_ctx.model_matrix);
         }
 
-        dcat_mutex_lock(&shared_state_mutex);
-        if (args.fps_controls) {
-            process_input_devices(&key_state, &camera, delta_time, &move_speed);
+        dcat_mutex_lock(&app->shared_state_mutex);
+        if (app->args.fps_controls) {
+            process_input_devices(&app->key_state, &app->camera, delta_time, &app->move_speed);
         }
         vec3 camera_forward;
-        camera_forward_direction(&camera, camera_forward);
+        camera_forward_direction(&app->camera, camera_forward);
         glm_vec3_negate(camera_forward);
-        vulkan_renderer_set_light_direction(renderer, camera_forward);
-        camera_view_matrix(&camera, view);
-        glm_vec3_copy(camera.position, camera_position_snapshot);
-        if (has_animations) {
-            update_animation(&mesh, &anim_state, delta_time, bone_matrices);
-            current_animation_index_snapshot = anim_state.current_animation_index;
+        vulkan_renderer_set_light_direction(app->renderer, camera_forward);
+        camera_view_matrix(&app->camera, view);
+        glm_vec3_copy(app->camera.position, camera_position_snapshot);
+        if (app->has_animations) {
+            update_animation(&app->mesh, &app->anim_state, delta_time, app->bone_matrices);
+            current_animation_index_snapshot = app->anim_state.current_animation_index;
         }
-        dcat_mutex_unlock(&shared_state_mutex);
+        dcat_mutex_unlock(&app->shared_state_mutex);
 
-        if (!render_frame(&render_ctx, &anim_ctx, &mesh, &view, &projection, output_mode,
-                           args.show_status_bar, args.use_hash_characters, width, height,
-                           display_fps, move_speed, camera_position_snapshot,
+        if (!render_frame(&render_ctx, &anim_ctx, &app->mesh, &view, &projection, app->output_mode,
+                           app->args.show_status_bar, app->args.use_hash_characters, app->width, app->height,
+                           display_fps, app->move_speed, camera_position_snapshot,
                            current_animation_index_snapshot)) {
-            const char *renderer_error = vulkan_renderer_get_last_error(renderer);
-            record_fatal_report(&fatal_report, "%s",
+            const char *renderer_error = vulkan_renderer_get_last_error(app->renderer);
+            record_fatal_report(&app->fatal_report, "%s",
                                 renderer_error ? renderer_error : "Rendering failed");
-            goto cleanup;
+            return 1;
         }
 
-        pace_frame(frame_start, target_frame_time);
+        pace_frame(frame_start, app->target_frame_time);
+
+        frame_count++;
     }
 
-    exit_code = 0;
+    return 0;
+}
 
-cleanup:
-    set_atomic_flag(&g_running, false);
-    if (input_thread_started) {
-        dcat_thread_join(input_thread);
-    }
-    terminal_session_end(&terminal_session);
-    if (fatal_report.active) {
-        fprintf(stderr, "%s\n", fatal_report.message);
-    }
-    vulkan_renderer_wait_idle(renderer);
-    if (shared_state_mutex_initialized) {
-        dcat_mutex_destroy(&shared_state_mutex);
+int main(int argc, char *argv[]) {
+    AppContext app;
+    int exit_code = 1;
+
+    if (app_init(&app, argc, argv)) {
+        exit_code = app_run_loop(&app);
     }
 
-    aligned_free(bone_matrices);
-    if (diffuse_textures) {
-        for (size_t i = 0; i < model_material_count; i++) {
-            texture_free(&diffuse_textures[i]);
-        }
-        free(diffuse_textures);
-    }
-    if (normal_textures) {
-        for (size_t i = 0; i < model_material_count; i++) {
-            texture_free(&normal_textures[i]);
-        }
-        free(normal_textures);
-    }
-    free(render_materials);
-    texture_free(&skydome_texture);
-    mesh_free(&skydome_mesh);
-    mesh_free(&mesh);
-    materials_free(model_materials, model_material_count);
-    vulkan_renderer_destroy(renderer);
-
-    vips_shutdown();
+    app_cleanup(&app);
     return exit_code;
 }
