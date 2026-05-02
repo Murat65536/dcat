@@ -1,14 +1,9 @@
 #include <errno.h>
-#include <signal.h>
 #include <stdarg.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#ifndef _WIN32
-#include <unistd.h>
-#endif
 
 #include <vips/vips.h>
 
@@ -16,105 +11,24 @@
 #include "core/args.h"
 #include "core/platform_compat.h"
 #include "core/threading.h"
+#include "core/signals.h"
 #include "graphics/camera.h"
 #include "graphics/model.h"
 #include "graphics/texture_loader.h"
 #include "input/input_handler.h"
 #include "renderer/vulkan_renderer.h"
-#include "terminal/block_characters.h"
-#include "terminal/kitty.h"
-#include "terminal/kitty_shm.h"
-#include "terminal/palette_characters.h"
-#include "terminal/sixel.h"
+#include "terminal/session.h"
 #include "terminal/terminal.h"
-#include "terminal/truecolor_characters.h"
-
-// Global state for signal handlers
-static atomic_bool g_running = true;
-static volatile sig_atomic_t g_resize_pending = 1;
-static volatile sig_atomic_t g_terminal_session_active = 0;
+#include "terminal/output_driver.h"
+#include "terminal/driver_factory.h"
 
 static const float TARGET_SIZE = 4.0f;
 static const float MAX_SIMULATION_DELTA_SECONDS = 0.1f;
-
-static void set_atomic_flag(atomic_bool *flag, const bool value) {
-    *flag = value;
-}
-
-static bool get_atomic_flag(const atomic_bool *flag) {
-    return *flag;
-}
 
 typedef struct FatalReport {
     bool active;
     char message[512];
 } FatalReport;
-
-static void signal_handler(const int sig) {
-    (void)sig;
-    set_atomic_flag(&g_running, false);
-}
-
-#ifdef SIGWINCH
-static void resize_handler(int sig) {
-    (void)sig;
-    g_resize_pending = 1;
-}
-#endif
-
-static void write_signal_literal(int fd, const char *data, size_t size) {
-    while (size > 0) {
-        ssize_t written = write(fd, data, size);
-        if (written < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            break;
-        }
-        data += written;
-        size -= (size_t)written;
-    }
-}
-
-static void write_signal_name(int sig) {
-    switch (sig) {
-    case SIGABRT:
-        write_signal_literal(STDERR_FILENO, "SIGABRT", 7);
-        break;
-#ifdef SIGBUS
-    case SIGBUS:
-        write_signal_literal(STDERR_FILENO, "SIGBUS", 6);
-        break;
-#endif
-    case SIGFPE:
-        write_signal_literal(STDERR_FILENO, "SIGFPE", 6);
-        break;
-    case SIGILL:
-        write_signal_literal(STDERR_FILENO, "SIGILL", 6);
-        break;
-    case SIGSEGV:
-        write_signal_literal(STDERR_FILENO, "SIGSEGV", 7);
-        break;
-    default:
-        write_signal_literal(STDERR_FILENO, "unknown", 7);
-        break;
-    }
-}
-
-static void fatal_signal_handler(int sig) {
-    static const char prefix[] = "\r\nFatal signal: ";
-    static const char suffix[] = " while rendering. Terminal recovery was attempted.\r\n";
-
-    if (g_terminal_session_active) {
-        terminal_restore_after_crash();
-        g_terminal_session_active = 0;
-    }
-
-    write_signal_literal(STDERR_FILENO, prefix, sizeof(prefix) - 1);
-    write_signal_name(sig);
-    write_signal_literal(STDERR_FILENO, suffix, sizeof(suffix) - 1);
-    _Exit(128 + sig);
-}
 
 static void record_fatal_report(FatalReport *report, const char *format, ...) {
     if (report->active) {
@@ -129,7 +43,7 @@ static void record_fatal_report(FatalReport *report, const char *format, ...) {
     va_end(args);
 }
 
-static inline double get_time_seconds(void) {
+static double get_time_seconds(void) {
 #ifdef _WIN32
     static LARGE_INTEGER frequency = {0};
     LARGE_INTEGER counter;
@@ -159,21 +73,6 @@ typedef struct AnimationContext {
     bool has_animations;
 } AnimationContext;
 
-typedef enum OutputMode {
-    OUTPUT_MODE_AUTO,
-    OUTPUT_MODE_KITTY_SHM,
-    OUTPUT_MODE_KITTY_DIRECT,
-    OUTPUT_MODE_SIXEL,
-    OUTPUT_MODE_TRUECOLOR_CHARACTERS,
-    OUTPUT_MODE_PALETTE_CHARACTERS,
-    OUTPUT_MODE_BLOCK_CHARACTERS,
-} OutputMode;
-
-typedef struct TerminalSession {
-    bool active;
-    bool mouse_orbit_enabled;
-} TerminalSession;
-
 static float compute_model_scale_factor(const CameraSetup *camera_setup, float model_scale_arg) {
     if (camera_setup->model_scale <= 0.0f) {
         return 1.0f;
@@ -182,136 +81,14 @@ static float compute_model_scale_factor(const CameraSetup *camera_setup, float m
     return (TARGET_SIZE / camera_setup->model_scale) * model_scale_arg;
 }
 
-static OutputMode output_mode_from_args(const Args *args) {
-    if (args->use_kitty_shm) {
-        return OUTPUT_MODE_KITTY_SHM;
-    }
-    if (args->use_kitty) {
-        return OUTPUT_MODE_KITTY_DIRECT;
-    }
-    if (args->use_sixel) {
-        return OUTPUT_MODE_SIXEL;
-    }
-    if (args->use_truecolor_characters) {
-        return OUTPUT_MODE_TRUECOLOR_CHARACTERS;
-    }
-    if (args->use_palette_characters) {
-        return OUTPUT_MODE_PALETTE_CHARACTERS;
-    }
-    if (args->use_block_characters) {
-        return OUTPUT_MODE_BLOCK_CHARACTERS;
-    }
-    return OUTPUT_MODE_AUTO;
-}
-
-static OutputMode detect_output_mode(void) {
-    if (detect_kitty_shm_support()) {
-        return OUTPUT_MODE_KITTY_SHM;
-    }
-    if (detect_kitty_support()) {
-        return OUTPUT_MODE_KITTY_DIRECT;
-    }
-    if (detect_sixel_support()) {
-        return OUTPUT_MODE_SIXEL;
-    }
-    if (detect_truecolor_support()) {
-        return OUTPUT_MODE_TRUECOLOR_CHARACTERS;
-    }
-    return OUTPUT_MODE_PALETTE_CHARACTERS;
-}
-
-static bool output_mode_uses_kitty(const OutputMode output_mode) {
-    return output_mode == OUTPUT_MODE_KITTY_SHM || output_mode == OUTPUT_MODE_KITTY_DIRECT;
-}
-
-static bool output_mode_uses_character_cells(const OutputMode output_mode) {
-    return output_mode == OUTPUT_MODE_TRUECOLOR_CHARACTERS ||
-           output_mode == OUTPUT_MODE_PALETTE_CHARACTERS ||
-           output_mode == OUTPUT_MODE_BLOCK_CHARACTERS;
-}
-
-static bool output_mode_supported_on_platform(const OutputMode output_mode) {
-#ifdef _WIN32
-    if (output_mode == OUTPUT_MODE_KITTY_SHM || output_mode == OUTPUT_MODE_KITTY_DIRECT) {
-        return false;
-    }
-#endif
-    return true;
-}
-
-static const char *output_mode_flag_name(const OutputMode output_mode) {
-    switch (output_mode) {
-    case OUTPUT_MODE_KITTY_SHM:
-        return "--kitty";
-    case OUTPUT_MODE_KITTY_DIRECT:
-        return "--kitty-direct";
-    case OUTPUT_MODE_SIXEL:
-        return "--sixel";
-    default:
-        return "auto";
-    }
-}
-
-static void calculate_output_dimensions(const Args *args, OutputMode output_mode, uint32_t *width,
+static void calculate_output_dimensions(const Args *args, const OutputDriver *output_driver, uint32_t *width,
                                         uint32_t *height) {
     const bool use_hash_characters =
-        args->use_hash_characters && output_mode_uses_character_cells(output_mode);
-    calculate_render_dimensions(args->width, args->height, output_mode == OUTPUT_MODE_SIXEL,
-                                output_mode_uses_kitty(output_mode), use_hash_characters,
+        args->use_hash_characters && output_driver->uses_character_cells;
+    const bool use_sixel = !output_driver->uses_kitty_protocol && !output_driver->uses_character_cells;
+    calculate_render_dimensions(args->width, args->height, use_sixel,
+                                output_driver->uses_kitty_protocol, use_hash_characters,
                                 args->show_status_bar, width, height);
-}
-
-static void render_output_frame(const OutputMode output_mode, const uint8_t *framebuffer, const uint32_t width,
-                                const uint32_t height, const bool use_hash_characters) {
-    const bool hash_for_characters = use_hash_characters && output_mode_uses_character_cells(output_mode);
-    switch (output_mode) {
-    case OUTPUT_MODE_KITTY_SHM:
-        render_kitty_shm(framebuffer, width, height);
-        break;
-    case OUTPUT_MODE_KITTY_DIRECT:
-        render_kitty(framebuffer, width, height);
-        break;
-    case OUTPUT_MODE_SIXEL:
-        render_sixel(framebuffer, width, height);
-        break;
-    case OUTPUT_MODE_PALETTE_CHARACTERS:
-        render_palette_characters(framebuffer, width, height, hash_for_characters);
-        break;
-    case OUTPUT_MODE_BLOCK_CHARACTERS:
-        render_block_characters(framebuffer, width, height, hash_for_characters);
-        break;
-    case OUTPUT_MODE_TRUECOLOR_CHARACTERS:
-    case OUTPUT_MODE_AUTO:
-        render_truecolor_characters(framebuffer, width, height, hash_for_characters);
-        break;
-    }
-}
-
-static void terminal_session_begin(TerminalSession *session, const bool mouse_orbit) {
-    session->active = true;
-    session->mouse_orbit_enabled = mouse_orbit;
-    g_terminal_session_active = 1;
-    terminal_arm_recovery();
-
-    hide_cursor();
-    enter_alternate_screen();
-    enable_raw_mode();
-    terminal_set_mouse_input_enabled(mouse_orbit);
-    enable_kitty_keyboard();
-    if (mouse_orbit) {
-        enable_mouse_orbit_tracking();
-    }
-}
-
-static void terminal_session_end(TerminalSession *session) {
-    if (!session->active) {
-        return;
-    }
-
-    terminal_restore_default_state();
-    g_terminal_session_active = 0;
-    session->active = false;
-    session->mouse_orbit_enabled = false;
 }
 
 static void refresh_camera_matrices(const Camera *camera, mat4 view, mat4 projection) {
@@ -371,19 +148,19 @@ static void pace_frame(const double frame_start_time, const double target_frame_
     }
 }
 
-static bool resize_renderer_if_needed(const Args *args, const OutputMode output_mode,
+static bool resize_renderer_if_needed(const Args *args, const OutputDriver *output_driver,
                                       VulkanRenderer *renderer, DcatMutex *shared_state_mutex,
                                       Camera *camera, uint32_t *width, uint32_t *height, mat4 view,
                                       mat4 projection) {
-    if (!g_resize_pending) {
+    if (!signals_is_resize_pending()) {
         return true;
     }
 
-    g_resize_pending = 0;
+    signals_clear_resize_pending();
 
     uint32_t new_width = 0;
     uint32_t new_height = 0;
-    calculate_output_dimensions(args, output_mode, &new_width, &new_height);
+    calculate_output_dimensions(args, output_driver, &new_width, &new_height);
     if (new_width == *width && new_height == *height) {
         return true;
     }
@@ -402,7 +179,7 @@ static bool resize_renderer_if_needed(const Args *args, const OutputMode output_
 }
 
 static const char *get_animation_name(const AnimationContext *anim_ctx, const Mesh *mesh,
-                                      int current_animation_index) {
+                                      const int current_animation_index) {
     if (!anim_ctx->has_animations || current_animation_index < 0 ||
         current_animation_index >= (int)mesh->animations.count) {
         return "";
@@ -412,8 +189,8 @@ static const char *get_animation_name(const AnimationContext *anim_ctx, const Me
 }
 
 static void setup_model_transform(const Mesh *mesh, const CameraSetup *camera_setup,
-                                  float model_scale_arg, mat4 out_matrix) {
-    float model_scale_factor = compute_model_scale_factor(camera_setup, model_scale_arg);
+                                  const float model_scale_arg, mat4 out_matrix) {
+    const float model_scale_factor = compute_model_scale_factor(camera_setup, model_scale_arg);
     vec3 model_center;
     glm_vec3_zero(model_center);
 
@@ -435,8 +212,8 @@ static void setup_model_transform(const Mesh *mesh, const CameraSetup *camera_se
     glm_mat4_mul(out_matrix, translate_mat, out_matrix);
 }
 
-static void setup_camera_position(const CameraSetup *camera_setup, float model_scale_arg,
-                                  float camera_distance_arg, vec3 out_position) {
+static void setup_camera_position(const CameraSetup *camera_setup, const float model_scale_arg,
+                                  const float camera_distance_arg, vec3 out_position) {
     const float model_scale_factor = compute_model_scale_factor(camera_setup, model_scale_arg);
     vec3 camera_offset;
     glm_vec3_sub((float *)camera_setup->position, (float *)camera_setup->target, camera_offset);
@@ -457,7 +234,7 @@ static void setup_camera_position(const CameraSetup *camera_setup, float model_s
 static void process_input_devices(const KeyState *key_state, Camera *camera, const float delta_time,
                                   float *move_speed) {
     if (key_state->q) {
-        set_atomic_flag(&g_running, false);
+        signals_request_quit();
         return;
     }
 
@@ -502,7 +279,7 @@ static void process_input_devices(const KeyState *key_state, Camera *camera, con
 }
 
 static bool render_frame(RenderContext *ctx, const AnimationContext *anim_ctx, const Mesh *mesh,
-                         mat4 *view, mat4 *projection, OutputMode output_mode, bool show_status_bar,
+                         mat4 *view, mat4 *projection, const OutputDriver *output_driver, bool show_status_bar,
                          bool use_hash_characters, uint32_t width, uint32_t height, float fps,
                          float move_speed, const vec3 camera_position,
                          int current_animation_index) {
@@ -527,7 +304,8 @@ static bool render_frame(RenderContext *ctx, const AnimationContext *anim_ctx, c
     }
 
     if (framebuffer) {
-        render_output_frame(output_mode, framebuffer, width, height, use_hash_characters);
+        const bool use_hash = use_hash_characters && output_driver->uses_character_cells;
+        output_driver->render_frame(framebuffer, width, height, use_hash);
 
         if (show_status_bar) {
             draw_status_bar(fps, move_speed, camera_position,
@@ -540,7 +318,7 @@ static bool render_frame(RenderContext *ctx, const AnimationContext *anim_ctx, c
 
 typedef struct AppContext {
     Args args;
-    OutputMode output_mode;
+    const OutputDriver *output_driver;
     uint32_t width;
     uint32_t height;
 
@@ -580,7 +358,7 @@ typedef struct AppContext {
 } AppContext;
 
 void app_cleanup(AppContext *app) {
-    set_atomic_flag(&g_running, false);
+    signals_request_quit();
     if (app->input_thread_started) {
         dcat_thread_join(app->input_thread);
     }
@@ -633,53 +411,19 @@ bool app_init(AppContext *app, int argc, char *argv[]) {
         return false;
     }
 
-    set_atomic_flag(&g_running, true);
-
-    app->output_mode = output_mode_from_args(&app->args);
-    if (app->output_mode == OUTPUT_MODE_AUTO) {
-        app->output_mode = detect_output_mode();
-    }
-    if (!output_mode_supported_on_platform(app->output_mode)) {
+    app->output_driver = driver_factory_get(&app->args);
+    if (!driver_is_supported_on_platform(app->output_driver)) {
         fprintf(stderr,
                 "Output mode %s is not supported on native Windows. "
                 "Use --truecolor-characters, --palette-characters, or "
                 "--block-characters.\n",
-                output_mode_flag_name(app->output_mode));
+                app->output_driver->flag_name);
         return false;
     }
 
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
-#ifdef SIGWINCH
-    signal(SIGWINCH, resize_handler);
-#endif
+    signals_init();
 
-#ifdef _WIN32
-    signal(SIGABRT, fatal_signal_handler);
-#ifdef SIGFPE
-    signal(SIGFPE, fatal_signal_handler);
-#endif
-#ifdef SIGILL
-    signal(SIGILL, fatal_signal_handler);
-#endif
-#ifdef SIGSEGV
-    signal(SIGSEGV, fatal_signal_handler);
-#endif
-#else
-    struct sigaction fatal_action = {0};
-    fatal_action.sa_handler = fatal_signal_handler;
-    sigemptyset(&fatal_action.sa_mask);
-    sigaction(SIGABRT, &fatal_action, NULL);
-#ifdef SIGBUS
-    sigaction(SIGBUS, &fatal_action, NULL);
-#endif
-    sigaction(SIGFPE, &fatal_action, NULL);
-    sigaction(SIGILL, &fatal_action, NULL);
-    sigaction(SIGSEGV, &fatal_action, NULL);
-#endif
-
-    calculate_output_dimensions(&app->args, app->output_mode, &app->width, &app->height);
-    g_resize_pending = 0;
+    calculate_output_dimensions(&app->args, app->output_driver, &app->width, &app->height);
 
     mesh_init(&app->mesh);
     mesh_init(&app->skydome_mesh);
@@ -770,13 +514,11 @@ bool app_init(AppContext *app, int argc, char *argv[]) {
         &app->anim_state,
         &app->mesh,
         &app->shared_state_mutex,
-        &g_running,
         app->args.fps_controls,
         app->args.mouse_orbit,
         app->args.mouse_sensitivity,
         app->has_animations,
-        &app->key_state,
-        &g_resize_pending
+        &app->key_state
     };
 
     if (!dcat_thread_create(&app->input_thread, input_thread_func, &app->input_data)) {
@@ -811,8 +553,8 @@ int app_run_loop(AppContext *app) {
     double last_frame_time = get_time_seconds();
     unsigned long long frame_count = 0;
 
-    while (get_atomic_flag(&g_running)) {
-        if (!resize_renderer_if_needed(&app->args, app->output_mode, app->renderer, &app->shared_state_mutex, &app->camera,
+    while (!signals_should_quit()) {
+        if (!resize_renderer_if_needed(&app->args, app->output_driver, app->renderer, &app->shared_state_mutex, &app->camera,
                                        &app->width, &app->height, view, projection)) {
             const char *renderer_error = vulkan_renderer_get_last_error(app->renderer);
             record_fatal_report(&app->fatal_report, "%s",
@@ -852,7 +594,7 @@ int app_run_loop(AppContext *app) {
         }
         dcat_mutex_unlock(&app->shared_state_mutex);
 
-        if (!render_frame(&render_ctx, &anim_ctx, &app->mesh, &view, &projection, app->output_mode,
+        if (!render_frame(&render_ctx, &anim_ctx, &app->mesh, &view, &projection, app->output_driver,
                            app->args.show_status_bar, app->args.use_hash_characters, app->width, app->height,
                            display_fps, app->move_speed, camera_position_snapshot,
                            current_animation_index_snapshot)) {

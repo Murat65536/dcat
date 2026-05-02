@@ -1,4 +1,5 @@
 #include "input_handler.h"
+#include "../core/signals.h"
 #include <string.h>
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -18,14 +19,6 @@ static const float ZOOM_AMOUNT = 0.05f;
 #define KITTY_RIGHT_SHIFT 57447
 #define KITTY_LEFT_CTRL 57442
 #define KITTY_RIGHT_CTRL 57448
-
-static void stop_input_loop(atomic_bool *running) {
-    *running = false;
-}
-
-static bool is_input_loop_running(const atomic_bool *running) {
-    return *running;
-}
 
 static void handle_key(const InputThreadData *data, const int key_code, const int modifiers,
                        const int event_type) {
@@ -89,7 +82,7 @@ static void handle_key(const InputThreadData *data, const int key_code, const in
         return;
 
     if (key_code == 'q') {
-        stop_input_loop(data->running);
+        signals_request_quit();
         return;
     }
 
@@ -239,7 +232,7 @@ static void update_windows_keyboard_state(const InputThreadData *data, WindowsIn
     key_state->b = b_down;
 
     if (rising_edge(q_down, &state->prev_q)) {
-        stop_input_loop(data->running);
+        signals_request_quit();
     }
     if (rising_edge(m_down, &state->prev_m)) {
         handle_key(data, 'm', 1, 1);
@@ -384,8 +377,8 @@ static void poll_windows_console_events(InputThreadData *data, WindowsInputState
             state->has_focus = records[i].Event.FocusEvent.bSetFocus;
             continue;
         }
-        if (records[i].EventType == WINDOW_BUFFER_SIZE_EVENT && data->resize_pending_flag) {
-            *data->resize_pending_flag = 1;
+        if (records[i].EventType == WINDOW_BUFFER_SIZE_EVENT) {
+            signals_request_resize();
             continue;
         }
         if (records[i].EventType == MOUSE_EVENT && data->mouse_orbit && state->has_focus) {
@@ -411,7 +404,7 @@ void *input_thread_func(void *arg) {
     int last_mouse_x = 0, last_mouse_y = 0;
 #endif
 
-    while (is_input_loop_running(data->running)) {
+    while (!signals_should_quit()) {
 #ifdef _WIN32
         dcat_mutex_lock(data->state_mutex);
         update_windows_keyboard_state(data, &windows_state);
@@ -436,7 +429,7 @@ void *input_thread_func(void *arg) {
             if (buffer[i] != '\x1b') {
                 // Fallback for raw bytes (Kitty protocol not active)
                 if (buffer[i] == 'q' || buffer[i] == 'Q') {
-                    stop_input_loop(data->running);
+                    signals_request_quit();
                 }
                 i++;
                 continue;

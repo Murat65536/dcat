@@ -6,8 +6,6 @@
 #include "../graphics/camera.h"
 #include "../graphics/model.h"
 #include "../renderer/vulkan_renderer.h"
-#include <signal.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 
 typedef enum MouseButton {
@@ -41,13 +39,11 @@ typedef struct InputThreadData {
     AnimationState *anim_state;
     Mesh *mesh;
     DcatMutex *state_mutex;
-    atomic_bool *running;
     bool fps_controls;
     bool mouse_orbit;
     float mouse_sensitivity;
     bool has_animations;
     KeyState *key_state;
-    volatile sig_atomic_t *resize_pending_flag;
 } InputThreadData;
 
 // Input thread function
