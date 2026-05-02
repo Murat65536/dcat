@@ -63,6 +63,7 @@ subdir('shaders')
 
 dcat_sources = [
   'src/main.c',
+  'src/core/app.c',
   'src/core/args.c',
   'src/graphics/camera.c',
   'src/graphics/model.c',

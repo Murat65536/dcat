@@ -1,0 +1,11 @@
+#pragma once
+
+#include <stdbool.h>
+
+typedef struct AppContext AppContext;
+
+AppContext* app_create(void);
+void app_destroy(AppContext *app);
+bool app_init(AppContext *app, int argc, char *argv[]);
+int app_run_loop(AppContext *app);
+void app_cleanup(AppContext *app);
