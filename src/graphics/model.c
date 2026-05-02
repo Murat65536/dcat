@@ -137,6 +137,9 @@ static void process_node(const struct aiNode *node, const struct aiScene *scene,
 
     for (unsigned int i = 0; i < node->mNumMeshes; i++) {
         const struct aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
+        if (mesh->mPrimitiveTypes != aiPrimitiveType_TRIANGLE) {
+            continue;
+        }
         const uint32_t base_index = (uint32_t)vertices->count;
 
         if (mesh->mTextureCoords[uv_channel]) {
@@ -152,10 +155,9 @@ static void process_node(const struct aiNode *node, const struct aiScene *scene,
         // Process vertices
         for (unsigned int j = 0; j < mesh->mNumVertices; j++) {
             Vertex vertex = {0};
-            vertex.bone_ids[0] = -1;
-            vertex.bone_ids[1] = -1;
-            vertex.bone_ids[2] = -1;
-            vertex.bone_ids[3] = -1;
+            for (int slot = 0; slot < MAX_BONE_INFLUENCE; slot++) {
+                vertex.bone_ids[slot] = -1;
+            }
 
             // Apply transformation
             vec4 pos = {mesh->mVertices[j].x, mesh->mVertices[j].y, mesh->mVertices[j].z, 1.0f};
@@ -223,7 +225,10 @@ static void process_node_animated(const struct aiNode *node, const struct aiScen
                                   bool flip_uv_y, unsigned int uv_channel) {
     for (unsigned int i = 0; i < node->mNumMeshes; i++) {
         const struct aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
-        uint32_t base_index = (uint32_t)vertices->count;
+        if (mesh->mPrimitiveTypes != aiPrimitiveType_TRIANGLE) {
+            continue;
+        }
+        const uint32_t base_index = (uint32_t)vertices->count;
 
         if (mesh->mTextureCoords[uv_channel]) {
             *out_has_uvs = true;
@@ -232,10 +237,9 @@ static void process_node_animated(const struct aiNode *node, const struct aiScen
         // Process vertices (no transformation - keep in bind pose)
         for (unsigned int j = 0; j < mesh->mNumVertices; j++) {
             Vertex vertex = {0};
-            vertex.bone_ids[0] = -1;
-            vertex.bone_ids[1] = -1;
-            vertex.bone_ids[2] = -1;
-            vertex.bone_ids[3] = -1;
+            for (int slot = 0; slot < MAX_BONE_INFLUENCE; slot++) {
+                vertex.bone_ids[slot] = -1;
+            }
 
             vertex.position[0] = mesh->mVertices[j].x;
             vertex.position[1] = mesh->mVertices[j].y;
@@ -635,8 +639,10 @@ static char *resolve_texture_path(const char *model_path, const char *texture_pa
 
     // Make relative to model directory
     const char *last_slash = strrchr(model_path, '/');
-    if (last_slash) {
-        size_t dir_len = last_slash - model_path + 1;
+    const char *last_backslash = strrchr(model_path, '\\');
+    const char *last_sep = (last_slash > last_backslash) ? last_slash : last_backslash;
+    if (last_sep) {
+        size_t dir_len = last_sep - model_path + 1;
         size_t path_len = strlen(clean_path);
         char *full_path = malloc(dir_len + path_len + 1);
         if (!full_path) {
@@ -832,7 +838,7 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
         mats[i].base_color[2] = base_color.b;
         mats[i].base_color[3] = base_color.a;
 
-        // Alpha mode (GLTF specific)
+        // Alpha mode (GLTF-specific)
         struct aiString alpha_mode_str;
         if (aiGetMaterialString(material, "$mat.gltf.alphaMode", 0, 0, &alpha_mode_str) ==
             aiReturn_SUCCESS) {
@@ -914,10 +920,19 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
         extract_embedded_texture(scene, &mats[i], false);
     }
 
+    if (mesh->vertices.count == 0) {
+        materials_free(mats, mat_count);
+        *out_materials = NULL;
+        *out_material_count = 0;
+        mesh_free(mesh);
+        aiReleaseImport(scene);
+        return false;
+    }
+
     *out_materials = mats;
     *out_material_count = mat_count;
 
     aiReleaseImport(scene);
 
-    return mesh->vertices.count > 0;
+    return true;
 }
