@@ -29,6 +29,12 @@ conf_data.set('HAVE_UNISTD_H', 1)
 conf_data.set('HAVE_ASSERT_H', 1)
 conf_data.set('HAVE_ERRNO_H', 1)
 conf_data.set('HAVE_MEMORY_H', 1)
+conf_data.set('HAVE_STRING_H', 1)
+conf_data.set('HAVE_MATH_H', 1)
+conf_data.set('HAVE_LIMITS_H', 1)
+conf_data.set('HAVE_INTTYPES_H', 1)
+conf_data.set('HAVE_STDINT_H', 1)
+conf_data.set('HAVE_STDLIB_H', 1)
 conf_data.set('_POSIX_C_SOURCE', '199309L')
 
 configure_file(
