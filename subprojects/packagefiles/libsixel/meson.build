@@ -35,6 +35,8 @@ conf_data.set('HAVE_LIMITS_H', 1)
 conf_data.set('HAVE_INTTYPES_H', 1)
 conf_data.set('HAVE_STDINT_H', 1)
 conf_data.set('HAVE_STDLIB_H', 1)
+conf_data.set('HAVE_MEMCPY', 1)
+conf_data.set('HAVE_MEMMOVE', 1)
 conf_data.set('_POSIX_C_SOURCE', '199309L')
 
 configure_file(
