@@ -34,9 +34,17 @@ void camera_projection_matrix(const Camera *cam, mat4 out) {
 }
 
 void camera_update_direction(Camera *cam) {
+    float dist = glm_vec3_distance(cam->position, cam->target);
+    if (dist < 0.001f) {
+        dist = 1.0f;
+    }
+
     vec3 direction = {cosf(cam->yaw) * cosf(cam->pitch), sinf(cam->pitch),
                       sinf(cam->yaw) * cosf(cam->pitch)};
-    glm_vec3_add(cam->position, direction, cam->target);
+    
+    vec3 offset;
+    glm_vec3_scale(direction, dist, offset);
+    glm_vec3_add(cam->position, offset, cam->target);
 }
 
 void camera_move_forward(Camera *cam, const float distance) {
@@ -123,8 +131,8 @@ void camera_zoom(Camera *cam, const float delta) {
 }
 
 void camera_pan(Camera *cam, const float dx, const float dy) {
-    float dist = glm_vec3_distance(cam->position, cam->target);
-    float scale = powf(dist, DISTANCE_SCALING_POWER);
+    const float dist = glm_vec3_distance(cam->position, cam->target);
+    const float scale = powf(dist, DISTANCE_SCALING_POWER);
     vec3 forward, right, up;
     glm_vec3_sub(cam->target, cam->position, forward);
     glm_vec3_normalize(forward);
