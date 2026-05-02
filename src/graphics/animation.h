@@ -31,7 +31,7 @@ typedef struct QuaternionKeyArray {
 // Bone name to index mapping using hash table for O(1) lookups
 #define BONE_MAP_SIZE 256
 
-static inline uint32_t bone_hash(const char *name) {
+static uint32_t bone_hash(const char *name) {
     uint32_t hash = 5381;
     while (*name) {
         hash = ((hash << 5) + hash) + (unsigned char)*name++;
@@ -52,13 +52,7 @@ typedef struct BoneMap {
     size_t capacity;
 } BoneMap;
 
-// Hash map for bone animations (for O(1) lookup during animation)
-typedef struct BoneAnimationMap {
-    BoneMapEntry *buckets[BONE_MAP_SIZE];
-    BoneMapEntry *entries;
-    size_t count;
-    size_t capacity;
-} BoneAnimationMap;
+typedef BoneMap BoneAnimationMap;
 
 // Animation for a single bone
 typedef struct BoneAnimation {
@@ -81,6 +75,7 @@ typedef struct Animation {
     float ticks_per_second;
     BoneAnimationArray bone_animations;
     BoneAnimationMap bone_anim_map; // name -> index in bone_animations
+    int *bone_node_to_anim; // Mapping from BoneNode index to index in bone_animations
 } Animation;
 
 typedef struct AnimationArray {

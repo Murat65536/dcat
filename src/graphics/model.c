@@ -757,6 +757,18 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
         build_bone_hierarchy(scene->mRootNode, &mesh->skeleton);
         load_animations(scene, &mesh->animations);
 
+        // Pre-compute bone mappings for each animation
+        for (size_t i = 0; i < mesh->animations.count; i++) {
+            Animation *anim = &mesh->animations.data[i];
+            anim->bone_node_to_anim = malloc(mesh->skeleton.bone_hierarchy.count * sizeof(int));
+            if (anim->bone_node_to_anim) {
+                for (size_t j = 0; j < mesh->skeleton.bone_hierarchy.count; j++) {
+                    const char *node_name = mesh->skeleton.bone_hierarchy.data[j].name;
+                    anim->bone_node_to_anim[j] = bone_anim_map_find(&anim->bone_anim_map, node_name);
+                }
+            }
+        }
+
         mat4 root_transform;
         ai_matrix_to_glm(&scene->mRootNode->mTransformation, root_transform);
 

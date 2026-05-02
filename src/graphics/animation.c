@@ -87,19 +87,19 @@ void bone_map_insert(BoneMap *map, const char *name, const int index) {
 
 // Bone animation map functions (same implementation as bone map)
 void bone_anim_map_init(BoneAnimationMap *map) {
-    bone_map_init((BoneMap *)map);
+    bone_map_init(map);
 }
 
 void bone_anim_map_free(BoneAnimationMap *map) {
-    bone_map_free((BoneMap *)map);
+    bone_map_free(map);
 }
 
 int bone_anim_map_find(const BoneAnimationMap *map, const char *name) {
-    return bone_map_find((const BoneMap *)map, name);
+    return bone_map_find(map, name);
 }
 
 void bone_anim_map_insert(BoneAnimationMap *map, const char *name, const int index) {
-    bone_map_insert((BoneMap *)map, name, index);
+    bone_map_insert(map, name, index);
 }
 
 // Binary search for the last key whose time <= the given time.
@@ -312,7 +312,7 @@ void update_animation(const Mesh *mesh, AnimationState *state, float delta_time,
     }
 
     if (state->current_animation_index == state->last_animation_index &&
-        state->current_time == state->last_computed_time) {
+        fabsf(state->current_time - state->last_computed_time) < 0.0001f) {
         return;
     }
 
@@ -348,13 +348,14 @@ void animation_free(Animation *animation) {
     }
     aligned_free(animation->bone_animations.data);
     bone_anim_map_free(&animation->bone_anim_map);
+    free(animation->bone_node_to_anim);
 }
 
 void animation_array_free(AnimationArray *arr) {
     for (size_t i = 0; i < arr->count; i++) {
         animation_free(&arr->data[i]);
     }
-    free(arr->data);
+    aligned_free(arr->data);
     arr->data = NULL;
     arr->count = 0;
     arr->capacity = 0;
