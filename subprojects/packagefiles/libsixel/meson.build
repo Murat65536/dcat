@@ -26,6 +26,9 @@ sixel_srcs = [
 conf_data = configuration_data()
 conf_data.set('HAVE_SYS_TYPES_H', 1)
 conf_data.set('HAVE_UNISTD_H', 1)
+conf_data.set('HAVE_ASSERT_H', 1)
+conf_data.set('HAVE_ERRNO_H', 1)
+conf_data.set('HAVE_MEMORY_H', 1)
 conf_data.set('_POSIX_C_SOURCE', '199309L')
 
 configure_file(
