@@ -40,6 +40,9 @@ typedef SSIZE_T ssize_t;
 #define getpid _getpid
 #endif
 
+#else // !_WIN32
+#include <sys/types.h>
+#include <unistd.h>
 #endif // _WIN32
 
 #endif // DCAT_PLATFORM_COMPAT_H

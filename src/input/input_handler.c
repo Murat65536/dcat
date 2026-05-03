@@ -1,5 +1,6 @@
 #include "input_handler.h"
 #include "../core/signals.h"
+#include "../core/platform_compat.h"
 #include <string.h>
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
