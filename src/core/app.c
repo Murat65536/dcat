@@ -355,6 +355,7 @@ typedef struct AppContext {
     float move_speed;
     double target_frame_time;
     KeyState key_state;
+    bool vips_initialized;
 } AppContext;
 
 void app_cleanup(AppContext *app) {
@@ -395,7 +396,9 @@ void app_cleanup(AppContext *app) {
         vulkan_renderer_destroy(app->renderer);
     }
 
-    vips_shutdown();
+    if (app->vips_initialized) {
+        vips_shutdown();
+    }
 }
 
 bool app_init(AppContext *app, int argc, char *argv[]) {
