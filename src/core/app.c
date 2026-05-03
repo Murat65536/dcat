@@ -22,7 +22,6 @@
 #include "terminal/output_driver.h"
 #include "terminal/driver_factory.h"
 
-static const float TARGET_SIZE = 4.0f;
 static const float MAX_SIMULATION_DELTA_SECONDS = 0.1f;
 
 typedef struct FatalReport {
@@ -78,7 +77,7 @@ static float compute_model_scale_factor(const CameraSetup *camera_setup, float m
         return 1.0f;
     }
 
-    return (TARGET_SIZE / camera_setup->model_scale) * model_scale_arg;
+    return model_scale_arg / camera_setup->model_scale;
 }
 
 static void calculate_output_dimensions(const Args *args, const OutputDriver *output_driver, uint32_t *width,
@@ -497,8 +496,7 @@ bool app_init(AppContext *app, int argc, char *argv[]) {
     vec3 camera_target;
     glm_vec3_zero(camera_target);
 
-    const float MOVE_SPEED_BASE = 0.5f;
-    app->move_speed = MOVE_SPEED_BASE * TARGET_SIZE;
+    app->move_speed = 0.5f;
     app->target_frame_time = 1.0 / app->args.target_fps;
 
     camera_init(&app->camera, app->width, app->height, camera_position, camera_target, 60.0f);
