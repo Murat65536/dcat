@@ -2,12 +2,15 @@
 
 set -e
 
+: "${BUILD_DIR:=buildDir}"
+
 # 1. Create directories
+rm -rf dist
 mkdir -p dist/shaders
 
 # 2. Copy the executable, shaders, and docs
-cp buildDir/dcat.exe dist/
-cp buildDir/shaders/*.spv dist/shaders/ 2>/dev/null || true
+cp "$BUILD_DIR/dcat.exe" dist/
+cp "$BUILD_DIR"/shaders/*.spv dist/shaders/ 2>/dev/null || true
 cp LICENSE README.md dist/ 2>/dev/null || true
 
 # 3. Find and copy all non-system DLLs
@@ -26,5 +29,8 @@ while [ -f dist/.new_dll ]; do
         done
     done
 done
+
+echo "Smoke-testing packaged executable..."
+PATH="$(pwd)/dist:$PATH" dist/dcat.exe --help >/dev/null
 
 echo "Done! All DLLs copied to dist folder."

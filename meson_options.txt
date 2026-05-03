@@ -1,1 +1,8 @@
 option('profile', type: 'boolean', value: false, description: 'Enable gprof profiling flags (-pg)')
+option(
+  'bundled_libsixel',
+  type: 'combo',
+  choices: ['auto', 'enabled', 'disabled'],
+  value: 'auto',
+  description: 'Use the bundled libsixel fallback (auto uses bundled libsixel on Windows and system-first lookup elsewhere)'
+)

@@ -48,11 +48,28 @@ sixel_conf = configuration_data()
 sixel_conf.set('PACKAGE_VERSION', meson.project_version())
 sixel_conf.set('LS_LTVERSION', meson.project_version())
 sixel_conf.set('PACKAGE_DESCRIPTION', 'libsixel')
+sixel_conf.set('attr_func_deprecated', '')
+
+configured_sixel_header = configure_file(
+  input: 'include/sixel.h.in',
+  output: 'sixel.h.in.configured',
+  configuration: sixel_conf
+)
+
+python = import('python').find_installation('python3', required: false)
+if not python.found()
+  python = find_program('python', required: true)
+endif
 
 configure_file(
-  input: 'include/sixel.h.in',
+  input: configured_sixel_header,
   output: 'sixel.h',
-  configuration: sixel_conf
+  command: [
+    python,
+    files('sixel_static_header.py'),
+    '@INPUT@',
+    '@OUTPUT@'
+  ]
 )
 
 sixel_inc = include_directories('include', 'src', '.')

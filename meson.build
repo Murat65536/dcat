@@ -1,5 +1,6 @@
 project('dcat', ['c', 'cpp'],
   version: '0.1.0',
+  meson_version: '>=1.0.0',
   default_options: [
     'c_std=c17',
     'cpp_std=c++17',
@@ -11,13 +12,50 @@ project('dcat', ['c', 'cpp'],
 cc = meson.get_compiler('c')
 cxx = meson.get_compiler('cpp')
 
+msys2_prefix_name = ''
+if host_machine.system() == 'windows'
+  msys2_prefixes = ['clang64', 'ucrt64', 'mingw64', 'mingw32', 'clangarm64']
+  cc_program = find_program(cc.cmd_array()[0], required: false)
+  if cc_program.found()
+    cc_path = cc_program.full_path().replace('\\', '/').to_lower()
+    foreach prefix_name : msys2_prefixes
+      if ('/' + prefix_name + '/bin/') in cc_path
+        msys2_prefix_name = prefix_name
+      endif
+    endforeach
+  endif
+
+  pkg_config_program = find_program('pkg-config', required: false)
+  if pkg_config_program.found()
+    pkg_config_path = pkg_config_program.full_path().replace('\\', '/').to_lower()
+    pkg_config_prefix_name = ''
+    foreach prefix_name : msys2_prefixes
+      if ('/' + prefix_name + '/bin/') in pkg_config_path
+        pkg_config_prefix_name = prefix_name
+      endif
+    endforeach
+
+    if msys2_prefix_name != '' and pkg_config_prefix_name != '' and msys2_prefix_name != pkg_config_prefix_name
+      error('MSYS2 toolchain mismatch: C compiler is from @0@ but pkg-config is from @1@. Configure from the matching MSYS2 shell or put C:/msys64/@0@/bin first on PATH.'.format(msys2_prefix_name, pkg_config_prefix_name))
+    endif
+  endif
+endif
+
 # Dependencies
 vulkan_dep = dependency('vulkan', required: true)
 
 assimp_dep = dependency('assimp', fallback: ['assimp', 'assimp_dep'])
 cglm_dep = dependency('cglm', fallback: ['cglm', 'cglm_dep'])
 vips_dep = dependency('vips', fallback: ['vips', 'vips_dep'])
-sixel_dep = dependency('libsixel', fallback: ['libsixel', 'sixel_dep'])
+
+bundled_libsixel = get_option('bundled_libsixel')
+if bundled_libsixel == 'enabled' or (bundled_libsixel == 'auto' and host_machine.system() == 'windows')
+  sixel_dep = subproject('libsixel').get_variable('sixel_dep')
+elif bundled_libsixel == 'disabled'
+  sixel_dep = dependency('libsixel', required: true)
+else
+  sixel_dep = dependency('libsixel', fallback: ['libsixel', 'sixel_dep'])
+endif
 
 threads_dep = dependency('threads')
 m_dep = cc.find_library('m', required: false)
@@ -99,6 +137,15 @@ dcat_exe = executable('dcat',
 )
 
 python = import('python').find_installation('python3', required: false)
+if host_machine.system() == 'windows'
+  msys2_python = find_program('python3', required: false)
+  if msys2_prefix_name != ''
+    msys2_python = find_program('C:/msys64' / msys2_prefix_name / 'bin' / 'python3.exe', required: false)
+  endif
+  if msys2_python.found()
+    python = msys2_python
+  endif
+endif
 if not python.found()
   python = find_program('python', required: false)
 endif

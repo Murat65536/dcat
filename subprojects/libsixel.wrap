@@ -1,8 +1,7 @@
 [wrap-git]
 directory = libsixel
 url = https://github.com/saitoha/libsixel.git
-revision = master
-depth = 1
+revision = 764f4e618c8bbc427fb74622e3227243fe6762fb
 patch_directory = libsixel
 
 [provide]

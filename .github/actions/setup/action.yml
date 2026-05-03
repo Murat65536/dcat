@@ -33,7 +33,8 @@ runs:
           libcglm-dev \
           libsixel-dev \
           pkg-config \
-          libvips-dev
+          libvips-dev \
+          python3-pytest
 
     - name: Setup MSYS2
       if: runner.os == 'Windows'
@@ -54,6 +55,7 @@ runs:
           mingw-w64-clang-x86_64-cglm
           mingw-w64-clang-x86_64-libvips
           mingw-w64-clang-x86_64-python
+          mingw-w64-clang-x86_64-python-pytest
           git
 
     - name: Configure + Build (Linux)
@@ -63,11 +65,13 @@ runs:
         BUILDTYPE=$(echo "${{ inputs.buildtype }}" | tr '[:upper:]' '[:lower:]')
         meson setup build -Dbuildtype=$BUILDTYPE
         meson compile -C build
+        meson test -C build --print-errorlogs
 
     - name: Configure + Build (Windows)
       if: runner.os == 'Windows'
       shell: msys2 {0}
       run: |
         BUILDTYPE=$(echo "${{ inputs.buildtype }}" | tr '[:upper:]' '[:lower:]')
-        meson setup buildDir -Dbuildtype=$BUILDTYPE -Ddefault_library=static
+        meson setup buildDir -Dbuildtype=$BUILDTYPE -Ddefault_library=static -Dbundled_libsixel=enabled
         meson compile -C buildDir
+        meson test -C buildDir --print-errorlogs
