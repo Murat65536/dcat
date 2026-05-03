@@ -12,6 +12,7 @@
 #include "core/platform_compat.h"
 #include "core/threading.h"
 #include "core/signals.h"
+#include "core/time_utils.h"
 #include "graphics/camera.h"
 #include "graphics/model.h"
 #include "graphics/texture_loader.h"
@@ -38,22 +39,6 @@ static void record_fatal_report(FatalReport *report, const char *format, ...) {
     va_start(args, format);
     vsnprintf(report->message, sizeof(report->message), format, args);
     va_end(args);
-}
-
-static double get_time_seconds(void) {
-#ifdef _WIN32
-    static LARGE_INTEGER frequency = {0};
-    LARGE_INTEGER counter;
-    if (frequency.QuadPart == 0) {
-        QueryPerformanceFrequency(&frequency);
-    }
-    QueryPerformanceCounter(&counter);
-    return (double)counter.QuadPart / (double)frequency.QuadPart;
-#else
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec + ts.tv_nsec / 1e9;
-#endif
 }
 
 typedef struct RenderContext {
