@@ -22,8 +22,6 @@
 #include "terminal/output_driver.h"
 #include "terminal/driver_factory.h"
 
-static const float MAX_SIMULATION_DELTA_SECONDS = 0.1f;
-
 typedef struct FatalReport {
     bool active;
     char message[512];
@@ -109,18 +107,6 @@ static bool initialize_bone_matrices(mat4 **out_bone_matrices) {
 
 static float calculate_frame_fps(const float delta_time) {
     return delta_time > 0.0f ? 1.0f / delta_time : 0.0f;
-}
-
-static float clamp_simulation_delta(const double frame_delta_seconds) {
-    if (frame_delta_seconds <= 0.0) {
-        return 0.0f;
-    }
-
-    if (frame_delta_seconds > MAX_SIMULATION_DELTA_SECONDS) {
-        return MAX_SIMULATION_DELTA_SECONDS;
-    }
-
-    return (float)frame_delta_seconds;
 }
 
 static void pace_frame(const double frame_start_time, const double target_frame_time) {
@@ -567,7 +553,7 @@ int app_run_loop(AppContext *app) {
         double frame_start = get_time_seconds();
         double frame_delta = frame_start - last_frame_time;
         last_frame_time = frame_start;
-        float delta_time = clamp_simulation_delta(frame_delta);
+        float delta_time = (float)frame_delta;
         float display_fps = calculate_frame_fps((float)frame_delta);
         vec3 camera_position_snapshot;
         int current_animation_index_snapshot = -1;
