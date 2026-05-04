@@ -17,6 +17,7 @@ sixel_srcs = [
   'src/pixelformat.c',
   'src/quant.c',
   'src/scale.c',
+  'src/stb_image_write.c',
   'src/status.c',
   'src/tosixel.c',
   'src/tty.c',
@@ -50,26 +51,10 @@ sixel_conf.set('LS_LTVERSION', meson.project_version())
 sixel_conf.set('PACKAGE_DESCRIPTION', 'libsixel')
 sixel_conf.set('attr_func_deprecated', '')
 
-configured_sixel_header = configure_file(
-  input: 'include/sixel.h.in',
-  output: 'sixel.h.in.configured',
-  configuration: sixel_conf
-)
-
-python = import('python').find_installation('python3', required: false)
-if not python.found()
-  python = find_program('python', required: true)
-endif
-
 configure_file(
-  input: configured_sixel_header,
+  input: 'include/sixel.h.in',
   output: 'sixel.h',
-  command: [
-    python,
-    files('sixel_static_header.py'),
-    '@INPUT@',
-    '@OUTPUT@'
-  ]
+  configuration: sixel_conf
 )
 
 sixel_inc = include_directories('include', 'src', '.')
@@ -77,6 +62,11 @@ sixel_inc = include_directories('include', 'src', '.')
 libsixel_args = ['-D_POSIX_C_SOURCE=199309L']
 if cc.get_id() == 'msvc'
   libsixel_args += ['-D_CRT_SECURE_NO_WARNINGS']
+endif
+
+if host_machine.system() == 'windows'
+  # Ensure missing libc/POSIX declarations are visible for clang/gcc.
+  libsixel_args += ['-include', 'ctype.h', '-include', 'fcntl.h', '-include', 'sys/stat.h']
 endif
 
 libsixel_lib = static_library('sixel',

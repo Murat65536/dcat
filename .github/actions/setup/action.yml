@@ -72,6 +72,6 @@ runs:
       shell: msys2 {0}
       run: |
         BUILDTYPE=$(echo "${{ inputs.buildtype }}" | tr '[:upper:]' '[:lower:]')
-        meson setup buildDir -Dbuildtype=$BUILDTYPE -Ddefault_library=static -Dbundled_libsixel=enabled
+        meson setup buildDir -Dbuildtype=$BUILDTYPE -Ddefault_library=shared -Dbundled_libsixel=enabled
         meson compile -C buildDir
         meson test -C buildDir --print-errorlogs

@@ -74,8 +74,8 @@ pacman -S mingw-w64-clang-x86_64-toolchain mingw-w64-clang-x86_64-meson mingw-w6
 Configure and build:
 
 ```sh
-# Release (recommended for standalone usage)
-meson setup build --buildtype=release --default-library=static -Dbundled_libsixel=enabled
+# Release (recommended for installer-bundled DLL distribution)
+meson setup build --buildtype=release --default-library=shared -Dbundled_libsixel=enabled
 meson compile -C build
 meson test -C build
 
@@ -85,8 +85,10 @@ meson compile -C build-debug
 meson test -C build-debug
 ```
 
+When `bundled_libsixel` is enabled, the bundled libsixel is linked statically on Windows (while other dependencies remain DLL-packaged) to avoid patching upstream libsixel export macros.
+
 Use `-Dbundled_libsixel=disabled` only if you intentionally want Meson to require a system `libsixel` package from the active MSYS2 environment.
 
 ### Windows Notes
 - `--kitty` and `--kitty-direct` are not supported in native Windows mode.
-- Auto output mode falls back to character rendering modes on Windows.
+- Auto-output mode falls back to character rendering modes on Windows.

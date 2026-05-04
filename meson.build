@@ -1,4 +1,4 @@
-project('dcat', ['c', 'cpp'],
+project('dcat', 'c',
   version: '0.1.0',
   meson_version: '>=1.0.0',
   default_options: [
@@ -10,7 +10,6 @@ project('dcat', ['c', 'cpp'],
 )
 
 cc = meson.get_compiler('c')
-cxx = meson.get_compiler('cpp')
 
 msys2_prefix_name = ''
 if host_machine.system() == 'windows'
