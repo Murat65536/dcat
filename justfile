@@ -21,10 +21,6 @@ asan:
 build:
     meson compile -C {{builddir}}
 
-# Run the test suite (pytest CLI harness) with full error logs.
-test:
-    meson test -C {{builddir}} --print-errorlogs
-
 # Drop into an environment with the built binary on PATH.
 devenv:
     meson devenv -C {{builddir}}

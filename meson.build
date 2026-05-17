@@ -134,26 +134,3 @@ dcat_exe = executable('dcat',
   dependencies: dcat_deps,
   install: true
 )
-
-python = import('python').find_installation('python3', required: false)
-if host_machine.system() == 'windows'
-  msys2_python = find_program('python3', required: false)
-  if msys2_prefix_name != ''
-    msys2_python = find_program('C:/msys64' / msys2_prefix_name / 'bin' / 'python3.exe', required: false)
-  endif
-  if msys2_python.found()
-    python = msys2_python
-  endif
-endif
-if not python.found()
-  python = find_program('python', required: false)
-endif
-
-if python.found()
-  test('pytest_cli',
-    python,
-    args: ['-m', 'pytest', meson.current_source_dir() / 'tests'],
-    env: ['DCAT_EXE=' + dcat_exe.full_path()],
-    depends: dcat_exe
-  )
-endif

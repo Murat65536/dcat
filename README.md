@@ -44,7 +44,7 @@ wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc
 sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-noble.list https://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list
 sudo apt-get update
 
-sudo apt-get install -y gcc meson ninja-build libvulkan-dev vulkan-headers shaderc vulkan-utility-libraries-dev libassimp-dev libcglm-dev libsixel-dev pkg-config libvips-dev python3-pytest
+sudo apt-get install -y gcc meson ninja-build libvulkan-dev vulkan-headers shaderc vulkan-utility-libraries-dev libassimp-dev libcglm-dev libsixel-dev pkg-config libvips-dev
 ```
 
 Configure and build:
@@ -53,12 +53,10 @@ Configure and build:
 # Release
 meson setup build --buildtype=release
 meson compile -C build
-meson test -C build
 
 # Debug
 meson setup build-debug --buildtype=debug
 meson compile -C build-debug
-meson test -C build-debug
 ```
 
 ### Windows
@@ -70,7 +68,7 @@ On Windows, the project is built using [MSYS2](https://www.msys2.org/) with the 
 3. Install dependencies:
 
 ```sh
-pacman -S mingw-w64-clang-x86_64-toolchain mingw-w64-clang-x86_64-meson mingw-w64-clang-x86_64-ninja mingw-w64-clang-x86_64-cmake mingw-w64-clang-x86_64-pkgconf mingw-w64-clang-x86_64-vulkan-headers mingw-w64-clang-x86_64-vulkan-loader mingw-w64-clang-x86_64-shaderc mingw-w64-clang-x86_64-assimp mingw-w64-clang-x86_64-cglm mingw-w64-clang-x86_64-libvips mingw-w64-clang-x86_64-python mingw-w64-clang-x86_64-python-pytest git
+pacman -S mingw-w64-clang-x86_64-toolchain mingw-w64-clang-x86_64-meson mingw-w64-clang-x86_64-ninja mingw-w64-clang-x86_64-cmake mingw-w64-clang-x86_64-pkgconf mingw-w64-clang-x86_64-vulkan-headers mingw-w64-clang-x86_64-vulkan-loader mingw-w64-clang-x86_64-shaderc mingw-w64-clang-x86_64-assimp mingw-w64-clang-x86_64-cglm mingw-w64-clang-x86_64-libvips git
 ```
 
 Configure and build:
@@ -79,12 +77,10 @@ Configure and build:
 # Release (recommended for installer-bundled DLL distribution)
 meson setup build --buildtype=release --default-library=shared -Dbundled_libsixel=enabled
 meson compile -C build
-meson test -C build
 
 # Debug
 meson setup build-debug --buildtype=debug -Dbundled_libsixel=enabled
 meson compile -C build-debug
-meson test -C build-debug
 ```
 
 When `bundled_libsixel` is enabled, the bundled libsixel is linked statically on Windows (while other dependencies remain DLL-packaged) to avoid patching upstream libsixel export macros.
@@ -102,7 +98,6 @@ A `justfile` provides shortcuts over the Meson commands above (install [`just`](
 ```sh
 just setup-debug   # configure a debug build in ./build
 just build         # meson compile -C build
-just test          # meson test -C build --print-errorlogs
 just asan          # debug build with AddressSanitizer + UBSan (b_sanitize)
 just devenv        # shell with the built dcat on PATH
 just bump-wraps    # refresh subproject sources after editing subprojects/*.wrap

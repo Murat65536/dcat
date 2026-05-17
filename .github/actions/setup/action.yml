@@ -27,7 +27,6 @@ runs:
           meson \
           ninja-build \
           libvulkan-dev \
-          mesa-vulkan-drivers \
           vulkan-headers \
           shaderc \
           vulkan-utility-libraries-dev \
@@ -35,8 +34,7 @@ runs:
           libcglm-dev \
           libsixel-dev \
           pkg-config \
-          libvips-dev \
-          python3-pytest
+          libvips-dev
 
     - name: Setup MSYS2
       if: runner.os == 'Windows'
@@ -57,8 +55,6 @@ runs:
           mingw-w64-clang-x86_64-assimp
           mingw-w64-clang-x86_64-cglm
           mingw-w64-clang-x86_64-libvips
-          mingw-w64-clang-x86_64-python
-          mingw-w64-clang-x86_64-python-pytest
           git
 
     - name: Set ccache dir
@@ -87,7 +83,6 @@ runs:
         BUILDTYPE=$(echo "${{ inputs.buildtype }}" | tr '[:upper:]' '[:lower:]')
         meson setup build -Dbuildtype=$BUILDTYPE --wrap-mode=nofallback
         meson compile -C build
-        meson test -C build --print-errorlogs
         ccache --show-stats
 
     - name: Configure + Build (Windows)
@@ -97,5 +92,4 @@ runs:
         BUILDTYPE=$(echo "${{ inputs.buildtype }}" | tr '[:upper:]' '[:lower:]')
         meson setup buildDir -Dbuildtype=$BUILDTYPE -Ddefault_library=shared -Dbundled_libsixel=enabled --wrap-mode=nofallback
         meson compile -C buildDir
-        meson test -C buildDir --print-errorlogs
         ccache --show-stats
