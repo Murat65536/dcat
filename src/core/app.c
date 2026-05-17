@@ -3,13 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include <vips/vips.h>
 
 #include "core/app.h"
 #include "core/args.h"
-#include "core/platform_compat.h"
 #include "core/threading.h"
 #include "core/signals.h"
 #include "core/time_utils.h"

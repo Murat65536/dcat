@@ -32,6 +32,8 @@ https://github.com/user-attachments/assets/ca47ea52-6a46-4ac2-8c9f-430fc9ea9865
 
 This project uses the [Meson](https://mesonbuild.com/) build system and depends on Vulkan, Assimp, cglm, libvips, and libsixel.
 
+System packages are used by default; the `subprojects/*.wrap` files are reproducible fallbacks only. `cglm` is pinned to a hashed wrapdb tarball; `assimp`, `libvips`, and `libsixel` are pinned to immutable git commits. To bump a dependency, change the `revision`/`source_hash` in the relevant `subprojects/*.wrap` and update the accompanying comment. CI builds pass `--wrap-mode=nofallback` so a missing system dependency fails loudly instead of silently source-building a vendored copy.
+
 ### Linux
 
 Install the required dependencies (Ubuntu/Debian example):
@@ -92,3 +94,20 @@ Use `-Dbundled_libsixel=disabled` only if you intentionally want Meson to requir
 ### Windows Notes
 - `--kitty` and `--kitty-direct` are not supported in native Windows mode.
 - Auto-output mode falls back to character rendering modes on Windows.
+
+## Development
+
+A `justfile` provides shortcuts over the Meson commands above (install [`just`](https://github.com/casey/just), or just run the underlying commands by hand):
+
+```sh
+just setup-debug   # configure a debug build in ./build
+just build         # meson compile -C build
+just test          # meson test -C build --print-errorlogs
+just asan          # debug build with AddressSanitizer + UBSan (b_sanitize)
+just devenv        # shell with the built dcat on PATH
+just bump-wraps    # refresh subproject sources after editing subprojects/*.wrap
+```
+
+Sanitizer builds use Meson's built-in `b_sanitize` (e.g. `meson setup build -Db_sanitize=address,undefined -Db_lundef=false`); no custom option is needed.
+
+`meson setup` emits `build/compile_commands.json`. The committed `.clangd` points clangd at it, so editors get full IntelliSense once any build directory named `build` is configured.

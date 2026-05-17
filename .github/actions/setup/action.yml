@@ -23,6 +23,7 @@ runs:
       run: |
         sudo apt-get install -y \
           gcc \
+          ccache \
           meson \
           ninja-build \
           libvulkan-dev \
@@ -44,6 +45,7 @@ runs:
         update: true
         install: >-
           mingw-w64-clang-x86_64-toolchain
+          mingw-w64-clang-x86_64-ccache
           mingw-w64-clang-x86_64-meson
           mingw-w64-clang-x86_64-ninja
           mingw-w64-clang-x86_64-cmake
@@ -58,20 +60,41 @@ runs:
           mingw-w64-clang-x86_64-python-pytest
           git
 
+    - name: Set ccache dir
+      shell: bash
+      run: echo "CCACHE_DIR=${{ github.workspace }}/.ccache" >> "$GITHUB_ENV"
+
+    - name: Cache Meson subproject downloads
+      uses: actions/cache@v4
+      with:
+        path: subprojects/packagecache
+        key: packagecache-${{ runner.os }}-${{ hashFiles('subprojects/*.wrap') }}
+
+    - name: Cache ccache
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.ccache
+        key: ccache-${{ runner.os }}-${{ inputs.buildtype }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ runner.os }}-${{ inputs.buildtype }}-
+          ccache-${{ runner.os }}-
+
     - name: Configure + Build (Linux)
       if: runner.os == 'Linux'
       shell: bash
       run: |
         BUILDTYPE=$(echo "${{ inputs.buildtype }}" | tr '[:upper:]' '[:lower:]')
-        meson setup build -Dbuildtype=$BUILDTYPE
+        meson setup build -Dbuildtype=$BUILDTYPE --wrap-mode=nofallback
         meson compile -C build
         meson test -C build --print-errorlogs
+        ccache --show-stats
 
     - name: Configure + Build (Windows)
       if: runner.os == 'Windows'
       shell: msys2 {0}
       run: |
         BUILDTYPE=$(echo "${{ inputs.buildtype }}" | tr '[:upper:]' '[:lower:]')
-        meson setup buildDir -Dbuildtype=$BUILDTYPE -Ddefault_library=shared -Dbundled_libsixel=enabled
+        meson setup buildDir -Dbuildtype=$BUILDTYPE -Ddefault_library=shared -Dbundled_libsixel=enabled --wrap-mode=nofallback
         meson compile -C buildDir
         meson test -C buildDir --print-errorlogs
+        ccache --show-stats

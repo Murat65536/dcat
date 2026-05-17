@@ -1,8 +1,7 @@
 [wrap-git]
 directory = libvips
 url = https://github.com/libvips/libvips.git
-revision = v8.15.2
-depth = 1
+revision = f18403d7bf49b574a2a1c6887dbe9c696a5125fc
 
 [provide]
 dependency_names = vips

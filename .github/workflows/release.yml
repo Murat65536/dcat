@@ -2,7 +2,6 @@ name: Release
 
 on:
   push:
-    branches: [ main ]
     tags:
       - 'v*'
   schedule:
@@ -43,7 +42,7 @@ jobs:
       contents: write
     needs: [ release-windows ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build
         uses: ./.github/actions/setup
