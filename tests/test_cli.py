@@ -1,3 +1,4 @@
+import functools
 import os
 import subprocess
 import pytest
@@ -6,6 +7,28 @@ from pathlib import Path
 DCAT_EXE = os.environ.get('DCAT_EXE')
 ASSETS_DIR = Path(__file__).parent / 'assets'
 TEST_CUBE = ASSETS_DIR / 'test_cube.obj'
+
+
+@functools.lru_cache(maxsize=1)
+def _vulkan_available():
+    """Probe once whether a usable Vulkan device exists.
+
+    Headless CI runners (and any box without a Vulkan ICD) make dcat abort at
+    vkCreateInstance before it can load a model or render output, so the
+    render-dependent tests below are meaningless there and are skipped.
+    """
+    if not DCAT_EXE or not os.path.exists(DCAT_EXE):
+        return False
+    result = subprocess.run(
+        [DCAT_EXE, 'does_not_exist.gltf'], capture_output=True, text=True
+    )
+    return "Failed to create Vulkan instance" not in result.stderr
+
+
+requires_vulkan = pytest.mark.skipif(
+    not _vulkan_available(),
+    reason="No Vulkan device available (headless runner without a software ICD)",
+)
 
 def test_executable_exists():
     assert DCAT_EXE is not None, "DCAT_EXE environment variable not set"
@@ -35,12 +58,14 @@ def test_invalid_fps():
     assert result.returncode != 0
     assert "Invalid FPS: 0" in result.stderr
 
+@requires_vulkan
 def test_model_not_found():
     """Test that a non-existent model file is handled gracefully."""
     result = subprocess.run([DCAT_EXE, 'does_not_exist.gltf'], capture_output=True, text=True)
     assert result.returncode != 0
     assert "Failed to load model:" in result.stderr
 
+@requires_vulkan
 def test_sixel_output_header():
     """Test that the --sixel flag actually outputs Sixel escape sequences."""
     process = subprocess.Popen(
@@ -59,6 +84,7 @@ def test_sixel_output_header():
     # Sixel device control string starts with ESC P q (or similar like hide cursor \x1b[?25l)
     assert "\x1bP" in stdout or "\x1b[?25l" in stdout
 
+@requires_vulkan
 def test_truecolor_character_output():
     """Test that truecolor mode emits 24-bit ANSI color codes."""
     process = subprocess.Popen(

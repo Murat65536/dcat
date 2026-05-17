@@ -27,6 +27,7 @@ runs:
           meson \
           ninja-build \
           libvulkan-dev \
+          mesa-vulkan-drivers \
           vulkan-headers \
           shaderc \
           vulkan-utility-libraries-dev \
