@@ -1,11 +1,8 @@
 #include "vk_shader.h"
-#include "core/platform_compat.h"
+#include "platform/path.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef _WIN32
-#include <unistd.h>
-#endif
 
 static void normalize_path_separators(char *path) {
 #ifdef _WIN32
@@ -17,36 +14,6 @@ static void normalize_path_separators(char *path) {
 #else
     (void)path;
 #endif
-}
-
-static void get_executable_directory(char *out, const size_t out_size) {
-    if (out_size == 0) {
-        return;
-    }
-    out[0] = '\0';
-
-#ifdef _WIN32
-    const DWORD len = GetModuleFileNameA(NULL, out, out_size);
-    if (len == 0 || len >= out_size) {
-        out[0] = '\0';
-        return;
-    }
-    normalize_path_separators(out);
-#else
-    ssize_t len = readlink("/proc/self/exe", out, out_size - 1);
-    if (len == -1) {
-        out[0] = '\0';
-        return;
-    }
-    out[len] = '\0';
-#endif
-
-    char *last_slash = strrchr(out, '/');
-    if (!last_slash) {
-        out[0] = '\0';
-        return;
-    }
-    last_slash[1] = '\0';
 }
 
 char *read_shader_file(VulkanRenderer *r, const char *filename, size_t *out_size) {
@@ -75,7 +42,9 @@ char *read_shader_file(VulkanRenderer *r, const char *filename, size_t *out_size
 
     // Get executable directory
     char exe_dir[4096] = {0};
-    get_executable_directory(exe_dir, sizeof(exe_dir));
+    if (dcat_get_executable_directory(exe_dir, sizeof(exe_dir))) {
+        normalize_path_separators(exe_dir);
+    }
 
     // Try shader directory first if set
     if (r->shader_directory[0]) {

@@ -1,5 +1,4 @@
 #include "terminal/palette_characters.h"
-#include "core/platform_compat.h"
 #include "terminal/terminal.h"
 #include <stdbool.h>
 #include <stdint.h>

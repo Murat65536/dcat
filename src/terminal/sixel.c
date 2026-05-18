@@ -1,13 +1,9 @@
 #include "sixel.h"
-#include "core/platform_compat.h"
+#include "platform/io.h"
 #include "terminal.h"
 #include <sixel.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifndef _WIN32
-#include <unistd.h>
-#endif
 
 static char *sixel_buffer = NULL;
 static size_t sixel_buffer_size = 0;
@@ -81,7 +77,7 @@ void render_sixel(const uint8_t *buffer, uint32_t width, uint32_t height) {
 }
 
 bool detect_sixel_support(void) {
-    if (!isatty(STDOUT_FILENO) || !isatty(STDIN_FILENO))
+    if (!dcat_isatty(STDOUT_FILENO) || !dcat_isatty(STDIN_FILENO))
         return false;
 
     TermiosState ts;
