@@ -1,14 +1,11 @@
 #include "terminal/truecolor_characters.h"
-#include "core/platform_compat.h"
+#include "platform/io.h"
 #include "terminal/terminal.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef _WIN32
-#include <unistd.h>
-#endif
 
 // Persistent buffer with fixed structure - only RGB digits change
 static char *render_buf = NULL;
@@ -157,7 +154,7 @@ void render_truecolor_characters(const uint8_t *buffer, const uint32_t width, co
 
 bool detect_truecolor_support(void) {
 #ifdef _WIN32
-    if (!isatty(STDOUT_FILENO)) {
+    if (!dcat_isatty(STDOUT_FILENO)) {
         return false;
     }
 
@@ -184,7 +181,7 @@ bool detect_truecolor_support(void) {
     }
 
     // Fallback: Query terminal for RGB capability: DCS + q 524742 ST
-    if (!isatty(STDOUT_FILENO) || !isatty(STDIN_FILENO))
+    if (!dcat_isatty(STDOUT_FILENO) || !dcat_isatty(STDIN_FILENO))
         return false;
 
     TermiosState ts;

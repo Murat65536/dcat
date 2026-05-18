@@ -1,6 +1,6 @@
 #include "input_handler.h"
 #include "../core/signals.h"
-#include "../core/platform_compat.h"
+#include "platform/io.h"
 #include <string.h>
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -9,7 +9,6 @@
 #include <windows.h>
 #else
 #include <poll.h>
-#include <unistd.h>
 #endif
 
 static const float ROTATION_AMOUNT = GLM_PI / 8.0f;
@@ -417,7 +416,8 @@ void *input_thread_func(void *arg) {
         if (poll(&pfd, 1, 1) <= 0 || !(pfd.revents & POLLIN))
             continue;
 
-        ssize_t n = read(STDIN_FILENO, buffer + carry, (ssize_t)sizeof(buffer) - carry);
+        const size_t available = sizeof(buffer) - (size_t)carry;
+        ssize_t n = dcat_read(STDIN_FILENO, buffer + carry, available);
         if (n <= 0)
             continue;
         n += carry;

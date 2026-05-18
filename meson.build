@@ -100,6 +100,8 @@ subdir('shaders')
 
 dcat_sources = [
   'src/main.c',
+  'src/platform/io.c',
+  'src/platform/path.c',
   'src/core/app.c',
   'src/core/args.c',
   'src/core/signals.c',

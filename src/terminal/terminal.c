@@ -1,5 +1,5 @@
 #include "terminal.h"
-#include "core/platform_compat.h"
+#include "platform/io.h"
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -8,7 +8,6 @@
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/ioctl.h>
-#include <unistd.h>
 #endif
 
 #ifdef _WIN32
@@ -86,7 +85,7 @@ void get_terminal_size_pixels(uint32_t *width, uint32_t *height) {
         return;
     }
 
-    if (isatty(STDOUT_FILENO) && isatty(STDIN_FILENO)) {
+    if (dcat_isatty(STDOUT_FILENO) && dcat_isatty(STDIN_FILENO)) {
         TermiosState ts;
         if (terminal_begin_query_mode(&ts)) {
             safe_write("\x1b[14t", 5);
@@ -188,10 +187,10 @@ static int choose_terminal_recovery_fd(void) {
 #ifdef _WIN32
     return STDOUT_FILENO;
 #else
-    if (isatty(STDOUT_FILENO)) {
+    if (dcat_isatty(STDOUT_FILENO)) {
         return STDOUT_FILENO;
     }
-    if (isatty(STDERR_FILENO)) {
+    if (dcat_isatty(STDERR_FILENO)) {
         return STDERR_FILENO;
     }
 
@@ -239,7 +238,7 @@ static void terminal_write_fd(const int fd, const char *data, const size_t size)
 #endif
     size_t remaining = size;
     while (remaining > 0) {
-        const ssize_t written = write(fd, data, remaining);
+        const ssize_t written = dcat_write(fd, data, remaining);
         if (written < 0) {
             if (errno == EINTR)
                 continue;
@@ -381,7 +380,7 @@ void enable_raw_mode(void) {
         }
     }
 
-    if (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)) {
+    if (dcat_isatty(STDIN_FILENO) && dcat_isatty(STDOUT_FILENO)) {
         raw_mode_input_code_page = GetConsoleCP();
         raw_mode_output_code_page = GetConsoleOutputCP();
         if (raw_mode_input_code_page != 0 && raw_mode_output_code_page != 0) {
@@ -515,7 +514,7 @@ ssize_t terminal_read_query(char *buffer, size_t size, char terminator) {
     size_t total_read = 0;
     while (total_read < size) {
         char ch;
-        ssize_t r = read(STDIN_FILENO, &ch, 1);
+        ssize_t r = dcat_read(STDIN_FILENO, &ch, 1);
         if (r > 0) {
             buffer[total_read++] = ch;
             if (terminator != 0 && ch == terminator) {

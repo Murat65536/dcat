@@ -1,5 +1,5 @@
 #include "kitty_shm.h"
-#include "core/platform_compat.h"
+#include "platform/io.h"
 #include "terminal.h"
 #ifdef _WIN32
 #include <stdbool.h>
@@ -57,7 +57,7 @@ static int b64_encode(const char *src, int len, char *dst) {
     return j;
 }
 
-static pid_t kitty_pid;
+static int kitty_pid;
 static int kitty_frame;
 static bool kitty_initialized = false;
 
@@ -70,7 +70,7 @@ static void kitty_cleanup(void) {
 
 void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height) {
     if (!kitty_initialized) {
-        kitty_pid = getpid();
+        kitty_pid = dcat_getpid();
         kitty_frame = 0;
         atexit(kitty_cleanup);
         kitty_initialized = true;
@@ -87,24 +87,24 @@ void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height) {
         return;
 
     if (ftruncate(fd, (off_t)data_size) == -1) {
-        close(fd);
+        dcat_close(fd);
         return;
     }
 
     const uint8_t *src = buffer;
     size_t remaining = data_size;
     while (remaining > 0) {
-        ssize_t written = write(fd, src, remaining);
+        ssize_t written = dcat_write(fd, src, remaining);
         if (written < 0) {
             if (errno == EINTR)
                 continue;
-            close(fd);
+            dcat_close(fd);
             return;
         }
         src += written;
         remaining -= (size_t)written;
     }
-    close(fd);
+    dcat_close(fd);
 
     char name_b64[128];
     int name_b64_len = b64_encode(shm_name, strlen(shm_name), name_b64);
@@ -120,7 +120,7 @@ void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height) {
 }
 
 bool detect_kitty_shm_support(void) {
-    if (!isatty(STDOUT_FILENO) || !isatty(STDIN_FILENO))
+    if (!dcat_isatty(STDOUT_FILENO) || !dcat_isatty(STDIN_FILENO))
         return false;
 
     static const char *shm_name = "/dcat_detect";
@@ -140,7 +140,7 @@ bool detect_kitty_shm_support(void) {
             ok = false;
         }
     }
-    close(fd);
+    dcat_close(fd);
     if (!ok) {
         shm_unlink(shm_name);
         return false;

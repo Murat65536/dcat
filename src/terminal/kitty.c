@@ -1,12 +1,9 @@
 #include "kitty.h"
-#include "core/platform_compat.h"
+#include "platform/io.h"
 #include "terminal.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
-#ifndef _WIN32
-#include <unistd.h>
-#endif
 
 static const char base64_chars[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -70,7 +67,7 @@ bool detect_kitty_support(void) {
 #ifdef _WIN32
     return false;
 #else
-    if (!isatty(STDOUT_FILENO) || !isatty(STDIN_FILENO))
+    if (!dcat_isatty(STDOUT_FILENO) || !dcat_isatty(STDIN_FILENO))
         return false;
 
     // 1×1 transparent RGBA pixel = 4 zero bytes = "AAAAAA==" in base64
