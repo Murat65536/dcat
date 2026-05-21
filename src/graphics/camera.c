@@ -13,7 +13,7 @@ void camera_init(Camera *cam, const uint32_t width, const uint32_t height, vec3 
     glm_vec3_copy((vec3){0.0f, 1.0f, 0.0f}, cam->up);
     cam->fov = glm_rad(fov_degrees);
     cam->aspect = (float)width / (float)height;
-    cam->near_plane = 0.0001f;
+    cam->near_plane = 0.01f;
     cam->far_plane = 100.0f;
 
     vec3 direction;
@@ -28,7 +28,7 @@ void camera_view_matrix(const Camera *cam, mat4 out) {
 }
 
 void camera_projection_matrix(const Camera *cam, mat4 out) {
-    glm_perspective(cam->fov, cam->aspect, cam->near_plane, cam->far_plane, out);
+    glm_perspective_rh_zo(cam->fov, cam->aspect, cam->near_plane, cam->far_plane, out);
     // Flip Y for Vulkan coordinate system
     out[1][1] *= -1.0f;
 }
