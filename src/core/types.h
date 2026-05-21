@@ -137,13 +137,13 @@ static void aligned_free(void *ptr) {
 
 // Vertex structure with bone weights for skeletal animation
 typedef struct Vertex {
-    vec3 position;
-    vec2 texcoord;
-    vec3 normal;
-    vec3 tangent;
-    vec3 bitangent;
-    ivec4 bone_ids;
-    vec4 bone_weights;
+    float position[3];
+    float texcoord[2];
+    float normal[3];
+    float tangent[3];
+    float bitangent[3];
+    int bone_ids[4];
+    float bone_weights[4];
 } Vertex;
 
 // Dynamic array types
