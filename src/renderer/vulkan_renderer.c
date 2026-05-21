@@ -665,7 +665,7 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
 
     vkCmdBeginRenderPass(cmd, &rp_info, VK_SUBPASS_CONTENTS_INLINE);
 
-    VkViewport viewport = {0, 0, (float)r->width, (float)r->height, 0.0f, 1.0f};
+    VkViewport viewport = {0, 0, (float)r->width, (float)r->height, 1.0f, 0.0f};
     VkRect2D scissor = {{0, 0}, {r->width, r->height}};
     vkCmdSetViewport(cmd, 0, 1, &viewport);
     vkCmdSetScissor(cmd, 0, 1, &scissor);
