@@ -53,4 +53,12 @@ unsigned __stdcall input_thread_func(void *arg);
 void *input_thread_func(void *arg);
 #endif
 
+// Shared constants for camera control
+#define ROTATION_AMOUNT (GLM_PI / 8.0f)
+#define ZOOM_AMOUNT 0.05f
+
+// Shared key handler called by platform-specific implementations
+void handle_key(const InputThreadData *data, int key_code, int modifiers, int event_type);
+
 #endif
+

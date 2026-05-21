@@ -118,7 +118,7 @@ dcat_sources = [
   'src/renderer/vk_pipeline.c',
   'src/renderer/vk_resources.c',
   'src/renderer/vk_upload.c',
-  'src/input/input_handler.c',
+  'src/input/input_handler_common.c',
   'src/terminal/terminal.c',
   'src/terminal/session.c',
   'src/terminal/driver_factory.c',
@@ -130,9 +130,16 @@ dcat_sources = [
   'src/terminal/kitty_shm.c'
 ]
 
+if host_machine.system() == 'windows'
+  dcat_sources += 'src/input/input_handler_win.c'
+else
+  dcat_sources += 'src/input/input_handler_posix.c'
+endif
+
 dcat_exe = executable('dcat',
   dcat_sources,
   include_directories: include_directories('src'),
   dependencies: dcat_deps,
   install: true
 )
+
