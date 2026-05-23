@@ -196,7 +196,7 @@ static void handle_windows_mouse_event(const InputThreadData *data, WindowsInput
             camera_orbit(data->camera, (float)dx * data->mouse_sensitivity,
                          -(float)dy * data->mouse_sensitivity);
         } else if (right_down || middle_down || state->right_down || state->middle_down) {
-            float pan_speed = data->mouse_sensitivity * 0.2f;
+            const float pan_speed = data->mouse_sensitivity * 0.2f;
             camera_pan(data->camera, (float)dx * pan_speed, (float)dy * pan_speed);
         }
     }

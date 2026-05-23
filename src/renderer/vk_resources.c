@@ -54,54 +54,60 @@ bool create_descriptor_pool(VulkanRenderer *r) {
 }
 
 bool create_render_targets(VulkanRenderer *r) {
-    // Color image
-    if (!create_image(r, r->width, r->height, VK_FORMAT_R8G8B8A8_UNORM,
-                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                          VK_IMAGE_USAGE_STORAGE_BIT,
-                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &r->color_image,
-                      &r->color_image_alloc)) {
-        return false;
-    }
-    r->color_image_view =
-        create_image_view(r, r->color_image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
-    if (r->color_image_view == VK_NULL_HANDLE) {
-        cleanup_render_targets(r);
-        return false;
-    }
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        // Color image
+        if (!create_image(r, r->width, r->height, VK_FORMAT_R8G8B8A8_UNORM,
+                          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                              VK_IMAGE_USAGE_STORAGE_BIT,
+                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &r->color_image[i],
+                          &r->color_image_alloc[i])) {
+            cleanup_render_targets(r);
+            return false;
+        }
+        r->color_image_view[i] = create_image_view(r, r->color_image[i], VK_FORMAT_R8G8B8A8_UNORM,
+                                                   VK_IMAGE_ASPECT_COLOR_BIT);
+        if (r->color_image_view[i] == VK_NULL_HANDLE) {
+            cleanup_render_targets(r);
+            return false;
+        }
 
-    // Depth image
-    if (!create_image(r, r->width, r->height, VK_FORMAT_D32_SFLOAT,
-                      VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &r->depth_image,
-                      &r->depth_image_alloc)) {
-        cleanup_render_targets(r);
-        return false;
-    }
-    r->depth_image_view =
-        create_image_view(r, r->depth_image, VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT);
-    if (r->depth_image_view == VK_NULL_HANDLE) {
-        cleanup_render_targets(r);
-        return false;
+        // Depth image
+        if (!create_image(r, r->width, r->height, VK_FORMAT_D32_SFLOAT,
+                          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &r->depth_image[i],
+                          &r->depth_image_alloc[i])) {
+            cleanup_render_targets(r);
+            return false;
+        }
+        r->depth_image_view[i] = create_image_view(r, r->depth_image[i], VK_FORMAT_D32_SFLOAT,
+                                                   VK_IMAGE_ASPECT_DEPTH_BIT);
+        if (r->depth_image_view[i] == VK_NULL_HANDLE) {
+            cleanup_render_targets(r);
+            return false;
+        }
     }
 
     return true;
 }
 
 bool create_framebuffer(VulkanRenderer *r) {
-    VkImageView attachments[2] = {r->color_image_view, r->depth_image_view};
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VkImageView attachments[2] = {r->color_image_view[i], r->depth_image_view[i]};
 
-    VkFramebufferCreateInfo fb_info = {.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-    fb_info.renderPass = r->render_pass;
-    fb_info.attachmentCount = 2;
-    fb_info.pAttachments = attachments;
-    fb_info.width = r->width;
-    fb_info.height = r->height;
-    fb_info.layers = 1;
+        VkFramebufferCreateInfo fb_info = {.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+        fb_info.renderPass = r->render_pass;
+        fb_info.attachmentCount = 2;
+        fb_info.pAttachments = attachments;
+        fb_info.width = r->width;
+        fb_info.height = r->height;
+        fb_info.layers = 1;
 
-    VkResult result = vkCreateFramebuffer(r->device, &fb_info, NULL, &r->framebuffer);
-    if (result != VK_SUCCESS) {
-        vulkan_renderer_set_error(r, result, "vkCreateFramebuffer", "Failed to create framebuffer");
-        return false;
+        VkResult result = vkCreateFramebuffer(r->device, &fb_info, NULL, &r->framebuffer[i]);
+        if (result != VK_SUCCESS) {
+            vulkan_renderer_set_error(r, result, "vkCreateFramebuffer",
+                                      "Failed to create framebuffer");
+            return false;
+        }
     }
     return true;
 }
@@ -183,27 +189,29 @@ bool create_sync_objects(VulkanRenderer *r) {
 }
 
 void cleanup_render_targets(VulkanRenderer *r) {
-    if (r->framebuffer != VK_NULL_HANDLE) {
-        vkDestroyFramebuffer(r->device, r->framebuffer, NULL);
-        r->framebuffer = VK_NULL_HANDLE;
-    }
-    if (r->color_image_view != VK_NULL_HANDLE) {
-        vkDestroyImageView(r->device, r->color_image_view, NULL);
-        r->color_image_view = VK_NULL_HANDLE;
-    }
-    if (r->color_image != VK_NULL_HANDLE) {
-        vkDestroyImage(r->device, r->color_image, NULL);
-        vkFreeMemory(r->device, r->color_image_alloc.memory, NULL);
-        r->color_image = VK_NULL_HANDLE;
-    }
-    if (r->depth_image_view != VK_NULL_HANDLE) {
-        vkDestroyImageView(r->device, r->depth_image_view, NULL);
-        r->depth_image_view = VK_NULL_HANDLE;
-    }
-    if (r->depth_image != VK_NULL_HANDLE) {
-        vkDestroyImage(r->device, r->depth_image, NULL);
-        vkFreeMemory(r->device, r->depth_image_alloc.memory, NULL);
-        r->depth_image = VK_NULL_HANDLE;
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        if (r->framebuffer[i] != VK_NULL_HANDLE) {
+            vkDestroyFramebuffer(r->device, r->framebuffer[i], NULL);
+            r->framebuffer[i] = VK_NULL_HANDLE;
+        }
+        if (r->color_image_view[i] != VK_NULL_HANDLE) {
+            vkDestroyImageView(r->device, r->color_image_view[i], NULL);
+            r->color_image_view[i] = VK_NULL_HANDLE;
+        }
+        if (r->color_image[i] != VK_NULL_HANDLE) {
+            vkDestroyImage(r->device, r->color_image[i], NULL);
+            vkFreeMemory(r->device, r->color_image_alloc[i].memory, NULL);
+            r->color_image[i] = VK_NULL_HANDLE;
+        }
+        if (r->depth_image_view[i] != VK_NULL_HANDLE) {
+            vkDestroyImageView(r->device, r->depth_image_view[i], NULL);
+            r->depth_image_view[i] = VK_NULL_HANDLE;
+        }
+        if (r->depth_image[i] != VK_NULL_HANDLE) {
+            vkDestroyImage(r->device, r->depth_image[i], NULL);
+            vkFreeMemory(r->device, r->depth_image_alloc[i].memory, NULL);
+            r->depth_image[i] = VK_NULL_HANDLE;
+        }
     }
 }
 

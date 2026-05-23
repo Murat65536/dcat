@@ -657,7 +657,7 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
 
     VkRenderPassBeginInfo rp_info = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rp_info.renderPass = r->render_pass;
-    rp_info.framebuffer = r->framebuffer;
+    rp_info.framebuffer = r->framebuffer[r->current_frame];
     rp_info.renderArea.extent.width = r->width;
     rp_info.renderArea.extent.height = r->height;
     rp_info.clearValueCount = 2;
@@ -757,7 +757,8 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
     region.imageExtent.height = r->height;
     region.imageExtent.depth = 1;
 
-    vkCmdCopyImageToBuffer(cmd, r->color_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    vkCmdCopyImageToBuffer(cmd, r->color_image[r->current_frame],
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                            r->staging_buffers[write_staging_idx], 1, &region);
 
     VkBufferMemoryBarrier buffer_barrier = {.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
