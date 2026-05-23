@@ -1,4 +1,4 @@
-project('dcat', 'c',
+project('dcat', 'c', 'cpp
   version: '0.1.0',
   meson_version: '>=1.0.0',
   default_options: [
@@ -140,6 +140,7 @@ dcat_exe = executable('dcat',
   dcat_sources,
   include_directories: include_directories('src'),
   dependencies: dcat_deps,
+  link_language: 'cpp',
   install: true
 )
 

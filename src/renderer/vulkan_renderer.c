@@ -255,8 +255,8 @@ bool vulkan_renderer_set_skydome(VulkanRenderer *r, const Mesh *mesh, const Text
             vkFreeMemory(r->device, r->skydome_index_buffer_alloc.memory, NULL);
         }
 
-        VkDeviceSize vertex_size = sizeof(Vertex) * mesh->vertices.count;
-        VkDeviceSize index_size = sizeof(uint32_t) * mesh->indices.count;
+        const VkDeviceSize vertex_size = sizeof(Vertex) * mesh->vertices.count;
+        const VkDeviceSize index_size = sizeof(uint32_t) * mesh->indices.count;
 
         if (!upload_buffer_via_staging(r, mesh->vertices.data, vertex_size,
                                        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, &r->skydome_vertex_buffer,
@@ -602,12 +602,17 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
                 }
             }
             const float *m = (const float *)uniforms.bone_matrices[num_bones > 1 ? 1 : 0];
-            fprintf(stderr,
-                    "[dcat bones] count=%u (MAX=%d) nan/inf_matrices=%d\n"
-                    "  matrix[%d] = [%.3f %.3f %.3f %.3f | %.3f %.3f %.3f %.3f | "
-                    "%.3f %.3f %.3f %.3f | %.3f %.3f %.3f %.3f]\n",
-                    bone_count, MAX_BONES, bad, num_bones > 1 ? 1 : 0, m[0], m[1], m[2], m[3], m[4],
-                    m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14], m[15]);
+            FILE *log = fopen("dcat_bones.log", "w");
+            if (log) {
+                fprintf(log,
+                        "[dcat bones] count=%u (MAX=%d) nan/inf_matrices=%d\n"
+                        "  matrix[%d] = [%.4f %.4f %.4f %.4f | %.4f %.4f %.4f %.4f | "
+                        "%.4f %.4f %.4f %.4f | %.4f %.4f %.4f %.4f]\n",
+                        bone_count, MAX_BONES, bad, num_bones > 1 ? 1 : 0, m[0], m[1], m[2], m[3],
+                        m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14],
+                        m[15]);
+                fclose(log);
+            }
         }
     }
 
