@@ -1,4 +1,4 @@
-project('dcat', 'c', 'cpp',
+project('dcat', 'c',
   version: '0.1.0',
   meson_version: '>=1.0.0',
   default_options: [
@@ -136,11 +136,19 @@ else
   dcat_sources += 'src/input/input_handler_posix.c'
 endif
 
+# The bundled assimp builds as a static C++ library, so the final link of this
+# C executable must pull in the C++ runtime. Windows links it automatically; on
+# Linux the C driver does not, so add it there only (avoids breaking MSYS2/libc++).
+dcat_link_args = []
+if host_machine.system() != 'windows'
+  dcat_link_args += '-lstdc++'
+endif
+
 dcat_exe = executable('dcat',
   dcat_sources,
   include_directories: include_directories('src'),
   dependencies: dcat_deps,
-  link_language: 'cpp',
+  link_args: dcat_link_args,
   install: true
 )
 
