@@ -132,16 +132,17 @@ typedef struct VulkanRenderer {
     VkCommandBuffer command_buffers[MAX_FRAMES_IN_FLIGHT];
     VkFence in_flight_fences[MAX_FRAMES_IN_FLIGHT];
 
-    // Render targets
-    VkImage color_image;
-    VulkanAllocation color_image_alloc;
-    VkImageView color_image_view;
+    // Render targets (one set per in-flight frame so concurrent submissions
+    // never share a color/depth attachment)
+    VkImage color_image[MAX_FRAMES_IN_FLIGHT];
+    VulkanAllocation color_image_alloc[MAX_FRAMES_IN_FLIGHT];
+    VkImageView color_image_view[MAX_FRAMES_IN_FLIGHT];
 
-    VkImage depth_image;
-    VulkanAllocation depth_image_alloc;
-    VkImageView depth_image_view;
+    VkImage depth_image[MAX_FRAMES_IN_FLIGHT];
+    VulkanAllocation depth_image_alloc[MAX_FRAMES_IN_FLIGHT];
+    VkImageView depth_image_view[MAX_FRAMES_IN_FLIGHT];
 
-    VkFramebuffer framebuffer;
+    VkFramebuffer framebuffer[MAX_FRAMES_IN_FLIGHT];
 
     // Staging buffers
     VkBuffer staging_buffers[NUM_STAGING_BUFFERS];

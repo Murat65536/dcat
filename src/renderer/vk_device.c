@@ -143,6 +143,8 @@ bool create_logical_device(VulkanRenderer *r) {
     // Legacy features
     VkPhysicalDeviceFeatures device_features = {0};
     device_features.fillModeNonSolid = VK_TRUE;
+    // Make out-of-range buffer accesses well-defined (return 0) instead of UB.
+    device_features.robustBufferAccess = VK_TRUE;
 
     // Vulkan 1.2 features (replacing the individual structs)
     VkPhysicalDeviceVulkan12Features features12 = {

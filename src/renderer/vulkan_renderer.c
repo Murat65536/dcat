@@ -255,8 +255,8 @@ bool vulkan_renderer_set_skydome(VulkanRenderer *r, const Mesh *mesh, const Text
             vkFreeMemory(r->device, r->skydome_index_buffer_alloc.memory, NULL);
         }
 
-        VkDeviceSize vertex_size = sizeof(Vertex) * mesh->vertices.count;
-        VkDeviceSize index_size = sizeof(uint32_t) * mesh->indices.count;
+        const VkDeviceSize vertex_size = sizeof(Vertex) * mesh->vertices.count;
+        const VkDeviceSize index_size = sizeof(uint32_t) * mesh->indices.count;
 
         if (!upload_buffer_via_staging(r, mesh->vertices.data, vertex_size,
                                        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, &r->skydome_vertex_buffer,
@@ -585,6 +585,37 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
         }
     }
 
+    // TEMP DIAGNOSTIC: dump bone matrix state once so Windows vs WSL can be compared.
+    {
+        static bool dumped = false;
+        if (!dumped && uniforms.has_animation) {
+            dumped = true;
+            uint32_t num_bones = bone_count < MAX_BONES ? bone_count : MAX_BONES;
+            int bad = 0;
+            for (uint32_t b = 0; b < num_bones; b++) {
+                for (int e = 0; e < 16; e++) {
+                    float v = ((const float *)uniforms.bone_matrices[b])[e];
+                    if (isnan(v) || isinf(v)) {
+                        bad++;
+                        break;
+                    }
+                }
+            }
+            const float *m = (const float *)uniforms.bone_matrices[num_bones > 1 ? 1 : 0];
+            FILE *log = fopen("dcat_bones.log", "w");
+            if (log) {
+                fprintf(log,
+                        "[dcat bones] count=%u (MAX=%d) nan/inf_matrices=%d\n"
+                        "  matrix[%d] = [%.4f %.4f %.4f %.4f | %.4f %.4f %.4f %.4f | "
+                        "%.4f %.4f %.4f %.4f | %.4f %.4f %.4f %.4f]\n",
+                        bone_count, MAX_BONES, bad, num_bones > 1 ? 1 : 0, m[0], m[1], m[2], m[3],
+                        m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14],
+                        m[15]);
+                fclose(log);
+            }
+        }
+    }
+
     memcpy(r->uniform_buffer_allocs[r->current_frame].mapped, &uniforms, sizeof(Uniforms));
 
     // Prepare per-material fragment uniforms
@@ -657,7 +688,7 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
 
     VkRenderPassBeginInfo rp_info = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rp_info.renderPass = r->render_pass;
-    rp_info.framebuffer = r->framebuffer;
+    rp_info.framebuffer = r->framebuffer[r->current_frame];
     rp_info.renderArea.extent.width = r->width;
     rp_info.renderArea.extent.height = r->height;
     rp_info.clearValueCount = 2;
@@ -757,7 +788,8 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
     region.imageExtent.height = r->height;
     region.imageExtent.depth = 1;
 
-    vkCmdCopyImageToBuffer(cmd, r->color_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    vkCmdCopyImageToBuffer(cmd, r->color_image[r->current_frame],
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                            r->staging_buffers[write_staging_idx], 1, &region);
 
     VkBufferMemoryBarrier buffer_barrier = {.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};

@@ -43,8 +43,12 @@ endif
 # Dependencies
 vulkan_dep = dependency('vulkan', required: true)
 
-assimp_dep = dependency('assimp', fallback: ['assimp', 'assimp_dep'])
-cglm_dep = dependency('cglm', fallback: ['cglm', 'cglm_dep'])
+# Pin to pkg-config: CMake's find_package probes prefixes adjacent to PATH, so
+# under WSL (Windows MSYS2 dirs on PATH) it returns Windows .dll.a/.a libs that
+# cannot link on Linux. pkg-config does not search those prefixes. Fallbacks below
+# still cover systems without a system install.
+assimp_dep = dependency('assimp', method: 'pkg-config', fallback: ['assimp', 'assimp_dep'])
+cglm_dep = dependency('cglm', method: 'pkg-config', fallback: ['cglm', 'cglm_dep'])
 vips_dep = dependency('vips', fallback: ['vips', 'vips_dep'])
 
 bundled_libsixel = get_option('bundled_libsixel')
@@ -136,10 +140,19 @@ else
   dcat_sources += 'src/input/input_handler_posix.c'
 endif
 
+# The bundled assimp builds as a static C++ library, so the final link of this
+# C executable must pull in the C++ runtime. Windows links it automatically; on
+# Linux the C driver does not, so add it there only (avoids breaking MSYS2/libc++).
+dcat_link_args = []
+if host_machine.system() != 'windows'
+  dcat_link_args += '-lstdc++'
+endif
+
 dcat_exe = executable('dcat',
   dcat_sources,
   include_directories: include_directories('src'),
   dependencies: dcat_deps,
+  link_args: dcat_link_args,
   install: true
 )
 

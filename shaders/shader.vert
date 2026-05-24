@@ -36,7 +36,7 @@ void main() {
         // GPU skinning
         mat4 boneTransform = mat4(0.0);
         for (int i = 0; i < 4; i++) {
-            if (inBoneIDs[i] >= 0) {
+            if (inBoneIDs[i] >= 0 && inBoneIDs[i] < 200) {
                 boneTransform += uniforms.boneMatrices[inBoneIDs[i]] * inBoneWeights[i];
             }
         }

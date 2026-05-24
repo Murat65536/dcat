@@ -95,11 +95,42 @@ bool create_render_pass(VulkanRenderer *r) {
     subpass.pColorAttachments = &color_ref;
     subpass.pDepthStencilAttachment = &depth_ref;
 
+    // Explicit dependencies. Without these the implicit external dependency only
+    // synchronizes at TOP/BOTTOM_OF_PIPE with no memory scope, so the color/depth
+    // attachment loads and writes are not ordered against prior work touching the
+    // same images, nor is the post-pass readback copy ordered against color writes.
+    // Forgiving native drivers tolerate this; strict ones (e.g. WSL's software
+    // rasterizer) produce garbage depth and scrambled geometry.
+    VkSubpassDependency dependencies[2] = {0};
+    // External work -> this render pass: wait for previous use of the attachments.
+    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[0].dstSubpass = 0;
+    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    dependencies[0].srcAccessMask =
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                                    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                                    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    // This render pass -> external readback: order the image->buffer copy after writes.
+    dependencies[1].srcSubpass = 0;
+    dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependencies[1].dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    dependencies[1].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
     VkRenderPassCreateInfo render_pass_info = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
     render_pass_info.attachmentCount = 2;
     render_pass_info.pAttachments = attachments;
     render_pass_info.subpassCount = 1;
     render_pass_info.pSubpasses = &subpass;
+    render_pass_info.dependencyCount = 2;
+    render_pass_info.pDependencies = dependencies;
 
     if (vkCreateRenderPass(r->device, &render_pass_info, NULL, &r->render_pass) != VK_SUCCESS) {
         fprintf(stderr, "Failed to create render pass\n");
