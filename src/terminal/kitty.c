@@ -31,7 +31,8 @@ static size_t encode_chunk(const uint8_t *data, size_t len, char *out) {
     return (size_t)(p - out);
 }
 
-void render_kitty(const uint8_t *buffer, uint32_t width, uint32_t height) {
+void render_kitty(const uint8_t *buffer, uint32_t width, uint32_t height, bool use_hash_characters) {
+    (void)use_hash_characters;
     const size_t total = (size_t)width * height * 4;
     size_t offset = 0;
     bool first = true;

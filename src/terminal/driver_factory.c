@@ -8,28 +8,13 @@
 
 #include <stddef.h>
 
-static void wrapper_kitty_shm(const uint8_t *framebuffer, uint32_t width, uint32_t height, bool use_hash) {
-    (void)use_hash;
-    render_kitty_shm(framebuffer, width, height);
-}
-
-static void wrapper_kitty_direct(const uint8_t *framebuffer, uint32_t width, uint32_t height, bool use_hash) {
-    (void)use_hash;
-    render_kitty(framebuffer, width, height);
-}
-
-static void wrapper_sixel(const uint8_t *framebuffer, uint32_t width, uint32_t height, bool use_hash) {
-    (void)use_hash;
-    render_sixel(framebuffer, width, height);
-}
-
 static const OutputDriver g_driver_kitty_shm = {
     .name = "kitty_shm",
     .flag_name = "--kitty",
     .uses_kitty_protocol = true,
     .uses_character_cells = false,
     .detect_support = detect_kitty_shm_support,
-    .render_frame = wrapper_kitty_shm,
+    .render_frame = render_kitty_shm,
 };
 
 static const OutputDriver g_driver_kitty_direct = {
@@ -38,7 +23,7 @@ static const OutputDriver g_driver_kitty_direct = {
     .uses_kitty_protocol = true,
     .uses_character_cells = false,
     .detect_support = detect_kitty_support,
-    .render_frame = wrapper_kitty_direct,
+    .render_frame = render_kitty,
 };
 
 static const OutputDriver g_driver_sixel = {
@@ -47,7 +32,7 @@ static const OutputDriver g_driver_sixel = {
     .uses_kitty_protocol = false,
     .uses_character_cells = false,
     .detect_support = detect_sixel_support,
-    .render_frame = wrapper_sixel,
+    .render_frame = render_sixel,
 };
 
 static const OutputDriver g_driver_truecolor = {

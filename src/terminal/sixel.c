@@ -37,7 +37,8 @@ static void sixel_cleanup(void) {
     safe_write("\x1b[?80l", 6);
 }
 
-void render_sixel(const uint8_t *buffer, uint32_t width, uint32_t height) {
+void render_sixel(const uint8_t *buffer, uint32_t width, uint32_t height, bool use_hash_characters) {
+    (void)use_hash_characters;
     if (!sixel_initialized) {
         /* Disable sixel scrolling */
         safe_write("\x1b[?80h", 6);

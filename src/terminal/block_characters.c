@@ -1,4 +1,5 @@
 #include "terminal/block_characters.h"
+#include "terminal/char_render.h"
 #include "terminal/terminal.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -9,13 +10,8 @@
 static char *render_buf = NULL;
 static size_t render_buf_size = 0;
 
-#ifdef _WIN32
-static const char FRAME_BEGIN[] = "\x1b[H";
-static const char FRAME_END[] = "";
-#else
-static const char FRAME_BEGIN[] = "\x1b[?2026h\x1b[H";
-static const char FRAME_END[] = "\x1b[?2026l";
-#endif
+#define FRAME_BEGIN TERM_FRAME_BEGIN
+#define FRAME_END TERM_SYNC_END
 
 #define LUMA_THRESHOLD 63
 

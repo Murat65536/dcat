@@ -126,6 +126,7 @@ dcat_sources = [
   'src/terminal/terminal.c',
   'src/terminal/session.c',
   'src/terminal/driver_factory.c',
+  'src/terminal/char_render.c',
   'src/terminal/truecolor_characters.c',
   'src/terminal/palette_characters.c',
   'src/terminal/block_characters.c',
