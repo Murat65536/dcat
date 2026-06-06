@@ -256,7 +256,8 @@ bool transition_image_layout(VulkanRenderer *r, VkImage image, VkImageLayout old
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
 
-    VkPipelineStageFlags src_stage, dst_stage;
+    VkPipelineStageFlags src_stage;
+    VkPipelineStageFlags dst_stage;
 
     if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED &&
         new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {

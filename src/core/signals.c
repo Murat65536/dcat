@@ -7,8 +7,8 @@
 #ifndef _WIN32
 #include <unistd.h>
 #else
-#include <windows.h>
 #include <io.h>
+#include <windows.h>
 #endif
 
 // Global state for signal handlers
@@ -131,7 +131,7 @@ void signals_init(void) {
 }
 
 bool signals_should_quit(void) {
-    return !get_atomic_flag(&g_running);
+    return (!get_atomic_flag(&g_running)) != 0;
 }
 
 void signals_request_quit(void) {
@@ -151,7 +151,7 @@ void signals_request_resize(void) {
 }
 
 void signals_set_terminal_session_active(const bool active) {
-    g_terminal_session_active = active ? 1 : 0;
+    g_terminal_session_active = (int)active ? 1 : 0;
 }
 
 bool signals_is_terminal_session_active(void) {

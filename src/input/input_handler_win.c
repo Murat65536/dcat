@@ -1,5 +1,5 @@
-#include "input_handler.h"
 #include "../core/signals.h"
+#include "input_handler.h"
 #include <string.h>
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -34,7 +34,7 @@ static bool windows_key_pressed(const int vk_code) {
 }
 
 static bool rising_edge(const bool down, bool *prev_state) {
-    const bool edge = down && !*prev_state;
+    const bool edge = (down && !*prev_state) != 0;
     *prev_state = down;
     return edge;
 }
@@ -88,10 +88,10 @@ static void update_windows_keyboard_state(const InputThreadData *data, WindowsIn
     key_state->k = k_down;
     key_state->l = l_down;
     key_state->space = windows_key_pressed(VK_SPACE);
-    key_state->shift = windows_key_pressed(VK_SHIFT) || windows_key_pressed(VK_LSHIFT) ||
-                       windows_key_pressed(VK_RSHIFT);
-    key_state->ctrl = windows_key_pressed(VK_CONTROL) || windows_key_pressed(VK_LCONTROL) ||
-                      windows_key_pressed(VK_RCONTROL);
+    key_state->shift = ((windows_key_pressed(VK_SHIFT) || windows_key_pressed(VK_LSHIFT) ||
+                         windows_key_pressed(VK_RSHIFT)) != 0);
+    key_state->ctrl = ((windows_key_pressed(VK_CONTROL) || windows_key_pressed(VK_LCONTROL) ||
+                        windows_key_pressed(VK_RCONTROL)) != 0);
     key_state->q = q_down;
     key_state->v = v_down;
     key_state->b = b_down;
@@ -196,7 +196,7 @@ static void handle_windows_mouse_event(const InputThreadData *data, WindowsInput
             camera_orbit(data->camera, (float)dx * data->mouse_sensitivity,
                          -(float)dy * data->mouse_sensitivity);
         } else if (right_down || middle_down || state->right_down || state->middle_down) {
-            const float pan_speed = data->mouse_sensitivity * 0.2f;
+            const float pan_speed = data->mouse_sensitivity * 0.2F;
             camera_pan(data->camera, (float)dx * pan_speed, (float)dy * pan_speed);
         }
     }
@@ -227,19 +227,26 @@ static void poll_windows_console_events(InputThreadData *data, WindowsInputState
         if (records[i].EventType == KEY_EVENT && records[i].Event.KeyEvent.bKeyDown) {
             const char ch = records[i].Event.KeyEvent.uChar.AsciiChar;
             switch (state->focus_seq_state) {
-            case 0: state->focus_seq_state = (ch == '\x1b') ? 1 : 0; break;
-            case 1: state->focus_seq_state = (ch == '[')    ? 2 : 0; break;
+            case 0:
+                state->focus_seq_state = (ch == '\x1b') ? 1 : 0;
+                break;
+            case 1:
+                state->focus_seq_state = (ch == '[') ? 2 : 0;
+                break;
             case 2:
                 state->focus_seq_state = 0;
-                if      (ch == 'I') state->has_focus = true;
-                else if (ch == 'O') state->has_focus = false;
+                if (ch == 'I') {
+                    state->has_focus = true;
+                } else if (ch == 'O') {
+                    state->has_focus = false;
+                }
                 break;
             default:;
             }
             continue;
         }
         if (records[i].EventType == FOCUS_EVENT) {
-            state->has_focus = records[i].Event.FocusEvent.bSetFocus;
+            state->has_focus = (records[i].Event.FocusEvent.bSetFocus != 0);
             continue;
         }
         if (records[i].EventType == WINDOW_BUFFER_SIZE_EVENT) {

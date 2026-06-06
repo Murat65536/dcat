@@ -4,17 +4,17 @@
 #include <cglm/vec3.h>
 #include <math.h>
 
-static const float DISTANCE_SCALING_POWER = 1.25f;
+static const float DISTANCE_SCALING_POWER = 1.25F;
 
 void camera_init(Camera *cam, const uint32_t width, const uint32_t height, vec3 pos, vec3 tgt,
                  const float fov_degrees) {
     glm_vec3_copy(pos, cam->position);
     glm_vec3_copy(tgt, cam->target);
-    glm_vec3_copy((vec3){0.0f, 1.0f, 0.0f}, cam->up);
+    glm_vec3_copy((vec3){0.0F, 1.0F, 0.0F}, cam->up);
     cam->fov = glm_rad(fov_degrees);
     cam->aspect = (float)width / (float)height;
-    cam->near_plane = 0.01f;
-    cam->far_plane = 100.0f;
+    cam->near_plane = 0.01F;
+    cam->far_plane = 100.0F;
 
     vec3 direction;
     glm_vec3_sub(cam->target, cam->position, direction);
@@ -30,25 +30,27 @@ void camera_view_matrix(const Camera *cam, mat4 out) {
 void camera_projection_matrix(const Camera *cam, mat4 out) {
     glm_perspective_rh_zo(cam->fov, cam->aspect, cam->near_plane, cam->far_plane, out);
     // Flip Y for Vulkan coordinate system
-    out[1][1] *= -1.0f;
+    out[1][1] *= -1.0F;
 }
 
 void camera_update_direction(Camera *cam) {
     float dist = glm_vec3_distance(cam->position, cam->target);
-    if (dist < 0.001f) {
-        dist = 1.0f;
+    if (dist < 0.001F) {
+        dist = 1.0F;
     }
 
     vec3 direction = {cosf(cam->yaw) * cosf(cam->pitch), sinf(cam->pitch),
                       sinf(cam->yaw) * cosf(cam->pitch)};
-    
+
     vec3 offset;
     glm_vec3_scale(direction, dist, offset);
     glm_vec3_add(cam->position, offset, cam->target);
 }
 
 void camera_move_forward(Camera *cam, const float distance) {
-    vec3 forward, right, horizontal_forward;
+    vec3 forward;
+    vec3 right;
+    vec3 horizontal_forward;
     glm_vec3_sub(cam->target, cam->position, forward);
     glm_vec3_normalize(forward);
     glm_vec3_cross(forward, cam->up, right);
@@ -67,7 +69,8 @@ void camera_move_backward(Camera *cam, const float distance) {
 }
 
 void camera_move_right(Camera *cam, const float distance) {
-    vec3 forward, right;
+    vec3 forward;
+    vec3 right;
     glm_vec3_sub(cam->target, cam->position, forward);
     glm_vec3_normalize(forward);
     glm_vec3_cross(forward, cam->up, right);
@@ -96,7 +99,7 @@ void camera_rotate(Camera *cam, const float yaw_delta, const float pitch_delta) 
     cam->yaw += yaw_delta;
     cam->pitch += pitch_delta;
 
-    const float max_pitch = GLM_PI / 2.0f - 0.01f;
+    const float max_pitch = (GLM_PI / 2.0F) - 0.01F;
     cam->pitch = clampf(cam->pitch, -max_pitch, max_pitch);
 
     camera_update_direction(cam);
@@ -115,7 +118,7 @@ void camera_orbit(Camera *cam, const float yaw_delta, const float pitch_delta) {
     cam->yaw += yaw_delta;
     cam->pitch += pitch_delta;
 
-    const float max_pitch = GLM_PI / 2.0f - 0.01f;
+    const float max_pitch = (GLM_PI / 2.0F) - 0.01F;
     cam->pitch = clampf(cam->pitch, -max_pitch, max_pitch);
 
     camera_set_orbit_position(cam, glm_vec3_distance(cam->position, cam->target));
@@ -124,8 +127,9 @@ void camera_orbit(Camera *cam, const float yaw_delta, const float pitch_delta) {
 void camera_zoom(Camera *cam, const float delta) {
     float dist = glm_vec3_distance(cam->position, cam->target);
     dist -= delta * powf(dist, DISTANCE_SCALING_POWER);
-    if (dist < 0.1f)
-        dist = 0.1f;
+    if (dist < 0.1F) {
+        dist = 0.1F;
+    }
 
     camera_set_orbit_position(cam, dist);
 }
@@ -133,7 +137,9 @@ void camera_zoom(Camera *cam, const float delta) {
 void camera_pan(Camera *cam, const float dx, const float dy) {
     const float dist = glm_vec3_distance(cam->position, cam->target);
     const float scale = powf(dist, DISTANCE_SCALING_POWER);
-    vec3 forward, right, up;
+    vec3 forward;
+    vec3 right;
+    vec3 up;
     glm_vec3_sub(cam->target, cam->position, forward);
     glm_vec3_normalize(forward);
 
@@ -143,7 +149,9 @@ void camera_pan(Camera *cam, const float dx, const float dy) {
     glm_vec3_cross(right, forward, up);
     glm_vec3_normalize(up);
 
-    vec3 move_x, move_y, move;
+    vec3 move_x;
+    vec3 move_y;
+    vec3 move;
     glm_vec3_scale(right, -dx * scale, move_x);
     glm_vec3_scale(up, dy * scale, move_y);
     glm_vec3_add(move_x, move_y, move);

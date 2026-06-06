@@ -78,60 +78,69 @@ Args parse_args(const int argc, char *argv[]) {
     Args args = {0};
     args.width = -1;
     args.height = -1;
-    args.camera_distance = -1.0f;
-    args.model_scale = 1.0f;
-    args.mouse_sensitivity = 0.02f;
+    args.camera_distance = -1.0F;
+    args.model_scale = 1.0F;
+    args.mouse_sensitivity = 0.02F;
     args.target_fps = 60;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-t") == 0 || strcmp(argv[i], "--texture") == 0) {
             const char *option = argv[i];
             char *value = next_option_value(option, argc, argv, &i);
-            if (!value)
+            if (!value) {
                 exit(1);
+            }
             args.texture_path = value;
         } else if (strcmp(argv[i], "-n") == 0 || strcmp(argv[i], "--normal-map") == 0) {
             const char *option = argv[i];
             char *value = next_option_value(option, argc, argv, &i);
-            if (!value)
+            if (!value) {
                 exit(1);
+            }
             args.normal_map_path = value;
         } else if (strcmp(argv[i], "--skydome") == 0) {
             const char *option = argv[i];
             char *value = next_option_value(option, argc, argv, &i);
-            if (!value)
+            if (!value) {
                 exit(1);
+            }
             args.skydome_path = value;
         } else if (strcmp(argv[i], "-W") == 0 || strcmp(argv[i], "--width") == 0) {
             const char *option = argv[i];
             char *value = next_option_value(option, argc, argv, &i);
-            if (!value || !parse_int_arg(option, value, &args.width))
+            if (!value || !parse_int_arg(option, value, &args.width)) {
                 exit(1);
+            }
         } else if (strcmp(argv[i], "-H") == 0 || strcmp(argv[i], "--height") == 0) {
             const char *option = argv[i];
             char *value = next_option_value(option, argc, argv, &i);
-            if (!value || !parse_int_arg(option, value, &args.height))
+            if (!value || !parse_int_arg(option, value, &args.height)) {
                 exit(1);
+            }
         } else if (strcmp(argv[i], "--camera-distance") == 0) {
             const char *option = argv[i];
             char *value = next_option_value(option, argc, argv, &i);
-            if (!value || !parse_float_arg(option, value, &args.camera_distance))
+            if (!value || !parse_float_arg(option, value, &args.camera_distance)) {
                 exit(1);
+            }
         } else if (strcmp(argv[i], "--model-scale") == 0) {
             const char *option = argv[i];
             char *value = next_option_value(option, argc, argv, &i);
-            if (!value || !parse_float_arg(option, value, &args.model_scale))
+            if (!value || !parse_float_arg(option, value, &args.model_scale)) {
                 exit(1);
+            }
         } else if (strcmp(argv[i], "--spin") == 0) {
             const char *option = argv[i];
             char *value = next_option_value(option, argc, argv, &i);
-            if (!value || !parse_float_arg(option, value, &args.spin_speed))
+            if (!value || !parse_float_arg(option, value, &args.spin_speed)) {
                 exit(1);
+            }
         } else if (strcmp(argv[i], "-f") == 0 || strcmp(argv[i], "--fps") == 0) {
             const char *option = argv[i];
             char *value = next_option_value(option, argc, argv, &i);
-            if (!value || !parse_int_arg(option, value, &args.target_fps))
+            if (!value || !parse_int_arg(option, value, &args.target_fps)) {
                 exit(1);
+            }
         } else if (strcmp(argv[i], "--no-lighting") == 0) {
             args.no_lighting = true;
         } else if (strcmp(argv[i], "--keyboard-controls") == 0) {
@@ -141,8 +150,9 @@ Args parse_args(const int argc, char *argv[]) {
         } else if (strcmp(argv[i], "--mouse-sensitivity") == 0) {
             const char *option = argv[i];
             char *value = next_option_value(option, argc, argv, &i);
-            if (!value || !parse_float_arg(option, value, &args.mouse_sensitivity))
+            if (!value || !parse_float_arg(option, value, &args.mouse_sensitivity)) {
                 exit(1);
+            }
         } else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--status-bar") == 0) {
             args.show_status_bar = true;
         } else if (strcmp(argv[i], "-S") == 0 || strcmp(argv[i], "--sixel") == 0) {

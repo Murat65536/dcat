@@ -19,10 +19,12 @@ static size_t encode_chunk(const uint8_t *data, size_t len, char *out) {
     char *p = out;
     for (size_t i = 0; i < len; i += 3) {
         uint32_t n = (uint32_t)data[i] << 16;
-        if (i + 1 < len)
+        if (i + 1 < len) {
             n |= (uint32_t)data[i + 1] << 8;
-        if (i + 2 < len)
+        }
+        if (i + 2 < len) {
             n |= (uint32_t)data[i + 2];
+        }
         *p++ = base64_chars[(n >> 18) & 0x3F];
         *p++ = base64_chars[(n >> 12) & 0x3F];
         *p++ = (i + 1 < len) ? base64_chars[(n >> 6) & 0x3F] : '=';
@@ -31,7 +33,8 @@ static size_t encode_chunk(const uint8_t *data, size_t len, char *out) {
     return (size_t)(p - out);
 }
 
-void render_kitty(const uint8_t *buffer, uint32_t width, uint32_t height, bool use_hash_characters) {
+void render_kitty(const uint8_t *buffer, uint32_t width, uint32_t height,
+                  bool use_hash_characters) {
     (void)use_hash_characters;
     const size_t total = (size_t)width * height * 4;
     size_t offset = 0;
@@ -39,8 +42,9 @@ void render_kitty(const uint8_t *buffer, uint32_t width, uint32_t height, bool u
 
     while (offset < total) {
         size_t raw = total - offset;
-        if (raw > RAW_CHUNK)
+        if (raw > RAW_CHUNK) {
             raw = RAW_CHUNK;
+        }
         bool last = (offset + raw >= total);
 
         const size_t b64_len = encode_chunk(buffer + offset, raw, cmd_buf + 64);
@@ -48,10 +52,10 @@ void render_kitty(const uint8_t *buffer, uint32_t width, uint32_t height, bool u
         int hdr_len;
         if (first) {
             hdr_len = snprintf(cmd_buf, 64, "\x1b_Ga=T,f=32,s=%u,v=%u,C=1,q=1,m=%d;", width, height,
-                               last ? 0 : 1);
+                               (int)last ? 0 : 1);
             first = false;
         } else {
-            hdr_len = snprintf(cmd_buf, 16, "\x1b_Gm=%d;", last ? 0 : 1);
+            hdr_len = snprintf(cmd_buf, 16, "\x1b_Gm=%d;", (int)last ? 0 : 1);
         }
 
         // Shift b64 data to sit immediately after the header

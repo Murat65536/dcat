@@ -6,10 +6,10 @@
 
 void animation_state_init(AnimationState *state) {
     state->current_animation_index = 0;
-    state->current_time = 0.0f;
+    state->current_time = 0.0F;
     state->playing = true;
     state->last_animation_index = -1;
-    state->last_computed_time = -1.0f;
+    state->last_computed_time = -1.0F;
 }
 
 void bone_map_init(BoneMap *map) {
@@ -28,8 +28,9 @@ void bone_map_free(BoneMap *map) {
 }
 
 int bone_map_find(const BoneMap *map, const char *name) {
-    if (!map || !name)
+    if (!map || !name) {
         return -1;
+    }
     const uint32_t hash = bone_hash(name) % BONE_MAP_SIZE;
     const BoneMapEntry *entry = map->buckets[hash];
     while (entry) {
@@ -106,19 +107,22 @@ void bone_anim_map_insert(BoneAnimationMap *map, const char *name, const int ind
 // 'data' points to the first element of a key array; each element begins with float time.
 static int find_key_index(const void *data, const size_t count, const size_t stride,
                           const float time) {
-    if (count == 0)
+    if (count == 0) {
         return -1;
-    if (count == 1 || time <= *(const float *)data)
+    }
+    if (count == 1 || time <= *(const float *)data) {
         return 0;
-    if (time >= *(const float *)((const char *)data + (count - 1) * stride))
+    }
+    if (time >= *(const float *)((const char *)data + ((count - 1) * stride))) {
         return (int)count - 1;
+    }
 
     int left = 0;
     int right = (int)count - 1;
 
     while (left < right - 1) {
         const int mid = (left + right) / 2;
-        const float mid_time = *(const float *)((const char *)data + mid * stride);
+        const float mid_time = *(const float *)((const char *)data + (mid * stride));
         if (mid_time <= time) {
             left = mid;
         } else {
@@ -149,21 +153,21 @@ static void interpolate_vec3_keys(const VectorKeyArray *keys, float time, const 
     }
 
     const float delta_time = keys->data[next_index].time - keys->data[index].time;
-    float factor = 0.0f;
-    if (delta_time > 0.00001f) {
+    float factor = 0.0F;
+    if (delta_time > 0.00001F) {
         factor = (time - keys->data[index].time) / delta_time;
     }
-    factor = clampf(factor, 0.0f, 1.0f);
+    factor = clampf(factor, 0.0F, 1.0F);
 
     glm_vec3_lerp(keys->data[index].value, keys->data[next_index].value, factor, out);
 }
 
 void interpolate_position(const VectorKeyArray *keys, const float time, vec3 out) {
-    interpolate_vec3_keys(keys, time, (vec3){0.0f, 0.0f, 0.0f}, out);
+    interpolate_vec3_keys(keys, time, (vec3){0.0F, 0.0F, 0.0F}, out);
 }
 
 void interpolate_scale(const VectorKeyArray *keys, const float time, vec3 out) {
-    interpolate_vec3_keys(keys, time, (vec3){1.0f, 1.0f, 1.0f}, out);
+    interpolate_vec3_keys(keys, time, (vec3){1.0F, 1.0F, 1.0F}, out);
 }
 
 void interpolate_rotation(const QuaternionKeyArray *keys, const float time, versor out) {
@@ -185,17 +189,18 @@ void interpolate_rotation(const QuaternionKeyArray *keys, const float time, vers
     }
 
     const float delta_time = keys->data[next_index].time - keys->data[index].time;
-    float factor = 0.0f;
-    if (delta_time > 0.00001f) {
+    float factor = 0.0F;
+    if (delta_time > 0.00001F) {
         factor = (time - keys->data[index].time) / delta_time;
     }
-    factor = clampf(factor, 0.0f, 1.0f);
+    factor = clampf(factor, 0.0F, 1.0F);
 
-    versor start, end;
+    versor start;
+    versor end;
     glm_quat_copy(keys->data[index].value, start);
     glm_quat_copy(keys->data[next_index].value, end);
 
-    if (glm_quat_dot(start, end) < 0.0f) {
+    if (glm_quat_dot(start, end) < 0.0F) {
         glm_vec4_negate(end);
     }
 
@@ -220,7 +225,8 @@ static void compute_bone_transform(const Skeleton *skeleton, const Animation *an
     }
 
     if (bone_anim) {
-        vec3 position, scale;
+        vec3 position;
+        vec3 scale;
         versor rotation;
 
         if (bone_anim->position_keys.count == 0) {
@@ -241,7 +247,9 @@ static void compute_bone_transform(const Skeleton *skeleton, const Animation *an
             interpolate_scale(&bone_anim->scale_keys, time, scale);
         }
 
-        mat4 translation_matrix, rotation_matrix, scale_matrix;
+        mat4 translation_matrix;
+        mat4 rotation_matrix;
+        mat4 scale_matrix;
         glm_translate_make(translation_matrix, position);
         glm_quat_mat4(rotation, rotation_matrix);
         glm_scale_make(scale_matrix, scale);
@@ -268,8 +276,9 @@ static void compute_bone_transform(const Skeleton *skeleton, const Animation *an
 
 void compute_bone_matrices(const Skeleton *skeleton, const Animation *animation, float time,
                            mat4 *bone_matrices) {
-    if (skeleton->bone_hierarchy.count == 0)
+    if (skeleton->bone_hierarchy.count == 0) {
         return;
+    }
 
     for (uint32_t i = 0; i < MAX_BONES; i++) {
         glm_mat4_identity(bone_matrices[i]);
@@ -297,12 +306,12 @@ void update_animation(const Mesh *mesh, AnimationState *state, float delta_time,
 
     const Animation *animation = &mesh->animations.data[state->current_animation_index];
     float ticks_per_second =
-        animation->ticks_per_second != 0.0f ? animation->ticks_per_second : 25.0f;
+        animation->ticks_per_second != 0.0F ? animation->ticks_per_second : 25.0F;
 
     if (state->playing) {
         state->current_time += delta_time * ticks_per_second;
 
-        if (animation->duration > 0.0f && state->current_time >= animation->duration) {
+        if (animation->duration > 0.0F && state->current_time >= animation->duration) {
             state->current_time = fmodf(state->current_time, animation->duration);
         }
     }
@@ -312,7 +321,7 @@ void update_animation(const Mesh *mesh, AnimationState *state, float delta_time,
     }
 
     if (state->current_animation_index == state->last_animation_index &&
-        fabsf(state->current_time - state->last_computed_time) < 0.0001f) {
+        fabsf(state->current_time - state->last_computed_time) < 0.0001F) {
         return;
     }
 

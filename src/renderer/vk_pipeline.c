@@ -140,7 +140,8 @@ bool create_render_pass(VulkanRenderer *r) {
 }
 
 bool create_graphics_pipeline(VulkanRenderer *r) {
-    size_t vert_size, frag_size;
+    size_t vert_size;
+    size_t frag_size;
     char *vert_code = read_shader_file(r, "shader.vert.spv", &vert_size);
     char *frag_code = read_shader_file(r, "shader.frag.spv", &frag_size);
 
@@ -229,7 +230,7 @@ bool create_graphics_pipeline(VulkanRenderer *r) {
     VkPipelineRasterizationStateCreateInfo rasterizer = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-    rasterizer.lineWidth = 1.0f;
+    rasterizer.lineWidth = 1.0F;
     rasterizer.cullMode = VK_CULL_MODE_NONE;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
@@ -320,7 +321,8 @@ bool create_graphics_pipeline(VulkanRenderer *r) {
 }
 
 bool create_skydome_pipeline(VulkanRenderer *r) {
-    size_t vert_size, frag_size;
+    size_t vert_size;
+    size_t frag_size;
     char *vert_code = read_shader_file(r, "skydome.vert.spv", &vert_size);
     char *frag_code = read_shader_file(r, "skydome.frag.spv", &frag_size);
 
@@ -419,7 +421,7 @@ bool create_skydome_pipeline(VulkanRenderer *r) {
     VkPipelineRasterizationStateCreateInfo rasterizer = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-    rasterizer.lineWidth = 1.0f;
+    rasterizer.lineWidth = 1.0F;
     rasterizer.cullMode = VK_CULL_MODE_FRONT_BIT;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 

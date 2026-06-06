@@ -73,10 +73,13 @@ void get_terminal_size(uint32_t *cols, uint32_t *rows) {
 
 void get_terminal_size_pixels(uint32_t *width, uint32_t *height) {
 #ifdef _WIN32
-    static uint32_t cached_cols = 0, cached_rows = 0;
-    static uint32_t cached_pixel_width = 0, cached_pixel_height = 0;
+    static uint32_t cached_cols = 0;
+    static uint32_t cached_rows = 0;
+    static uint32_t cached_pixel_width = 0;
+    static uint32_t cached_pixel_height = 0;
 
-    uint32_t cols, rows;
+    uint32_t cols;
+    uint32_t rows;
     get_terminal_size(&cols, &rows);
 
     if (cols == cached_cols && rows == cached_rows && cached_pixel_width > 0) {
@@ -95,7 +98,8 @@ void get_terminal_size_pixels(uint32_t *width, uint32_t *height) {
             if (r > 0) {
                 buf[r] = '\0';
                 char *p = strstr(buf, "\x1b[4;");
-                unsigned int h = 0, w = 0;
+                unsigned int h = 0;
+                unsigned int w = 0;
                 if (p && sscanf(p, "\x1b[4;%u;%ut", &h, &w) == 2 && h > 0 && w > 0) {
                     *width = w;
                     *height = h;
@@ -139,7 +143,8 @@ void calculate_render_dimensions(int explicit_width, int explicit_height, bool u
     if (use_sixel || use_kitty) {
         get_terminal_size_pixels(out_width, out_height);
         if (reserve_bottom_line) {
-            uint32_t cols, rows;
+            uint32_t cols;
+            uint32_t rows;
             get_terminal_size(&cols, &rows);
             if (rows > 0) {
                 const uint32_t char_height = *out_height / rows;
@@ -151,13 +156,14 @@ void calculate_render_dimensions(int explicit_width, int explicit_height, bool u
         return;
     }
 
-    uint32_t cols, rows;
+    uint32_t cols;
+    uint32_t rows;
     get_terminal_size(&cols, &rows);
     if (reserve_bottom_line && rows > 0) {
         rows--;
     }
     *out_width = cols;
-    *out_height = use_hash_characters ? rows : rows * 2;
+    *out_height = (int)use_hash_characters ? rows : rows * 2;
 }
 
 static TermiosState raw_mode_state;
@@ -225,7 +231,8 @@ static void terminal_write_fd(const int fd, const char *data, const size_t size)
             DWORD written;
             size_t remaining = size;
             while (remaining > 0) {
-                const DWORD to_write = remaining > (DWORD)0xFFFFFFFF ? (DWORD)0xFFFFFFFF : (DWORD)remaining;
+                const DWORD to_write =
+                    remaining > (DWORD)0xFFFFFFFF ? (DWORD)0xFFFFFFFF : (DWORD)remaining;
                 if (!WriteFile(hOut, data, to_write, &written, NULL)) {
                     break;
                 }
@@ -240,8 +247,9 @@ static void terminal_write_fd(const int fd, const char *data, const size_t size)
     while (remaining > 0) {
         const ssize_t written = dcat_write(fd, data, remaining);
         if (written < 0) {
-            if (errno == EINTR)
+            if (errno == EINTR) {
                 continue;
+            }
             break;
         }
         data += written;
@@ -253,11 +261,14 @@ void safe_write(const char *data, size_t size) {
     terminal_write_fd(STDOUT_FILENO, data, size);
 }
 
-void draw_status_bar(const float fps, const float speed, const float *pos, const char *animation_name) {
-    uint32_t cols, rows;
+void draw_status_bar(const float fps, const float speed, const float *pos,
+                     const char *animation_name) {
+    uint32_t cols;
+    uint32_t rows;
     get_terminal_size(&cols, &rows);
-    if (rows == 0)
+    if (rows == 0) {
         return;
+    }
 
     char buffer[512];
     char anim_part[128] = "";
@@ -267,9 +278,9 @@ void draw_status_bar(const float fps, const float speed, const float *pos, const
 
 #ifdef _WIN32
     const int len = snprintf(buffer, sizeof(buffer),
-                       "\x1b[%u;1H\x1b[2K\x1b[7m FPS: %.1f | SPEED: "
-                       "%.2f | POS: %.2f, %.2f, %.2f%s \x1b[0m\x1b[H",
-                       rows, fps, speed, pos[0], pos[1], pos[2], anim_part);
+                             "\x1b[%u;1H\x1b[2K\x1b[7m FPS: %.1f | SPEED: "
+                             "%.2f | POS: %.2f, %.2f, %.2f%s \x1b[0m\x1b[H",
+                             rows, fps, speed, pos[0], pos[1], pos[2], anim_part);
 #else
     int len = snprintf(buffer, sizeof(buffer),
                        "\x1b[?2026h\x1b[%u;1H\x1b[2K\x1b[7m FPS: %.1f | SPEED: "
@@ -350,11 +361,13 @@ void terminal_end_query_mode(TermiosState *state) {
 }
 
 void enable_raw_mode(void) {
-    if (raw_mode_enabled)
+    if (raw_mode_enabled) {
         return;
+    }
 
-    if (!termios_state_init(&raw_mode_state, STDIN_FILENO))
+    if (!termios_state_init(&raw_mode_state, STDIN_FILENO)) {
         return;
+    }
 #ifdef _WIN32
     raw_mode_state.mode &=
         ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT | ENABLE_QUICK_EDIT_MODE);
@@ -365,8 +378,9 @@ void enable_raw_mode(void) {
     raw_mode_state.settings.c_cc[VMIN] = 0;
     raw_mode_state.settings.c_cc[VTIME] = 0;
 #endif
-    if (!termios_state_apply(&raw_mode_state))
+    if (!termios_state_apply(&raw_mode_state)) {
         return;
+    }
 
 #ifdef _WIN32
     raw_mode_output_handle = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -419,8 +433,9 @@ void terminal_set_mouse_input_enabled(const bool enabled) {
 }
 
 void disable_raw_mode(void) {
-    if (!raw_mode_enabled)
+    if (!raw_mode_enabled) {
         return;
+    }
     termios_state_restore(&raw_mode_state);
 #ifdef _WIN32
     if (raw_mode_code_pages_saved) {
@@ -475,7 +490,9 @@ void terminal_restore_after_crash(void) {
 ssize_t terminal_read_query(char *buffer, size_t size, char terminator) {
 #ifdef _WIN32
     HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
-    if (hIn == INVALID_HANDLE_VALUE || hIn == NULL) return -1;
+    if (hIn == INVALID_HANDLE_VALUE || hIn == NULL) {
+        return -1;
+    }
 
     DWORD start_time = GetTickCount();
     DWORD timeout = 100;

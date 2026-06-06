@@ -39,7 +39,7 @@ void render_color_characters(const uint8_t *buffer, const uint32_t width, const 
 
     if (use_hash) {
         const size_t num_cells = (size_t)width * height;
-        const size_t needed = (sizeof(TERM_FRAME_BEGIN) - 1) + num_cells * codec->hash_cell_len +
+        const size_t needed = (sizeof(TERM_FRAME_BEGIN) - 1) + (num_cells * codec->hash_cell_len) +
                               (height > 0 ? height - 1 : 0) + (sizeof(TERM_COLOR_FRAME_END) - 1);
         if (!ensure_buf(st, needed)) {
             return;
@@ -69,7 +69,8 @@ void render_color_characters(const uint8_t *buffer, const uint32_t width, const 
     }
 
     const uint32_t num_blocks = width * ((height + 1) / 2);
-    const size_t frame_size = (sizeof(TERM_FRAME_BEGIN) - 1) + (size_t)num_blocks * codec->block_len +
+    const size_t frame_size = (sizeof(TERM_FRAME_BEGIN) - 1) +
+                              ((size_t)num_blocks * codec->block_len) +
                               (sizeof(TERM_COLOR_FRAME_END) - 1);
 
     // Rebuild the fixed cell structure only on first run or resize; steady-state
@@ -100,10 +101,14 @@ void render_color_characters(const uint8_t *buffer, const uint32_t width, const 
         const bool has_lower = (y + 1 < height);
 
         for (uint32_t x = 0; x < width; x++) {
-            const uint8_t ru = row_upper[0], gu = row_upper[1], bu = row_upper[2];
+            const uint8_t ru = row_upper[0];
+            const uint8_t gu = row_upper[1];
+            const uint8_t bu = row_upper[2];
             row_upper += 4;
 
-            uint8_t rl = 0, gl = 0, bl = 0;
+            uint8_t rl = 0;
+            uint8_t gl = 0;
+            uint8_t bl = 0;
             if (has_lower) {
                 rl = row_lower[0];
                 gl = row_lower[1];

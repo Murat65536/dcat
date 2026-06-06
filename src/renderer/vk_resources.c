@@ -1,5 +1,6 @@
 #include "vk_resources.h"
 #include "vk_memory.h"
+#include <stddef.h>
 #include <stdio.h>
 
 bool create_command_pool(VulkanRenderer *r) {
@@ -20,7 +21,7 @@ bool create_descriptor_pool_with_capacity(VulkanRenderer *r, const uint32_t mate
     const VkDescriptorPoolSize pool_sizes[2] = {
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (2 * material_capacity) * MAX_FRAMES_IN_FLIGHT},
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-         (2 * material_capacity + 1) * MAX_FRAMES_IN_FLIGHT},
+         ((2 * material_capacity) + 1) * MAX_FRAMES_IN_FLIGHT},
     };
 
     VkDescriptorPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
@@ -113,7 +114,7 @@ bool create_framebuffer(VulkanRenderer *r) {
 }
 
 bool create_staging_buffers(VulkanRenderer *r) {
-    VkDeviceSize buffer_size = r->width * r->height * 4;
+    VkDeviceSize buffer_size = (VkDeviceSize)(r->width * r->height * 4);
     buffer_size = align_up(buffer_size, r->non_coherent_atom_size);
 
     for (int i = 0; i < NUM_STAGING_BUFFERS; i++) {

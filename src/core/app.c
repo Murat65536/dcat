@@ -8,18 +8,18 @@
 
 #include "core/app.h"
 #include "core/args.h"
-#include "core/threading.h"
 #include "core/signals.h"
+#include "core/threading.h"
 #include "core/time_utils.h"
 #include "graphics/camera.h"
 #include "graphics/model.h"
 #include "graphics/texture_loader.h"
 #include "input/input_handler.h"
 #include "renderer/vulkan_renderer.h"
+#include "terminal/driver_factory.h"
+#include "terminal/output_driver.h"
 #include "terminal/session.h"
 #include "terminal/terminal.h"
-#include "terminal/output_driver.h"
-#include "terminal/driver_factory.h"
 
 typedef struct FatalReport {
     bool active;
@@ -54,18 +54,19 @@ typedef struct AnimationContext {
 } AnimationContext;
 
 static float compute_model_scale_factor(const CameraSetup *camera_setup, float model_scale_arg) {
-    if (camera_setup->model_scale <= 0.0f) {
-        return 1.0f;
+    if (camera_setup->model_scale <= 0.0F) {
+        return 1.0F;
     }
 
     return model_scale_arg / camera_setup->model_scale;
 }
 
-static void calculate_output_dimensions(const Args *args, const OutputDriver *output_driver, uint32_t *width,
-                                        uint32_t *height) {
+static void calculate_output_dimensions(const Args *args, const OutputDriver *output_driver,
+                                        uint32_t *width, uint32_t *height) {
     const bool use_hash_characters =
-        args->use_hash_characters && output_driver->uses_character_cells;
-    const bool use_sixel = !output_driver->uses_kitty_protocol && !output_driver->uses_character_cells;
+        (args->use_hash_characters && output_driver->uses_character_cells) != 0;
+    const bool use_sixel =
+        (!output_driver->uses_kitty_protocol && !output_driver->uses_character_cells) != 0;
     calculate_render_dimensions(args->width, args->height, use_sixel,
                                 output_driver->uses_kitty_protocol, use_hash_characters,
                                 args->show_status_bar, width, height);
@@ -89,7 +90,7 @@ static bool initialize_bone_matrices(mat4 **out_bone_matrices) {
 }
 
 static float calculate_frame_fps(const float delta_time) {
-    return delta_time > 0.0f ? 1.0f / delta_time : 0.0f;
+    return delta_time > 0.0F ? 1.0F / delta_time : 0.0F;
 }
 
 static void pace_frame(const double frame_start_time, const double target_frame_time) {
@@ -140,7 +141,7 @@ static bool resize_renderer_if_needed(const Args *args, const OutputDriver *outp
     }
 
     dcat_mutex_lock(shared_state_mutex);
-    camera_init(camera, *width, *height, camera->position, camera->target, 60.0f);
+    camera_init(camera, *width, *height, camera->position, camera->target, 60.0F);
     refresh_camera_matrices(camera, view, projection);
     dcat_mutex_unlock(shared_state_mutex);
     return true;
@@ -162,7 +163,7 @@ static void setup_model_transform(const Mesh *mesh, const CameraSetup *camera_se
     vec3 model_center;
     glm_vec3_zero(model_center);
 
-    if (camera_setup->model_scale > 0.0f) {
+    if (camera_setup->model_scale > 0.0F) {
         glm_vec3_copy((float *)camera_setup->target, model_center);
     }
 
@@ -206,50 +207,63 @@ static void process_input_devices(const KeyState *key_state, Camera *camera, con
         return;
     }
 
-    if (key_state->v)
-        *move_speed /= (1.0f + delta_time);
-    if (key_state->b)
-        *move_speed *= (1.0f + delta_time);
+    if (key_state->v) {
+        *move_speed /= (1.0F + delta_time);
+    }
+    if (key_state->b) {
+        *move_speed *= (1.0F + delta_time);
+    }
 
     float speed = (*move_speed) * delta_time;
-    if (key_state->ctrl)
-        speed *= 0.25f;
+    if (key_state->ctrl) {
+        speed *= 0.25F;
+    }
 
-    if (key_state->w)
+    if (key_state->w) {
         camera_move_forward(camera, speed);
-    if (key_state->s)
+    }
+    if (key_state->s) {
         camera_move_backward(camera, speed);
-    if (key_state->a)
+    }
+    if (key_state->a) {
         camera_move_left(camera, speed);
-    if (key_state->d)
+    }
+    if (key_state->d) {
         camera_move_right(camera, speed);
-    if (key_state->space)
+    }
+    if (key_state->space) {
         camera_move_up(camera, speed);
-    if (key_state->shift)
+    }
+    if (key_state->shift) {
         camera_move_down(camera, speed);
+    }
 
     if (key_state->mouse_dx != 0 || key_state->mouse_dy != 0) {
-        const float ROTATION_SENSITIVITY = 2.0f;
-        const float sensitivity = ROTATION_SENSITIVITY * 0.001f;
+        const float ROTATION_SENSITIVITY = 2.0F;
+        const float sensitivity = ROTATION_SENSITIVITY * 0.001F;
         camera_rotate(camera, key_state->mouse_dx * sensitivity,
                       -key_state->mouse_dy * sensitivity);
     }
 
-    float rot_speed = 2.0f * delta_time;
-    if (key_state->i)
-        camera_rotate(camera, 0.0f, rot_speed);
-    if (key_state->k)
-        camera_rotate(camera, 0.0f, -rot_speed);
-    if (key_state->j)
-        camera_rotate(camera, -rot_speed, 0.0f);
-    if (key_state->l)
-        camera_rotate(camera, rot_speed, 0.0f);
+    float rot_speed = 2.0F * delta_time;
+    if (key_state->i) {
+        camera_rotate(camera, 0.0F, rot_speed);
+    }
+    if (key_state->k) {
+        camera_rotate(camera, 0.0F, -rot_speed);
+    }
+    if (key_state->j) {
+        camera_rotate(camera, -rot_speed, 0.0F);
+    }
+    if (key_state->l) {
+        camera_rotate(camera, rot_speed, 0.0F);
+    }
 }
 
 static bool render_frame(RenderContext *ctx, const AnimationContext *anim_ctx, const Mesh *mesh,
-                         mat4 *view, mat4 *projection, const OutputDriver *output_driver, bool show_status_bar,
-                         bool use_hash_characters, uint32_t width, uint32_t height, float fps,
-                         float move_speed, const vec3 camera_position,
+                         mat4 *view, mat4 *projection, const OutputDriver *output_driver,
+                         bool show_status_bar, bool use_hash_characters, uint32_t width,
+                         uint32_t height, float fps, float move_speed, const vec3 camera_position,
                          int current_animation_index) {
     mat4 mvp;
     glm_mat4_mul(*projection, *view, mvp);
@@ -272,7 +286,7 @@ static bool render_frame(RenderContext *ctx, const AnimationContext *anim_ctx, c
     }
 
     if (framebuffer) {
-        const bool use_hash = use_hash_characters && output_driver->uses_character_cells;
+        const bool use_hash = (use_hash_characters && output_driver->uses_character_cells) != 0;
         output_driver->render_frame(framebuffer, width, height, use_hash);
 
         if (show_status_bar) {
@@ -401,14 +415,16 @@ bool app_init(AppContext *app, int argc, char *argv[]) {
 
     app->renderer = vulkan_renderer_create(app->width, app->height);
     if (!app->renderer || !vulkan_renderer_initialize(app->renderer)) {
-        const char *renderer_error = app->renderer ? vulkan_renderer_get_last_error(app->renderer) : NULL;
+        const char *renderer_error =
+            app->renderer ? vulkan_renderer_get_last_error(app->renderer) : NULL;
         fprintf(stderr, "%s\n",
                 renderer_error ? renderer_error : "Failed to initialize Vulkan renderer");
         return false;
     }
-    vulkan_renderer_set_light_direction(app->renderer, (vec3){0.0f, -1.0f, -0.5f});
+    vulkan_renderer_set_light_direction(app->renderer, (vec3){0.0F, -1.0F, -0.5F});
 
-    if (!load_model(app->args.model_path, &app->mesh, &app->has_uvs, &app->model_materials, &app->model_material_count)) {
+    if (!load_model(app->args.model_path, &app->mesh, &app->has_uvs, &app->model_materials,
+                    &app->model_material_count)) {
         fprintf(stderr, "Failed to load model: %s\n", app->args.model_path);
         return false;
     }
@@ -418,7 +434,7 @@ bool app_init(AppContext *app, int argc, char *argv[]) {
         fprintf(stderr, "Failed to allocate bone matrices\n");
         return false;
     }
-    app->has_animations = app->mesh.has_animations && app->mesh.animations.count > 0;
+    app->has_animations = ((app->mesh.has_animations && app->mesh.animations.count > 0) != 0);
 
     app->diffuse_textures = calloc(app->model_material_count, sizeof(Texture));
     app->normal_textures = calloc(app->model_material_count, sizeof(Texture));
@@ -431,22 +447,26 @@ bool app_init(AppContext *app, int argc, char *argv[]) {
     for (size_t i = 0; i < app->model_material_count; i++) {
         load_diffuse_texture(app->args.model_path, app->args.texture_path, &app->model_materials[i],
                              &app->diffuse_textures[i]);
-        load_normal_texture(app->args.normal_map_path, &app->model_materials[i], &app->normal_textures[i]);
+        load_normal_texture(app->args.normal_map_path, &app->model_materials[i],
+                            &app->normal_textures[i]);
 
         app->render_materials[i].diffuse = &app->diffuse_textures[i];
         app->render_materials[i].normal = &app->normal_textures[i];
         app->render_materials[i].alpha_mode = app->model_materials[i].alpha_mode;
         app->render_materials[i].specular_strength = app->model_materials[i].specular_strength;
         app->render_materials[i].shininess = app->model_materials[i].shininess;
-        memcpy(app->render_materials[i].base_color, app->model_materials[i].base_color, sizeof(float) * 4);
+        memcpy(app->render_materials[i].base_color, app->model_materials[i].base_color,
+               sizeof(float) * 4);
         app->render_materials[i].use_diffuse_alpha_as_luster =
-            app->render_materials[i].alpha_mode == ALPHA_MODE_OPAQUE &&
-            app->diffuse_textures[i].has_transparency;
+            ((app->render_materials[i].alpha_mode == ALPHA_MODE_OPAQUE &&
+              app->diffuse_textures[i].has_transparency) != 0);
     }
 
-    app->has_skydome = load_skydome(app->args.skydome_path, &app->skydome_mesh, &app->skydome_texture);
+    app->has_skydome =
+        load_skydome(app->args.skydome_path, &app->skydome_mesh, &app->skydome_texture);
     if (app->has_skydome) {
-        if (!vulkan_renderer_set_skydome(app->renderer, &app->skydome_mesh, &app->skydome_texture)) {
+        if (!vulkan_renderer_set_skydome(app->renderer, &app->skydome_mesh,
+                                         &app->skydome_texture)) {
             const char *renderer_error = vulkan_renderer_get_last_error(app->renderer);
             fprintf(stderr, "%s\n",
                     renderer_error ? renderer_error : "Failed to upload skydome resources");
@@ -460,15 +480,16 @@ bool app_init(AppContext *app, int argc, char *argv[]) {
     setup_model_transform(&app->mesh, &camera_setup, app->args.model_scale, app->model_matrix);
 
     vec3 camera_position;
-    setup_camera_position(&camera_setup, app->args.model_scale, app->args.camera_distance, camera_position);
+    setup_camera_position(&camera_setup, app->args.model_scale, app->args.camera_distance,
+                          camera_position);
 
     vec3 camera_target;
     glm_vec3_zero(camera_target);
 
-    app->move_speed = 0.5f;
+    app->move_speed = 0.5F;
     app->target_frame_time = 1.0 / app->args.target_fps;
 
-    camera_init(&app->camera, app->width, app->height, camera_position, camera_target, 60.0f);
+    camera_init(&app->camera, app->width, app->height, camera_position, camera_target, 60.0F);
 
     if (!dcat_mutex_init(&app->shared_state_mutex)) {
         fprintf(stderr, "Failed to initialize shared state mutex\n");
@@ -478,18 +499,16 @@ bool app_init(AppContext *app, int argc, char *argv[]) {
 
     terminal_session_begin(&app->terminal_session, app->args.mouse_orbit);
 
-    app->input_data = (InputThreadData){
-        &app->camera,
-        app->renderer,
-        &app->anim_state,
-        &app->mesh,
-        &app->shared_state_mutex,
-        app->args.fps_controls,
-        app->args.mouse_orbit,
-        app->args.mouse_sensitivity,
-        app->has_animations,
-        &app->key_state
-    };
+    app->input_data = (InputThreadData){&app->camera,
+                                        app->renderer,
+                                        &app->anim_state,
+                                        &app->mesh,
+                                        &app->shared_state_mutex,
+                                        app->args.fps_controls,
+                                        app->args.mouse_orbit,
+                                        app->args.mouse_sensitivity,
+                                        app->has_animations,
+                                        &app->key_state};
 
     if (!dcat_thread_create(&app->input_thread, input_thread_func, &app->input_data)) {
         record_fatal_report(&app->fatal_report, "Failed to start input thread");
@@ -506,26 +525,28 @@ int app_run_loop(AppContext *app) {
         .model_matrix = {{0}},
         .materials = app->render_materials,
         .material_count = (uint32_t)app->model_material_count,
-        .enable_lighting = !app->args.no_lighting,
-        .use_triplanar_mapping = !app->has_uvs,
+        .enable_lighting = (!app->args.no_lighting) != 0,
+        .use_triplanar_mapping = (!app->has_uvs) != 0,
     };
     glm_mat4_copy(app->model_matrix, render_ctx.model_matrix);
 
     AnimationContext anim_ctx = {app->bone_matrices, app->has_animations};
 
-    float total_spin = 0.0f;
+    float total_spin = 0.0F;
     mat4 base_model_matrix;
     glm_mat4_copy(render_ctx.model_matrix, base_model_matrix);
 
-    mat4 view, projection;
+    mat4 view;
+    mat4 projection;
     refresh_camera_matrices(&app->camera, view, projection);
 
     double last_frame_time = get_time_seconds();
     unsigned long long frame_count = 0;
 
     while (!signals_should_quit()) {
-        if (!resize_renderer_if_needed(&app->args, app->output_driver, app->renderer, &app->shared_state_mutex, &app->camera,
-                                       &app->width, &app->height, view, projection)) {
+        if (!resize_renderer_if_needed(&app->args, app->output_driver, app->renderer,
+                                       &app->shared_state_mutex, &app->camera, &app->width,
+                                       &app->height, view, projection)) {
             const char *renderer_error = vulkan_renderer_get_last_error(app->renderer);
             record_fatal_report(&app->fatal_report, "%s",
                                 renderer_error ? renderer_error
@@ -541,10 +562,10 @@ int app_run_loop(AppContext *app) {
         vec3 camera_position_snapshot;
         int current_animation_index_snapshot = -1;
 
-        if (app->args.spin_speed != 0.0f && !app->args.fps_controls) {
+        if (app->args.spin_speed != 0.0F && !app->args.fps_controls) {
             total_spin += app->args.spin_speed * delta_time;
             mat4 rotation_mat;
-            glm_rotate_make(rotation_mat, total_spin, (vec3){0.0f, 1.0f, 0.0f});
+            glm_rotate_make(rotation_mat, total_spin, (vec3){0.0F, 1.0F, 0.0F});
             glm_mat4_mul(rotation_mat, base_model_matrix, render_ctx.model_matrix);
         }
 
@@ -564,10 +585,11 @@ int app_run_loop(AppContext *app) {
         }
         dcat_mutex_unlock(&app->shared_state_mutex);
 
-        if (!render_frame(&render_ctx, &anim_ctx, &app->mesh, &view, &projection, app->output_driver,
-                           app->args.show_status_bar, app->args.use_hash_characters, app->width, app->height,
-                           display_fps, app->move_speed, camera_position_snapshot,
-                           current_animation_index_snapshot)) {
+        if (!render_frame(&render_ctx, &anim_ctx, &app->mesh, &view, &projection,
+                          app->output_driver, app->args.show_status_bar,
+                          app->args.use_hash_characters, app->width, app->height, display_fps,
+                          app->move_speed, camera_position_snapshot,
+                          current_animation_index_snapshot)) {
             const char *renderer_error = vulkan_renderer_get_last_error(app->renderer);
             record_fatal_report(&app->fatal_report, "%s",
                                 renderer_error ? renderer_error : "Rendering failed");
@@ -582,7 +604,7 @@ int app_run_loop(AppContext *app) {
     return 0;
 }
 
-AppContext* app_create(void) {
+AppContext *app_create(void) {
     return calloc(1, sizeof(AppContext));
 }
 

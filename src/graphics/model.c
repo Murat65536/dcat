@@ -25,8 +25,9 @@ void mesh_free(Mesh *mesh) {
 }
 
 void materials_free(MaterialInfo *materials, const size_t count) {
-    if (!materials)
+    if (!materials) {
         return;
+    }
     for (size_t i = 0; i < count; i++) {
         material_info_free(&materials[i]);
     }
@@ -37,12 +38,12 @@ void material_info_init(MaterialInfo *info) {
     info->diffuse_path = NULL;
     info->normal_path = NULL;
     info->alpha_mode = ALPHA_MODE_OPAQUE;
-    info->specular_strength = 0.0f;
-    info->shininess = 32.0f;
-    info->base_color[0] = 1.0f;
-    info->base_color[1] = 1.0f;
-    info->base_color[2] = 1.0f;
-    info->base_color[3] = 1.0f;
+    info->specular_strength = 0.0F;
+    info->shininess = 32.0F;
+    info->base_color[0] = 1.0F;
+    info->base_color[1] = 1.0F;
+    info->base_color[2] = 1.0F;
+    info->base_color[3] = 1.0F;
     info->uv_channel = 0;
     info->embedded_diffuse = NULL;
     info->embedded_diffuse_size = 0;
@@ -60,9 +61,9 @@ void material_info_free(MaterialInfo *info) {
 
 void calculate_camera_setup(const VertexArray *vertices, CameraSetup *setup) {
     if (vertices->count == 0) {
-        glm_vec3_copy((vec3){0.0f, 0.0f, 3.0f}, setup->position);
+        glm_vec3_copy((vec3){0.0F, 0.0F, 3.0F}, setup->position);
         glm_vec3_zero(setup->target);
-        setup->model_scale = 1.0f;
+        setup->model_scale = 1.0F;
         return;
     }
 
@@ -72,22 +73,25 @@ void calculate_camera_setup(const VertexArray *vertices, CameraSetup *setup) {
     for (size_t i = 0; i < vertices->count; i++) {
         const Vertex *v = &vertices->data[i];
         for (int j = 0; j < 3; j++) {
-            if (v->position[j] < min_pos[j])
+            if (v->position[j] < min_pos[j]) {
                 min_pos[j] = v->position[j];
-            if (v->position[j] > max_pos[j])
+            }
+            if (v->position[j] > max_pos[j]) {
                 max_pos[j] = v->position[j];
+            }
         }
     }
 
-    vec3 center, size;
+    vec3 center;
+    vec3 size;
     glm_vec3_add(min_pos, max_pos, center);
-    glm_vec3_scale(center, 0.5f, center);
+    glm_vec3_scale(center, 0.5F, center);
     glm_vec3_sub(max_pos, min_pos, size);
 
-    float diagonal = sqrtf(size[0] * size[0] + size[1] * size[1] + size[2] * size[2]);
-    float distance = diagonal * 1.2f;
+    float diagonal = sqrtf((size[0] * size[0]) + (size[1] * size[1]) + (size[2] * size[2]));
+    float distance = diagonal * 1.2F;
 
-    vec3 camera_offset = {diagonal * 0.3f, diagonal * 0.2f, distance};
+    vec3 camera_offset = {diagonal * 0.3F, diagonal * 0.2F, distance};
 
     glm_vec3_add(center, camera_offset, setup->position);
     glm_vec3_copy(center, setup->target);
@@ -131,7 +135,8 @@ static void process_node(const struct aiNode *node, const struct aiScene *scene,
                          mat4 parent_transform, VertexArray *vertices, Uint32Array *indices,
                          SubMeshArray *submeshes, bool *out_has_uvs, bool flip_uv_y,
                          unsigned int uv_channel) {
-    mat4 node_transform, combined;
+    mat4 node_transform;
+    mat4 combined;
     ai_matrix_to_glm(&node->mTransformation, node_transform);
     glm_mat4_mul(parent_transform, node_transform, combined);
 
@@ -160,15 +165,15 @@ static void process_node(const struct aiNode *node, const struct aiScene *scene,
             }
 
             // Apply transformation
-            vec4 pos = {mesh->mVertices[j].x, mesh->mVertices[j].y, mesh->mVertices[j].z, 1.0f};
+            vec4 pos = {mesh->mVertices[j].x, mesh->mVertices[j].y, mesh->mVertices[j].z, 1.0F};
             vec4 transformed;
             glm_mat4_mulv(combined, pos, transformed);
             glm_vec3_copy(transformed, vertex.position);
 
             if (mesh->mTextureCoords[uv_channel]) {
                 vertex.texcoord[0] = mesh->mTextureCoords[uv_channel][j].x;
-                vertex.texcoord[1] = flip_uv_y ? (1.0f - mesh->mTextureCoords[uv_channel][j].y)
-                                               : mesh->mTextureCoords[uv_channel][j].y;
+                vertex.texcoord[1] = (int)flip_uv_y ? (1.0F - mesh->mTextureCoords[uv_channel][j].y)
+                                                    : mesh->mTextureCoords[uv_channel][j].y;
             }
 
             if (mesh->mNormals) {
@@ -176,7 +181,7 @@ static void process_node(const struct aiNode *node, const struct aiScene *scene,
                 glm_mat3_mulv(normal_matrix, normal, vertex.normal);
                 glm_vec3_normalize(vertex.normal);
             } else {
-                glm_vec3_copy((vec3){0.0f, 1.0f, 0.0f}, vertex.normal);
+                glm_vec3_copy((vec3){0.0F, 1.0F, 0.0F}, vertex.normal);
             }
 
             if (mesh->mTangents && mesh->mBitangents) {
@@ -188,8 +193,8 @@ static void process_node(const struct aiNode *node, const struct aiScene *scene,
                 glm_vec3_normalize(vertex.tangent);
                 glm_vec3_normalize(vertex.bitangent);
             } else {
-                glm_vec3_copy((vec3){1.0f, 0.0f, 0.0f}, vertex.tangent);
-                glm_vec3_copy((vec3){0.0f, 0.0f, 1.0f}, vertex.bitangent);
+                glm_vec3_copy((vec3){1.0F, 0.0F, 0.0F}, vertex.tangent);
+                glm_vec3_copy((vec3){0.0F, 0.0F, 1.0F}, vertex.bitangent);
             }
 
             ARRAY_PUSH(*vertices, vertex);
@@ -247,8 +252,8 @@ static void process_node_animated(const struct aiNode *node, const struct aiScen
 
             if (mesh->mTextureCoords[uv_channel]) {
                 vertex.texcoord[0] = mesh->mTextureCoords[uv_channel][j].x;
-                vertex.texcoord[1] = flip_uv_y ? (1.0f - mesh->mTextureCoords[uv_channel][j].y)
-                                               : mesh->mTextureCoords[uv_channel][j].y;
+                vertex.texcoord[1] = (int)flip_uv_y ? (1.0F - mesh->mTextureCoords[uv_channel][j].y)
+                                                    : mesh->mTextureCoords[uv_channel][j].y;
             }
 
             if (mesh->mNormals) {
@@ -256,7 +261,7 @@ static void process_node_animated(const struct aiNode *node, const struct aiScen
                 vertex.normal[1] = mesh->mNormals[j].y;
                 vertex.normal[2] = mesh->mNormals[j].z;
             } else {
-                glm_vec3_copy((vec3){0.0f, 1.0f, 0.0f}, vertex.normal);
+                glm_vec3_copy((vec3){0.0F, 1.0F, 0.0F}, vertex.normal);
             }
 
             if (mesh->mTangents && mesh->mBitangents) {
@@ -267,8 +272,8 @@ static void process_node_animated(const struct aiNode *node, const struct aiScen
                 vertex.bitangent[1] = mesh->mBitangents[j].y;
                 vertex.bitangent[2] = mesh->mBitangents[j].z;
             } else {
-                glm_vec3_copy((vec3){1.0f, 0.0f, 0.0f}, vertex.tangent);
-                glm_vec3_copy((vec3){0.0f, 0.0f, 1.0f}, vertex.bitangent);
+                glm_vec3_copy((vec3){1.0F, 0.0F, 0.0F}, vertex.tangent);
+                glm_vec3_copy((vec3){0.0F, 0.0F, 1.0F}, vertex.bitangent);
             }
 
             ARRAY_PUSH(*vertices, vertex);
@@ -285,8 +290,9 @@ static void process_node_animated(const struct aiNode *node, const struct aiScen
                     bone_index = (int)skeleton->bones.count;
                     BoneInfo bone_info;
                     bone_info.name = str_dup(bone_name);
-                    if (!bone_info.name)
+                    if (!bone_info.name) {
                         continue;
+                    }
                     ai_matrix_to_glm(&bone->mOffsetMatrix, bone_info.offset_matrix);
                     bone_info.index = bone_index;
                     ARRAY_PUSH(skeleton->bones, bone_info);
@@ -325,8 +331,9 @@ static void process_node_animated(const struct aiNode *node, const struct aiScen
                         node_bone_index = (int)skeleton->bones.count;
                         BoneInfo bone_info;
                         bone_info.name = str_dup(node_name);
-                        if (!bone_info.name)
+                        if (!bone_info.name) {
                             break;
+                        }
                         glm_mat4_identity(bone_info.offset_matrix);
                         bone_info.index = node_bone_index;
                         ARRAY_PUSH(skeleton->bones, bone_info);
@@ -335,7 +342,7 @@ static void process_node_animated(const struct aiNode *node, const struct aiScen
                 }
 
                 vertices->data[global_vertex_idx].bone_ids[0] = node_bone_index;
-                vertices->data[global_vertex_idx].bone_weights[0] = 1.0f;
+                vertices->data[global_vertex_idx].bone_weights[0] = 1.0F;
             }
         }
 
@@ -394,8 +401,9 @@ static void build_bone_hierarchy(const struct aiNode *root, Skeleton *skeleton) 
     // Pre-allocate to avoid reallocations during build
     int total_nodes = count_nodes(root);
     skeleton->bone_hierarchy.data = aligned_malloc(total_nodes * sizeof(BoneNode));
-    if (!skeleton->bone_hierarchy.data)
+    if (!skeleton->bone_hierarchy.data) {
         return;
+    }
     skeleton->bone_hierarchy.capacity = total_nodes;
     skeleton->bone_hierarchy.count = 0;
 
@@ -405,8 +413,9 @@ static void build_bone_hierarchy(const struct aiNode *root, Skeleton *skeleton) 
         int parent_idx;
     } StackItem;
     StackItem *stack = malloc(total_nodes * sizeof(StackItem));
-    if (!stack)
+    if (!stack) {
         return;
+    }
     int stack_top = 0;
 
     stack[stack_top++] = (StackItem){root, -1};
@@ -419,8 +428,9 @@ static void build_bone_hierarchy(const struct aiNode *root, Skeleton *skeleton) 
         BoneNode bone_node = {0};
 
         bone_node.name = str_dup(node->mName.data);
-        if (!bone_node.name)
+        if (!bone_node.name) {
             break;
+        }
         ai_matrix_to_glm(&node->mTransformation, bone_node.transformation);
 
         // Decompose transform for fallback
@@ -440,8 +450,8 @@ static void build_bone_hierarchy(const struct aiNode *root, Skeleton *skeleton) 
                                  bone_node.transformation[2][2]});
 
         // Rotation (from normalized matrix columns)
-        if (bone_node.initial_scale[0] > 0.0001f && bone_node.initial_scale[1] > 0.0001f &&
-            bone_node.initial_scale[2] > 0.0001f) {
+        if (bone_node.initial_scale[0] > 0.0001F && bone_node.initial_scale[1] > 0.0001F &&
+            bone_node.initial_scale[2] > 0.0001F) {
             mat3 rot_m;
             rot_m[0][0] = bone_node.transformation[0][0] / bone_node.initial_scale[0];
             rot_m[0][1] = bone_node.transformation[0][1] / bone_node.initial_scale[0];
@@ -483,8 +493,9 @@ static void load_animations(const struct aiScene *scene, AnimationArray *animati
 
         Animation animation = {0};
         animation.name = str_dup(ai_anim->mName.data);
-        if (!animation.name)
+        if (!animation.name) {
             continue;
+        }
         animation.duration = (float)ai_anim->mDuration;
         animation.ticks_per_second = (float)ai_anim->mTicksPerSecond;
         ARRAY_INIT(animation.bone_animations);
@@ -495,8 +506,9 @@ static void load_animations(const struct aiScene *scene, AnimationArray *animati
 
             BoneAnimation bone_anim = {0};
             bone_anim.bone_name = str_dup(channel->mNodeName.data);
-            if (!bone_anim.bone_name)
+            if (!bone_anim.bone_name) {
                 continue;
+            }
             ARRAY_INIT(bone_anim.position_keys);
             ARRAY_INIT(bone_anim.scale_keys);
             ARRAY_INIT(bone_anim.rotation_keys);
@@ -535,27 +547,30 @@ static void load_animations(const struct aiScene *scene, AnimationArray *animati
         }
 
         // Calculate actual duration from keyframes
-        float actual_duration = 0.0f;
+        float actual_duration = 0.0F;
         for (size_t j = 0; j < animation.bone_animations.count; j++) {
             const BoneAnimation *ba = &animation.bone_animations.data[j];
             if (ba->position_keys.count > 0) {
                 float t = ba->position_keys.data[ba->position_keys.count - 1].time;
-                if (t > actual_duration)
+                if (t > actual_duration) {
                     actual_duration = t;
+                }
             }
             if (ba->rotation_keys.count > 0) {
                 float t = ba->rotation_keys.data[ba->rotation_keys.count - 1].time;
-                if (t > actual_duration)
+                if (t > actual_duration) {
                     actual_duration = t;
+                }
             }
             if (ba->scale_keys.count > 0) {
                 float t = ba->scale_keys.data[ba->scale_keys.count - 1].time;
-                if (t > actual_duration)
+                if (t > actual_duration) {
                     actual_duration = t;
+                }
             }
         }
 
-        if (actual_duration > 0.0f && actual_duration < animation.duration) {
+        if (actual_duration > 0.0F && actual_duration < animation.duration) {
             animation.duration = actual_duration;
         }
 
@@ -565,8 +580,9 @@ static void load_animations(const struct aiScene *scene, AnimationArray *animati
 
 static char *resolve_texture_path(const char *model_path, const char *texture_path,
                                   const struct aiScene *scene) {
-    if (!texture_path || !texture_path[0])
+    if (!texture_path || !texture_path[0]) {
         return NULL;
+    }
 
     // Check if this is an embedded texture reference
     if (texture_path[0] == '*') {
@@ -589,18 +605,22 @@ static char *resolve_texture_path(const char *model_path, const char *texture_pa
                 const char *slash1 = strrchr(embedded_filename, '/');
                 const char *slash2 = strrchr(embedded_filename, '\\');
                 const char *embedded_name = embedded_filename;
-                if (slash1 && slash1 > embedded_name)
+                if (slash1 && slash1 > embedded_name) {
                     embedded_name = slash1 + 1;
-                if (slash2 && slash2 > embedded_name)
+                }
+                if (slash2 && slash2 > embedded_name) {
                     embedded_name = slash2 + 1;
+                }
 
                 slash1 = strrchr(texture_path, '/');
                 slash2 = strrchr(texture_path, '\\');
                 const char *requested_name = texture_path;
-                if (slash1 && slash1 > requested_name)
+                if (slash1 && slash1 > requested_name) {
                     requested_name = slash1 + 1;
-                if (slash2 && slash2 > requested_name)
+                }
+                if (slash2 && slash2 > requested_name) {
                     requested_name = slash2 + 1;
+                }
 
                 if (strcmp(embedded_name, requested_name) == 0) {
                     char buf[32];
@@ -612,16 +632,18 @@ static char *resolve_texture_path(const char *model_path, const char *texture_pa
     }
 
     char *clean_path = str_dup(texture_path);
-    if (!clean_path)
+    if (!clean_path) {
         return NULL;
+    }
 
     // Handle Windows absolute paths
     if (strlen(clean_path) >= 3 && clean_path[1] == ':' &&
         (clean_path[2] == '\\' || clean_path[2] == '/')) {
         const char *last_sep = strrchr(clean_path, '\\');
         const char *last_fslash = strrchr(clean_path, '/');
-        if (last_fslash > last_sep)
+        if (last_fslash > last_sep) {
             last_sep = last_fslash;
+        }
         if (last_sep) {
             char *filename = str_dup(last_sep + 1);
             if (!filename) {
@@ -634,8 +656,9 @@ static char *resolve_texture_path(const char *model_path, const char *texture_pa
     }
 
     // If absolute Unix path, return as-is
-    if (clean_path[0] == '/')
+    if (clean_path[0] == '/') {
         return clean_path;
+    }
 
     // Make relative to model directory
     const char *last_slash = strrchr(model_path, '/');
@@ -660,23 +683,27 @@ static char *resolve_texture_path(const char *model_path, const char *texture_pa
 
 static void extract_embedded_texture(const struct aiScene *scene, MaterialInfo *mat,
                                      bool is_diffuse) {
-    const char *tex_path = is_diffuse ? mat->diffuse_path : mat->normal_path;
-    if (!tex_path || tex_path[0] != '*')
+    const char *tex_path = (int)is_diffuse ? mat->diffuse_path : mat->normal_path;
+    if (!tex_path || tex_path[0] != '*') {
         return;
+    }
 
     char *endptr;
     const long tex_index = strtol(tex_path + 1, &endptr, 10);
     if (endptr == (tex_path + 1) || *endptr != '\0' || tex_index < 0 ||
-        tex_index >= (long)scene->mNumTextures)
+        tex_index >= (long)scene->mNumTextures) {
         return;
+    }
 
     const struct aiTexture *embedded_tex = scene->mTextures[tex_index];
-    if (embedded_tex->mHeight != 0)
+    if (embedded_tex->mHeight != 0) {
         return; // uncompressed raw — not handled here
+    }
 
     unsigned char *copy = malloc(embedded_tex->mWidth);
-    if (!copy)
+    if (!copy) {
         return;
+    }
     memcpy(copy, embedded_tex->pcData, embedded_tex->mWidth);
 
     if (is_diffuse) {
@@ -721,9 +748,9 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
     glm_mat4_identity(coordinate_conversion);
 
     if (up_axis == 2 && up_axis_sign == 1) {
-        glm_rotate_make(coordinate_conversion, glm_rad(-90.0f), (vec3){1.0f, 0.0f, 0.0f});
+        glm_rotate_make(coordinate_conversion, glm_rad(-90.0F), (vec3){1.0F, 0.0F, 0.0F});
     } else if (up_axis == 0 && up_axis_sign == 1) {
-        glm_rotate_make(coordinate_conversion, glm_rad(90.0f), (vec3){0.0f, 0.0f, 1.0f});
+        glm_rotate_make(coordinate_conversion, glm_rad(90.0F), (vec3){0.0F, 0.0F, 1.0F});
     }
 
     *out_has_uvs = false;
@@ -770,7 +797,8 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
             if (anim->bone_node_to_anim) {
                 for (size_t j = 0; j < mesh->skeleton.bone_hierarchy.count; j++) {
                     const char *node_name = mesh->skeleton.bone_hierarchy.data[j].name;
-                    anim->bone_node_to_anim[j] = bone_anim_map_find(&anim->bone_anim_map, node_name);
+                    anim->bone_node_to_anim[j] =
+                        bone_anim_map_find(&anim->bone_anim_map, node_name);
                 }
             }
         }
@@ -793,8 +821,9 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
 
     // Extract all materials
     size_t mat_count = scene->mNumMaterials;
-    if (mat_count == 0)
+    if (mat_count == 0) {
         mat_count = 1;
+    }
 
     MaterialInfo *mats = calloc(mat_count, sizeof(MaterialInfo));
     if (!mats) {
@@ -829,7 +858,7 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
         }
 
         // Base / diffuse color factor
-        struct aiColor4D base_color = {1.0f, 1.0f, 1.0f, 1.0f};
+        struct aiColor4D base_color = {1.0F, 1.0F, 1.0F, 1.0F};
         if (aiGetMaterialColor(material, AI_MATKEY_BASE_COLOR, &base_color) != aiReturn_SUCCESS) {
             aiGetMaterialColor(material, AI_MATKEY_COLOR_DIFFUSE, &base_color);
         }
@@ -851,10 +880,10 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
 
         // Fallback: check standard material opacity
         if (mats[i].alpha_mode == ALPHA_MODE_OPAQUE) {
-            float opacity = 1.0f;
+            float opacity = 1.0F;
             if (aiGetMaterialFloatArray(material, AI_MATKEY_OPACITY, &opacity, NULL) ==
                 aiReturn_SUCCESS) {
-                if (opacity < 1.0f) {
+                if (opacity < 1.0F) {
                     mats[i].alpha_mode = ALPHA_MODE_BLEND;
                 }
             }
@@ -868,26 +897,26 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
             }
         }
 
-        float shininess = 0.0f;
+        float shininess = 0.0F;
         if (aiGetMaterialFloatArray(material, AI_MATKEY_SHININESS, &shininess, NULL) ==
                 aiReturn_SUCCESS &&
-            shininess > 0.0f) {
-            mats[i].shininess = clampf(shininess, 8.0f, 256.0f);
-            mats[i].specular_strength = fmaxf(mats[i].specular_strength, 0.2f);
+            shininess > 0.0F) {
+            mats[i].shininess = clampf(shininess, 8.0F, 256.0F);
+            mats[i].specular_strength = fmaxf(mats[i].specular_strength, 0.2F);
         }
 
-        float shininess_strength = 0.0f;
+        float shininess_strength = 0.0F;
         if (aiGetMaterialFloatArray(material, AI_MATKEY_SHININESS_STRENGTH, &shininess_strength,
                                     NULL) == aiReturn_SUCCESS) {
             mats[i].specular_strength =
-                fmaxf(mats[i].specular_strength, clampf(shininess_strength, 0.0f, 1.0f));
+                fmaxf(mats[i].specular_strength, clampf(shininess_strength, 0.0F, 1.0F));
         }
 
-        float reflectivity = 0.0f;
+        float reflectivity = 0.0F;
         if (aiGetMaterialFloatArray(material, AI_MATKEY_REFLECTIVITY, &reflectivity, NULL) ==
             aiReturn_SUCCESS) {
             mats[i].specular_strength =
-                fmaxf(mats[i].specular_strength, clampf(reflectivity, 0.0f, 1.0f));
+                fmaxf(mats[i].specular_strength, clampf(reflectivity, 0.0F, 1.0F));
         }
 
         struct aiColor4D specular_color = {0};
@@ -896,23 +925,23 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
             float color_strength =
                 fmaxf(specular_color.r, fmaxf(specular_color.g, specular_color.b));
             mats[i].specular_strength =
-                fmaxf(mats[i].specular_strength, clampf(color_strength, 0.0f, 1.0f));
+                fmaxf(mats[i].specular_strength, clampf(color_strength, 0.0F, 1.0F));
         }
 
-        float metallic = 0.0f;
+        float metallic = 0.0F;
         if (aiGetMaterialFloatArray(material, AI_MATKEY_METALLIC_FACTOR, &metallic, NULL) ==
             aiReturn_SUCCESS) {
             mats[i].specular_strength =
-                fmaxf(mats[i].specular_strength, clampf(metallic, 0.0f, 1.0f));
+                fmaxf(mats[i].specular_strength, clampf(metallic, 0.0F, 1.0F));
         }
 
-        float roughness = 1.0f;
+        float roughness = 1.0F;
         if (aiGetMaterialFloatArray(material, AI_MATKEY_ROUGHNESS_FACTOR, &roughness, NULL) ==
             aiReturn_SUCCESS) {
-            float clamped_roughness = clampf(roughness, 0.0f, 1.0f);
-            mats[i].shininess = clampf((1.0f - clamped_roughness) * 120.0f + 8.0f, 8.0f, 256.0f);
+            float clamped_roughness = clampf(roughness, 0.0F, 1.0F);
+            mats[i].shininess = clampf(((1.0F - clamped_roughness) * 120.0F) + 8.0F, 8.0F, 256.0F);
             mats[i].specular_strength =
-                fmaxf(mats[i].specular_strength, (1.0f - clamped_roughness) * 0.35f);
+                fmaxf(mats[i].specular_strength, (1.0F - clamped_roughness) * 0.35F);
         }
 
         // Pre-cache embedded texture bytes

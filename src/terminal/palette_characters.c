@@ -7,26 +7,31 @@
 static uint8_t rgb_to_256(const uint8_t r, const uint8_t g, const uint8_t b) {
     // Check if grayscale
     if (r == g && g == b) {
-        if (r < 8)
+        if (r < 8) {
             return 16;
-        if (r > 248)
+        }
+        if (r > 248) {
             return 231;
-        return 232 + (r - 8) / 10;
+        }
+        return 232 + ((r - 8) / 10);
     }
 
     // 6x6x6 color cube
-    int vr = (r <= 47) ? 0 : (r - 55) / 40 + 1;
-    int vg = (g <= 47) ? 0 : (g - 55) / 40 + 1;
-    int vb = (b <= 47) ? 0 : (b - 55) / 40 + 1;
+    int vr = (r <= 47) ? 0 : ((r - 55) / 40) + 1;
+    int vg = (g <= 47) ? 0 : ((g - 55) / 40) + 1;
+    int vb = (b <= 47) ? 0 : ((b - 55) / 40) + 1;
 
-    if (vr > 5)
+    if (vr > 5) {
         vr = 5;
-    if (vg > 5)
+    }
+    if (vg > 5) {
         vg = 5;
-    if (vb > 5)
+    }
+    if (vb > 5) {
         vb = 5;
+    }
 
-    return 16 + 36 * vr + 6 * vg + vb;
+    return 16 + (36 * vr) + (6 * vg) + vb;
 }
 
 // Hash cell: \x1b[38;5;000m# = 12 bytes; palette index at offset 7.
@@ -39,7 +44,7 @@ static void emit_hash(char *cell, uint8_t r, uint8_t g, uint8_t b) {
 static void emit_block(char *block, uint8_t ru, uint8_t gu, uint8_t bu, uint8_t rl, uint8_t gl,
                        uint8_t bl, bool has_lower) {
     memcpy(block + 7, char_u8_3digit(rgb_to_256(ru, gu, bu)), 3);
-    const uint8_t idx_lower = has_lower ? rgb_to_256(rl, gl, bl) : 0;
+    const uint8_t idx_lower = (int)has_lower ? rgb_to_256(rl, gl, bl) : 0;
     memcpy(block + 16, char_u8_3digit(idx_lower), 3);
 }
 

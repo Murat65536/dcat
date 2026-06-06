@@ -2,6 +2,7 @@
 #include "platform/io.h"
 #include "terminal.h"
 #include <sixel.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -12,12 +13,14 @@ static size_t sixel_buffer_cap = 0;
 static int sixel_write_cb(char *data, int size, void *priv) {
     (void)priv;
     if (sixel_buffer_size + size > sixel_buffer_cap) {
-        size_t new_cap = sixel_buffer_cap == 0 ? (1024 * 1024) : sixel_buffer_cap * 2;
+        size_t new_cap = sixel_buffer_cap == 0 ? ((size_t)(1024 * 1024)) : sixel_buffer_cap * 2;
         while (sixel_buffer_size + size > new_cap) {
             new_cap *= 2;
         }
         char *new_buf = (char *)realloc(sixel_buffer, new_cap);
-        if (!new_buf) return -1;
+        if (!new_buf) {
+            return -1;
+        }
         sixel_buffer = new_buf;
         sixel_buffer_cap = new_cap;
     }
@@ -37,7 +40,8 @@ static void sixel_cleanup(void) {
     safe_write("\x1b[?80l", 6);
 }
 
-void render_sixel(const uint8_t *buffer, uint32_t width, uint32_t height, bool use_hash_characters) {
+void render_sixel(const uint8_t *buffer, uint32_t width, uint32_t height,
+                  bool use_hash_characters) {
     (void)use_hash_characters;
     if (!sixel_initialized) {
         /* Disable sixel scrolling */
@@ -51,8 +55,9 @@ void render_sixel(const uint8_t *buffer, uint32_t width, uint32_t height, bool u
     const size_t data_size = (size_t)width * height * 4;
 
     if (!sixel_out) {
-        if (sixel_output_new(&sixel_out, sixel_write_cb, NULL, NULL) != SIXEL_OK)
+        if (sixel_output_new(&sixel_out, sixel_write_cb, NULL, NULL) != SIXEL_OK) {
             return;
+        }
     }
 
     if (sixel_pixels_cap < data_size) {
@@ -62,10 +67,12 @@ void render_sixel(const uint8_t *buffer, uint32_t width, uint32_t height, bool u
     }
     memcpy(sixel_pixels, buffer, data_size);
 
-    if (sixel_dith)
+    if (sixel_dith) {
         sixel_dither_unref(sixel_dith);
-    if (sixel_dither_new(&sixel_dith, 256, NULL) != SIXEL_OK)
+    }
+    if (sixel_dither_new(&sixel_dith, 256, NULL) != SIXEL_OK) {
         return;
+    }
 
     sixel_dither_initialize(sixel_dith, sixel_pixels, width, height, SIXEL_PIXELFORMAT_RGBA8888,
                             SIXEL_LARGE_NORM, SIXEL_REP_CENTER_BOX, SIXEL_QUALITY_LOW);
@@ -78,12 +85,14 @@ void render_sixel(const uint8_t *buffer, uint32_t width, uint32_t height, bool u
 }
 
 bool detect_sixel_support(void) {
-    if (!dcat_isatty(STDOUT_FILENO) || !dcat_isatty(STDIN_FILENO))
+    if (!dcat_isatty(STDOUT_FILENO) || !dcat_isatty(STDIN_FILENO)) {
         return false;
+    }
 
     TermiosState ts;
-    if (!terminal_begin_query_mode(&ts))
+    if (!terminal_begin_query_mode(&ts)) {
         return false;
+    }
 
     // XTSMGRAPHICS query: read sixel geometry (item 2).
     // Response: \x1b[?2;Ps2;...S — Ps2=0 means no error (sixel supported).
@@ -98,8 +107,9 @@ bool detect_sixel_support(void) {
         buffer[r] = '\0';
         char *p = strstr(buffer, "\x1b[?2;");
         char *endptr;
-        if (p && strtol(p + 5, &endptr, 10) == 0 && endptr != (p + 5))
+        if (p && strtol(p + 5, &endptr, 10) == 0 && endptr != (p + 5)) {
             found = true;
+        }
     }
 
     terminal_end_query_mode(&ts);

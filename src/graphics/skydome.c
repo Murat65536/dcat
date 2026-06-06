@@ -11,7 +11,7 @@ void generate_skydome(Mesh *mesh, float radius, int segments, int rings) {
         const float ring_radius = radius * sinf(phi);
 
         for (int seg = 0; seg <= segments; seg++) {
-            const float theta = 2.0f * GLM_PI * (float)seg / (float)segments;
+            const float theta = 2.0F * GLM_PI * (float)seg / (float)segments;
             const float x = ring_radius * cosf(theta);
             const float z = ring_radius * sinf(theta);
 
@@ -22,8 +22,8 @@ void generate_skydome(Mesh *mesh, float radius, int segments, int rings) {
             vertex.position[2] = z;
 
             // Inverted normals (pointing inward)
-            const float len = sqrtf(x * x + y * y + z * z);
-            if (len > 0.0001f) {
+            const float len = sqrtf((x * x) + (y * y) + (z * z));
+            if (len > 0.0001F) {
                 vertex.normal[0] = -x / len;
                 vertex.normal[1] = -y / len;
                 vertex.normal[2] = -z / len;
@@ -34,8 +34,8 @@ void generate_skydome(Mesh *mesh, float radius, int segments, int rings) {
             vertex.texcoord[1] = (float)ring / (float)rings;
 
             // Default tangent space
-            vertex.tangent[0] = 1.0f;
-            vertex.bitangent[1] = 1.0f;
+            vertex.tangent[0] = 1.0F;
+            vertex.bitangent[1] = 1.0F;
 
             // No bones
             vertex.bone_ids[0] = -1;
@@ -50,7 +50,7 @@ void generate_skydome(Mesh *mesh, float radius, int segments, int rings) {
     // Generate indices (inverted winding for inside rendering)
     for (int ring = 0; ring < rings; ring++) {
         for (int seg = 0; seg < segments; seg++) {
-            const uint32_t current = ring * (segments + 1) + seg;
+            const uint32_t current = (ring * (segments + 1)) + seg;
             const uint32_t next = current + segments + 1;
 
             // Triangle 1 (inverted winding)
