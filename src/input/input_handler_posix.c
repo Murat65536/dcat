@@ -1,8 +1,8 @@
-#include "input_handler.h"
 #include "../core/signals.h"
+#include "input_handler.h"
 #include "platform/io.h"
-#include <string.h>
 #include <poll.h>
+#include <string.h>
 
 void *input_thread_func(void *arg) {
     InputThreadData *data = (InputThreadData *)arg;

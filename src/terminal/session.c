@@ -1,6 +1,6 @@
 #include "terminal/session.h"
-#include "terminal/terminal.h"
 #include "core/signals.h"
+#include "terminal/terminal.h"
 
 void terminal_session_begin(TerminalSession *session, const bool mouse_orbit) {
     session->active = true;

@@ -133,7 +133,7 @@ bool select_physical_device(VulkanRenderer *r) {
 }
 
 bool create_logical_device(VulkanRenderer *r) {
-    float queue_priority = 1.0f;
+    float queue_priority = 1.0F;
     VkDeviceQueueCreateInfo queue_create_info = {.sType =
                                                      VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
     queue_create_info.queueFamilyIndex = r->graphics_queue_family;

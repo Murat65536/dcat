@@ -27,9 +27,7 @@ char *read_shader_file(VulkanRenderer *r, const char *filename, size_t *out_size
     const char *search_paths[] = {
         "", // Will be replaced with exe_dir/shaders/
         "", // Will be replaced with exe_dir
-        "./shaders/",
-        "../share/dcat/shaders/",
-        SHADER_INSTALL_DIR "/",
+        "./shaders/", "../share/dcat/shaders/", SHADER_INSTALL_DIR "/",
     };
 #else
     const char *search_paths[] = {"", // Will be replaced with exe_dir/shaders/

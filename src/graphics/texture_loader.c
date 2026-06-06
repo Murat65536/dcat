@@ -2,6 +2,7 @@
 #include "skydome.h"
 #include <assimp/cimport.h>
 #include <assimp/scene.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -32,7 +33,8 @@ bool load_diffuse_texture(const char *model_path, const char *texture_arg,
 
         char *endptr;
         const long tex_index = strtol(final_path + 1, &endptr, 10);
-        if (endptr == (final_path + 1) || *endptr != '\0' || tex_index < 0 || tex_index >= (long)scene->mNumTextures) {
+        if (endptr == (final_path + 1) || *endptr != '\0' || tex_index < 0 ||
+            tex_index >= (long)scene->mNumTextures) {
             texture_init_default(out_texture);
             aiReleaseImport(scene);
             return true;
@@ -45,17 +47,17 @@ bool load_diffuse_texture(const char *model_path, const char *texture_arg,
         } else {
             out_texture->width = embedded_tex->mWidth;
             out_texture->height = embedded_tex->mHeight;
-            out_texture->data_size = embedded_tex->mWidth * embedded_tex->mHeight * 4;
+            out_texture->data_size = (size_t)(embedded_tex->mWidth * embedded_tex->mHeight * 4);
             out_texture->data = malloc(out_texture->data_size);
 
             if (!out_texture->data) {
                 texture_init_default(out_texture);
             } else {
                 for (unsigned int i = 0; i < embedded_tex->mWidth * embedded_tex->mHeight; i++) {
-                    out_texture->data[i * 4 + 0] = embedded_tex->pcData[i].r;
-                    out_texture->data[i * 4 + 1] = embedded_tex->pcData[i].g;
-                    out_texture->data[i * 4 + 2] = embedded_tex->pcData[i].b;
-                    out_texture->data[i * 4 + 3] = embedded_tex->pcData[i].a;
+                    out_texture->data[(i * 4) + 0] = embedded_tex->pcData[i].r;
+                    out_texture->data[(i * 4) + 1] = embedded_tex->pcData[i].g;
+                    out_texture->data[(i * 4) + 2] = embedded_tex->pcData[i].b;
+                    out_texture->data[(i * 4) + 3] = embedded_tex->pcData[i].a;
                 }
                 texture_update_transparency(out_texture);
             }
@@ -101,7 +103,7 @@ bool load_skydome(const char *skydome_path, Mesh *skydome_mesh, Texture *skydome
         return false;
     }
 
-    generate_skydome(skydome_mesh, 100.0f, 32, 16);
+    generate_skydome(skydome_mesh, 100.0F, 32, 16);
 
     if (!texture_from_file(skydome_texture, skydome_path)) {
         fprintf(stderr, "Warning: Failed to load skydome texture\n");

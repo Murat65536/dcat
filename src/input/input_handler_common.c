@@ -1,5 +1,5 @@
-#include "input_handler.h"
 #include "../core/signals.h"
+#include "input_handler.h"
 
 // Kitty keyboard protocol key codes for modifier keys
 #define KITTY_LEFT_SHIFT 57441
@@ -65,8 +65,9 @@ void handle_key(const InputThreadData *data, const int key_code, const int modif
     }
 
     // Discrete actions on press only
-    if (event_type != 1)
+    if (event_type != 1) {
         return;
+    }
 
     if (key_code == 'q') {
         signals_request_quit();
@@ -75,23 +76,23 @@ void handle_key(const InputThreadData *data, const int key_code, const int modif
 
     if (key_code == 'm') {
         const bool current = vulkan_renderer_get_wireframe_mode(data->renderer);
-        vulkan_renderer_set_wireframe_mode(data->renderer, !current);
+        vulkan_renderer_set_wireframe_mode(data->renderer, (!current) != 0);
     }
 
     // Orbit camera controls
     if (!data->fps_controls) {
         switch (key_code) {
         case 'a':
-            camera_orbit(data->camera, ROTATION_AMOUNT, 0.0f);
+            camera_orbit(data->camera, ROTATION_AMOUNT, 0.0F);
             break;
         case 'd':
-            camera_orbit(data->camera, -ROTATION_AMOUNT, 0.0f);
+            camera_orbit(data->camera, -ROTATION_AMOUNT, 0.0F);
             break;
         case 'w':
-            camera_orbit(data->camera, 0.0f, -ROTATION_AMOUNT);
+            camera_orbit(data->camera, 0.0F, -ROTATION_AMOUNT);
             break;
         case 's':
-            camera_orbit(data->camera, 0.0f, ROTATION_AMOUNT);
+            camera_orbit(data->camera, 0.0F, ROTATION_AMOUNT);
             break;
         case 'e':
             camera_zoom(data->camera, ZOOM_AMOUNT);
@@ -109,18 +110,20 @@ void handle_key(const InputThreadData *data, const int key_code, const int modif
         switch (key_code) {
         case '1':
             data->anim_state->current_animation_index--;
-            if (data->anim_state->current_animation_index < 0)
+            if (data->anim_state->current_animation_index < 0) {
                 data->anim_state->current_animation_index = (int)data->mesh->animations.count - 1;
-            data->anim_state->current_time = 0.0f;
+            }
+            data->anim_state->current_time = 0.0F;
             break;
         case '2':
             data->anim_state->current_animation_index++;
-            if (data->anim_state->current_animation_index >= (int)data->mesh->animations.count)
+            if (data->anim_state->current_animation_index >= (int)data->mesh->animations.count) {
                 data->anim_state->current_animation_index = 0;
-            data->anim_state->current_time = 0.0f;
+            }
+            data->anim_state->current_time = 0.0F;
             break;
         case 'p':
-            data->anim_state->playing = !data->anim_state->playing;
+            data->anim_state->playing = ((!data->anim_state->playing) != 0);
             break;
         default:
             break;

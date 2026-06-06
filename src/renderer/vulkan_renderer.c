@@ -5,6 +5,7 @@
 #include "vk_resources.h"
 #include "vk_upload.h"
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -80,7 +81,8 @@ static bool wait_for_in_flight_frames(VulkanRenderer *r, const char *detail) {
         return true;
     }
 
-    VkResult result = vkWaitForFences(r->device, pending_count, pending_fences, VK_TRUE, UINT64_MAX);
+    VkResult result =
+        vkWaitForFences(r->device, pending_count, pending_fences, VK_TRUE, UINT64_MAX);
     if (result != VK_SUCCESS) {
         vulkan_renderer_set_error(r, result, "vkWaitForFences", "%s", detail);
         return false;
@@ -90,8 +92,9 @@ static bool wait_for_in_flight_frames(VulkanRenderer *r, const char *detail) {
 }
 
 void vulkan_renderer_clear_error(VulkanRenderer *r) {
-    if (!r)
+    if (!r) {
         return;
+    }
 
     r->last_error_code = VK_SUCCESS;
     r->last_error_message[0] = '\0';
@@ -125,58 +128,76 @@ VkResult vulkan_renderer_get_last_error_code(const VulkanRenderer *r) {
 
 VulkanRenderer *vulkan_renderer_create(uint32_t width, uint32_t height) {
     VulkanRenderer *r = calloc(1, sizeof(VulkanRenderer));
-    if (!r)
+    if (!r) {
         return NULL;
+    }
 
     r->width = width;
     r->height = height;
     r->descriptor_pool_material_capacity = INITIAL_MATERIAL_DESCRIPTOR_CAPACITY;
-    glm_vec3_normalize_to((vec3){0.0f, -1.0f, -0.5f}, r->normalized_light_dir);
+    glm_vec3_normalize_to((vec3){0.0F, -1.0F, -0.5F}, r->normalized_light_dir);
 
     return r;
 }
 
 void vulkan_renderer_destroy(VulkanRenderer *r) {
-    if (!r)
+    if (!r) {
         return;
+    }
     cleanup(r);
     free(r);
 }
 
 bool vulkan_renderer_initialize(VulkanRenderer *r) {
     vulkan_renderer_clear_error(r);
-    if (!create_instance(r))
+    if (!create_instance(r)) {
         return false;
-    if (!select_physical_device(r))
+    }
+    if (!select_physical_device(r)) {
         return false;
-    if (!create_logical_device(r))
+    }
+    if (!create_logical_device(r)) {
         return false;
-    if (!create_command_pool(r))
+    }
+    if (!create_command_pool(r)) {
         return false;
-    if (!create_descriptor_pool(r))
+    }
+    if (!create_descriptor_pool(r)) {
         return false;
-    if (!create_descriptor_set_layout(r))
+    }
+    if (!create_descriptor_set_layout(r)) {
         return false;
-    if (!create_pipeline_layout(r))
+    }
+    if (!create_pipeline_layout(r)) {
         return false;
-    if (!create_render_pass(r))
+    }
+    if (!create_render_pass(r)) {
         return false;
-    if (!create_graphics_pipeline(r))
+    }
+    if (!create_graphics_pipeline(r)) {
         return false;
-    if (!create_render_targets(r))
+    }
+    if (!create_render_targets(r)) {
         return false;
-    if (!create_framebuffer(r))
+    }
+    if (!create_framebuffer(r)) {
         return false;
-    if (!create_staging_buffers(r))
+    }
+    if (!create_staging_buffers(r)) {
         return false;
-    if (!create_uniform_buffers(r))
+    }
+    if (!create_uniform_buffers(r)) {
         return false;
-    if (!create_sampler(r))
+    }
+    if (!create_sampler(r)) {
         return false;
-    if (!create_command_buffers(r))
+    }
+    if (!create_command_buffers(r)) {
         return false;
-    if (!create_sync_objects(r))
+    }
+    if (!create_sync_objects(r)) {
         return false;
+    }
 
     create_skydome_pipeline(r);
 
@@ -332,8 +353,8 @@ static uint32_t next_material_descriptor_capacity(uint32_t current_capacity,
 
 static bool rebuild_material_descriptor_pool(VulkanRenderer *r, uint32_t material_count,
                                              uint32_t material_capacity) {
-    if (!wait_for_in_flight_frames(r,
-                                   "Failed to wait for in-flight frames before growing descriptors")) {
+    if (!wait_for_in_flight_frames(
+            r, "Failed to wait for in-flight frames before growing descriptors")) {
         return false;
     }
 
@@ -365,7 +386,7 @@ static bool rebuild_material_descriptor_pool(VulkanRenderer *r, uint32_t materia
         for (uint32_t m = 0; m < material_count; m++) {
             if (!allocate_descriptor_sets_from_pool(
                     r, new_pool, r->descriptor_set_layout,
-                    &new_material_sets[m * MAX_FRAMES_IN_FLIGHT],
+                    &new_material_sets[(size_t)(m * MAX_FRAMES_IN_FLIGHT)],
                     "Failed to allocate material descriptor sets")) {
                 free(new_material_sets);
                 vkDestroyDescriptorPool(r->device, new_pool, NULL);
@@ -386,7 +407,8 @@ static bool rebuild_material_descriptor_pool(VulkanRenderer *r, uint32_t materia
     }
 
     for (uint32_t m = 0; m < material_count; m++) {
-        memcpy(r->material_gpu[m].descriptor_sets, &new_material_sets[m * MAX_FRAMES_IN_FLIGHT],
+        memcpy(r->material_gpu[m].descriptor_sets,
+               &new_material_sets[(size_t)(m * MAX_FRAMES_IN_FLIGHT)],
                sizeof(r->material_gpu[m].descriptor_sets));
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             r->material_gpu[m].descriptor_sets_dirty[i] = true;
@@ -403,8 +425,9 @@ static bool rebuild_material_descriptor_pool(VulkanRenderer *r, uint32_t materia
 
 // Ensure per-material GPU resources are allocated for the given material count
 static bool ensure_material_gpu(VulkanRenderer *r, const uint32_t material_count) {
-    if (r->material_gpu_count >= material_count)
+    if (r->material_gpu_count >= material_count) {
         return true;
+    }
 
     const uint32_t old_material_count = r->material_gpu_count;
 
@@ -464,9 +487,9 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
         .diffuse = NULL,
         .normal = NULL,
         .alpha_mode = ALPHA_MODE_OPAQUE,
-        .specular_strength = 0.35f,
-        .shininess = 32.0f,
-        .base_color = {1.0f, 1.0f, 1.0f, 1.0f},
+        .specular_strength = 0.35F,
+        .shininess = 32.0F,
+        .base_color = {1.0F, 1.0F, 1.0F, 1.0F},
         .use_diffuse_alpha_as_luster = false,
     };
 
@@ -622,34 +645,34 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
     for (uint32_t m = 0; m < material_count; m++) {
         FragmentUniforms frag_uniforms = {0};
         glm_vec3_copy(r->normalized_light_dir, frag_uniforms.light_dir);
-        frag_uniforms.enable_lighting = enable_lighting ? 1 : 0;
+        frag_uniforms.enable_lighting = (int)enable_lighting ? 1 : 0;
         glm_vec3_copy((float *)camera_pos, frag_uniforms.camera_pos);
-        frag_uniforms.use_triplanar_mapping = use_triplanar_mapping ? 1 : 0;
-        frag_uniforms.alpha_cutoff = 0.5f;
+        frag_uniforms.use_triplanar_mapping = (int)use_triplanar_mapping ? 1 : 0;
+        frag_uniforms.alpha_cutoff = 0.5F;
         frag_uniforms.specular_strength = materials[m].specular_strength;
         frag_uniforms.shininess = materials[m].shininess;
         frag_uniforms.use_diffuse_alpha_as_luster =
-            materials[m].use_diffuse_alpha_as_luster ? 1 : 0;
+            (int)materials[m].use_diffuse_alpha_as_luster ? 1 : 0;
 
         // Base/diffuse color factor
         memcpy(frag_uniforms.base_color, materials[m].base_color, sizeof(float) * 4);
 
         // Hemisphere ambient lighting
-        glm_vec4_copy((vec4){0.50f, 0.50f, 0.52f, 0.0f}, frag_uniforms.hemisphere_sky_color);
-        glm_vec4_copy((vec4){0.18f, 0.16f, 0.14f, 0.0f}, frag_uniforms.hemisphere_ground_color);
+        glm_vec4_copy((vec4){0.50F, 0.50F, 0.52F, 0.0F}, frag_uniforms.hemisphere_sky_color);
+        glm_vec4_copy((vec4){0.18F, 0.16F, 0.14F, 0.0F}, frag_uniforms.hemisphere_ground_color);
 
         // Fill/rim are derived from key light direction so camera-linked key
         // lighting remains visually obvious while orbiting.
-        vec3 fill_dir = {-frag_uniforms.light_dir[0], -frag_uniforms.light_dir[1] - 0.2f,
+        vec3 fill_dir = {-frag_uniforms.light_dir[0], -frag_uniforms.light_dir[1] - 0.2F,
                          -frag_uniforms.light_dir[2]};
         glm_vec3_normalize(fill_dir);
-        glm_vec4_copy((vec4){fill_dir[0], fill_dir[1], fill_dir[2], 0.18f},
+        glm_vec4_copy((vec4){fill_dir[0], fill_dir[1], fill_dir[2], 0.18F},
                       frag_uniforms.fill_light_dir);
 
         vec3 rim_dir = {-frag_uniforms.light_dir[0], -frag_uniforms.light_dir[1],
                         -frag_uniforms.light_dir[2]};
         glm_vec3_normalize(rim_dir);
-        glm_vec4_copy((vec4){rim_dir[0], rim_dir[1], rim_dir[2], 0.22f},
+        glm_vec4_copy((vec4){rim_dir[0], rim_dir[1], rim_dir[2], 0.22F},
                       frag_uniforms.rim_light_dir);
 
         switch (materials[m].alpha_mode) {
@@ -684,7 +707,7 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
         return false;
     }
 
-    VkClearValue clear_values[2] = {{{{0, 0, 0, 1}}}, {{{0.0f, 0}}}};
+    VkClearValue clear_values[2] = {{{{0, 0, 0, 1}}}, {{{0.0F, 0}}}};
 
     VkRenderPassBeginInfo rp_info = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rp_info.renderPass = r->render_pass;
@@ -696,7 +719,7 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
 
     vkCmdBeginRenderPass(cmd, &rp_info, VK_SUBPASS_CONTENTS_INLINE);
 
-    VkViewport viewport = {0, 0, (float)r->width, (float)r->height, 1.0f, 0.0f};
+    VkViewport viewport = {0, 0, (float)r->width, (float)r->height, 1.0F, 0.0F};
     VkRect2D scissor = {{0, 0}, {r->width, r->height}};
     vkCmdSetViewport(cmd, 0, 1, &viewport);
     vkCmdSetScissor(cmd, 0, 1, &scissor);
@@ -711,7 +734,7 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
 
         mat4 sky_view;
         glm_mat4_copy(*view, sky_view);
-        sky_view[3][0] = sky_view[3][1] = sky_view[3][2] = 0.0f;
+        sky_view[3][0] = sky_view[3][1] = sky_view[3][2] = 0.0F;
 
         mat4 sky_mvp;
         glm_mat4_mul(*projection, sky_view, sky_mvp);
@@ -727,7 +750,7 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
 
     // Render main model
     VkPipeline active_pipeline =
-        get_wireframe_mode(&r->wireframe_mode) ? r->wireframe_pipeline : r->graphics_pipeline;
+        (int)get_wireframe_mode(&r->wireframe_mode) ? r->wireframe_pipeline : r->graphics_pipeline;
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline);
     vkCmdPushConstants(cmd, r->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                        sizeof(PushConstants), &push_constants);
@@ -741,8 +764,9 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
         for (size_t i = 0; i < mesh->submeshes.count; i++) {
             const SubMesh *sm = &mesh->submeshes.data[i];
             uint32_t mat_idx = sm->material_index < material_count ? sm->material_index : 0;
-            if (materials[mat_idx].alpha_mode == ALPHA_MODE_BLEND)
+            if (materials[mat_idx].alpha_mode == ALPHA_MODE_BLEND) {
                 continue;
+            }
 
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->pipeline_layout, 0, 1,
                                     &r->material_gpu[mat_idx].descriptor_sets[r->current_frame], 0,
@@ -754,8 +778,9 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
         for (size_t i = 0; i < mesh->submeshes.count; i++) {
             const SubMesh *sm = &mesh->submeshes.data[i];
             uint32_t mat_idx = sm->material_index < material_count ? sm->material_index : 0;
-            if (materials[mat_idx].alpha_mode != ALPHA_MODE_BLEND)
+            if (materials[mat_idx].alpha_mode != ALPHA_MODE_BLEND) {
                 continue;
+            }
 
             if (!has_blend) {
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r->blend_pipeline);
