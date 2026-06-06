@@ -17,7 +17,8 @@
 
 #ifdef _WIN32
 
-void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height, bool use_hash_characters) {
+void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height,
+                      bool use_hash_characters) {
     (void)buffer;
     (void)width;
     (void)height;
@@ -69,7 +70,8 @@ static void kitty_cleanup(void) {
     }
 }
 
-void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height, bool use_hash_characters) {
+void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height,
+                      bool use_hash_characters) {
     (void)use_hash_characters;
     if (!kitty_initialized) {
         kitty_pid = dcat_getpid();

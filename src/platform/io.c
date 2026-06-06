@@ -8,7 +8,8 @@ int dcat_isatty(const int fd) {
 }
 
 ssize_t dcat_read(const int fd, void *buffer, const size_t size) {
-    const unsigned int chunk_size = size > (size_t)UINT_MAX ? (unsigned int)UINT_MAX : (unsigned int)size;
+    const unsigned int chunk_size =
+        size > (size_t)UINT_MAX ? (unsigned int)UINT_MAX : (unsigned int)size;
     return (ssize_t)_read(fd, buffer, chunk_size);
 }
 

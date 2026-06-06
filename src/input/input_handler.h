@@ -61,4 +61,3 @@ void *input_thread_func(void *arg);
 void handle_key(const InputThreadData *data, int key_code, int modifiers, int event_type);
 
 #endif
-

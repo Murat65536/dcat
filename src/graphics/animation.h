@@ -75,7 +75,7 @@ typedef struct Animation {
     float ticks_per_second;
     BoneAnimationArray bone_animations;
     BoneAnimationMap bone_anim_map; // name -> index in bone_animations
-    int *bone_node_to_anim; // Mapping from BoneNode index to index in bone_animations
+    int *bone_node_to_anim;         // Mapping from BoneNode index to index in bone_animations
 } Animation;
 
 typedef struct AnimationArray {
