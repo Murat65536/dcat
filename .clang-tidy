@@ -3,17 +3,19 @@
 HeaderFilterRegex: 'src/.*'
 
 Checks: >
-  clang-analyzer-*,
-  bugprone-*,
-  performance-*,
-  readability-*,
+  *,
+  -altera-*,
+  -llvmlibc-*,
   -readability-magic-numbers,
+  -cppcoreguidelines-avoid-magic-numbers,
   -readability-identifier-length,
-  -readability-duplicate-include
-
-# readability-duplicate-include is disabled: it treats the libsixel system
-# header <sixel.h> as a duplicate of the local "sixel.h" (same filename) and
-# replaces it with <stddef.h>, which breaks the build.
+  -readability-duplicate-include,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  -hicpp-signed-bitwise,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+  -clang-diagnostic-pragma-pack,
+  -readability-function-cognitive-complexity,
+  -cert-err33-c
 
 WarningsAsErrors: ''
 FormatStyle: file

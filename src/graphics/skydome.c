@@ -11,7 +11,7 @@ void generate_skydome(Mesh *mesh, float radius, int segments, int rings) {
         const float ring_radius = radius * sinf(phi);
 
         for (int seg = 0; seg <= segments; seg++) {
-            const float theta = 2.0F * GLM_PI * (float)seg / (float)segments;
+            const float theta = 2.0F * (float)GLM_PI * (float)seg / (float)segments;
             const float x = ring_radius * cosf(theta);
             const float z = ring_radius * sinf(theta);
 

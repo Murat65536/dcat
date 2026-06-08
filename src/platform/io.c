@@ -8,8 +8,7 @@ int dcat_isatty(const int fd) {
 }
 
 ssize_t dcat_read(const int fd, void *buffer, const size_t size) {
-    const unsigned int chunk_size =
-        size > (size_t)UINT_MAX ? (unsigned int)UINT_MAX : (unsigned int)size;
+    const unsigned int chunk_size = size > UINT_MAX ? UINT_MAX : size;
     return (ssize_t)_read(fd, buffer, chunk_size);
 }
 
@@ -19,8 +18,7 @@ ssize_t dcat_write(const int fd, const void *buffer, const size_t size) {
     size_t total_written = 0;
 
     while (remaining > 0) {
-        const unsigned int chunk_size =
-            remaining > (size_t)UINT_MAX ? (unsigned int)UINT_MAX : (unsigned int)remaining;
+        const unsigned int chunk_size = remaining > UINT_MAX ? UINT_MAX : remaining;
         const int written = _write(fd, cursor, chunk_size);
         if (written <= 0) {
             return total_written > 0 ? (ssize_t)total_written : (ssize_t)written;
