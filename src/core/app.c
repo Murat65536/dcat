@@ -383,15 +383,12 @@ void app_cleanup(AppContext *app) {
     }
 }
 
-bool app_init(AppContext *app, int argc, char *argv[]) {
+bool app_init(AppContext *app, const Args *args, const char *prog_name) {
     memset(app, 0, sizeof(AppContext));
 
-    app->args = parse_args(argc, argv);
-    if (!validate_args(&app->args)) {
-        return false;
-    }
+    app->args = *args;
 
-    if (VIPS_INIT(argv[0])) {
+    if (VIPS_INIT(prog_name)) {
         fprintf(stderr, "Failed to initialize libvips\n");
         return false;
     }

@@ -27,8 +27,16 @@ typedef struct Args {
     bool use_hash_characters;
 } Args;
 
-// Parse command line arguments
-Args parse_args(int argc, char *argv[]);
+// Result of parsing the command line. The caller decides the process exit code,
+// so parse_args never calls exit() itself.
+typedef enum ArgsParseStatus {
+    ARGS_PARSE_OK,    // out is fully populated; proceed
+    ARGS_PARSE_HELP,  // -h/--help was requested; print usage and exit cleanly
+    ARGS_PARSE_ERROR, // a diagnostic was already printed to stderr
+} ArgsParseStatus;
+
+// Parse command line arguments into *out (which is reset to defaults first).
+ArgsParseStatus parse_args(int argc, char *argv[], Args *out);
 
 // Print usage information
 void print_usage(void);

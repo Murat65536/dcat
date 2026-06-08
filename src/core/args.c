@@ -3,34 +3,87 @@
 #include <float.h>
 #include <limits.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 void print_usage(void) {
-    printf("Usage: dcat [OPTION]... [MODEL]\n\n");
-    printf("  -t, --texture PATH         path to the texture file\n");
-    printf("  -n, --normal-map PATH      path to normal image file\n");
-    printf("      --skydome PATH         path to skydome texture file\n");
-    printf("  -W, --width WIDTH          renderer width\n");
-    printf("  -H, --height HEIGHT        renderer height\n");
-    printf("      --camera-distance DIST camera distance from origin\n");
-    printf("      --model-scale SCALE    scale multiplier for the model\n");
-    printf("      --spin SPEED           spin the model at specified speed (rad/s)\n");
-    printf("  -f, --fps FPS              target frames per second\n");
-    printf("      --no-lighting          disable lighting calculations\n");
-    printf("      --keyboard-controls    enable first-person camera controls\n");
-    printf("      --mouse-orbit          enable mouse drag to orbit the model\n");
-    printf("      --mouse-sensitivity S  mouse drag sensitivity\n");
-    printf("  -s, --status-bar           show status bar\n");
-    printf("  -S, --sixel                enable Sixel graphics mode\n");
-    printf("  -K, --kitty                enable Kitty graphics protocol (shared memory)\n");
-    printf("      --kitty-direct         enable Kitty graphics protocol (inline)\n");
-    printf("  -T, --truecolor-characters enable truecolor characters mode\n");
-    printf("  -P, --palette-characters   enable 256-color palette characters mode\n");
-    printf("  -B, --block-characters     enable monochrome block characters mode\n");
-    printf("      --hash-characters      use # for character modes (halves displayed pixels)\n");
-    printf("  -h, --help                 display this help and exit\n\n");
+    printf("Usage: dcat [OPTION]... [MODEL]\n\n"
+           "  -t, --texture PATH         path to the texture file\n"
+           "  -n, --normal-map PATH      path to normal image file\n"
+           "      --skydome PATH         path to skydome texture file\n"
+           "  -W, --width WIDTH          renderer width\n"
+           "  -H, --height HEIGHT        renderer height\n"
+           "      --camera-distance DIST camera distance from origin\n"
+           "      --model-scale SCALE    scale multiplier for the model\n"
+           "      --spin SPEED           spin the model at specified speed (rad/s)\n"
+           "  -f, --fps FPS              target frames per second\n"
+           "      --no-lighting          disable lighting calculations\n"
+           "      --keyboard-controls    enable first-person camera controls\n"
+           "      --mouse-orbit          enable mouse drag to orbit the model\n"
+           "      --mouse-sensitivity S  mouse drag sensitivity\n"
+           "  -s, --status-bar           show status bar\n"
+           "  -S, --sixel                enable Sixel graphics mode\n"
+           "  -K, --kitty                enable Kitty graphics protocol (shared memory)\n"
+           "      --kitty-direct         enable Kitty graphics protocol (inline)\n"
+           "  -T, --truecolor-characters enable truecolor characters mode\n"
+           "  -P, --palette-characters   enable 256-color palette characters mode\n"
+           "  -B, --block-characters     enable monochrome block characters mode\n"
+           "      --hash-characters      use # for character modes (halves displayed pixels)\n"
+           "  -h, --help                 display this help and exit\n\n");
+}
+
+// Kind of value an option consumes. OPT_FLAG sets a bool and takes no value;
+// the others read the next argv entry and store it at the given Args offset.
+typedef enum OptType {
+    OPT_FLAG,
+    OPT_STRING,
+    OPT_INT,
+    OPT_FLOAT,
+} OptType;
+
+typedef struct OptionSpec {
+    const char *short_name; // e.g. "-t", or NULL if the option is long-only
+    const char *long_name;  // e.g. "--texture"
+    OptType type;
+    size_t offset; // offsetof(Args, field) for the destination member
+} OptionSpec;
+
+static const OptionSpec OPTIONS[] = {
+    {"-t", "--texture", OPT_STRING, offsetof(Args, texture_path)},
+    {"-n", "--normal-map", OPT_STRING, offsetof(Args, normal_map_path)},
+    {NULL, "--skydome", OPT_STRING, offsetof(Args, skydome_path)},
+    {"-W", "--width", OPT_INT, offsetof(Args, width)},
+    {"-H", "--height", OPT_INT, offsetof(Args, height)},
+    {NULL, "--camera-distance", OPT_FLOAT, offsetof(Args, camera_distance)},
+    {NULL, "--model-scale", OPT_FLOAT, offsetof(Args, model_scale)},
+    {NULL, "--spin", OPT_FLOAT, offsetof(Args, spin_speed)},
+    {"-f", "--fps", OPT_INT, offsetof(Args, target_fps)},
+    {NULL, "--no-lighting", OPT_FLAG, offsetof(Args, no_lighting)},
+    {NULL, "--keyboard-controls", OPT_FLAG, offsetof(Args, fps_controls)},
+    {NULL, "--mouse-orbit", OPT_FLAG, offsetof(Args, mouse_orbit)},
+    {NULL, "--mouse-sensitivity", OPT_FLOAT, offsetof(Args, mouse_sensitivity)},
+    {"-s", "--status-bar", OPT_FLAG, offsetof(Args, show_status_bar)},
+    {"-S", "--sixel", OPT_FLAG, offsetof(Args, use_sixel)},
+    {"-K", "--kitty", OPT_FLAG, offsetof(Args, use_kitty_shm)},
+    {NULL, "--kitty-direct", OPT_FLAG, offsetof(Args, use_kitty)},
+    {"-T", "--truecolor-characters", OPT_FLAG, offsetof(Args, use_truecolor_characters)},
+    {"-P", "--palette-characters", OPT_FLAG, offsetof(Args, use_palette_characters)},
+    {"-B", "--block-characters", OPT_FLAG, offsetof(Args, use_block_characters)},
+    {NULL, "--hash-characters", OPT_FLAG, offsetof(Args, use_hash_characters)},
+    {"-h", "--help", OPT_FLAG, offsetof(Args, show_help)},
+};
+
+static const OptionSpec *find_option(const char *arg) {
+    for (size_t i = 0; i < sizeof(OPTIONS) / sizeof(OPTIONS[0]); i++) {
+        const OptionSpec *spec = &OPTIONS[i];
+        if ((spec->short_name != NULL && strcmp(arg, spec->short_name) == 0) ||
+            strcmp(arg, spec->long_name) == 0) {
+            return spec;
+        }
+    }
+    return NULL;
 }
 
 static char *next_option_value(const char *option, const int argc, char *argv[], int *index) {
@@ -74,118 +127,64 @@ static bool parse_float_arg(const char *option, const char *value, float *out) {
     return true;
 }
 
-Args parse_args(const int argc, char *argv[]) {
-    Args args = {0};
-    args.width = -1;
-    args.height = -1;
-    args.camera_distance = -1.0F;
-    args.model_scale = 1.0F;
-    args.mouse_sensitivity = 0.02F;
-    args.target_fps = 60;
+// Store a parsed value into the Args member identified by spec->offset. The
+// offset is from offsetof, so the destination is correctly aligned for its type.
+static bool store_option_value(const OptionSpec *spec, const char *arg, char *value, Args *out) {
+    char *field = (char *)out + spec->offset;
+    switch (spec->type) {
+    case OPT_STRING:
+        *(char **)field = value;
+        return true;
+    case OPT_INT:
+        return parse_int_arg(arg, value, (int *)field);
+    case OPT_FLOAT:
+        return parse_float_arg(arg, value, (float *)field);
+    case OPT_FLAG:
+        return true; // flags carry no value; handled by the caller
+    }
+    return false;
+}
+
+ArgsParseStatus parse_args(const int argc, char *argv[], Args *out) {
+    *out = (Args){0};
+    out->width = -1;
+    out->height = -1;
+    out->camera_distance = -1.0F;
+    out->model_scale = 1.0F;
+    out->mouse_sensitivity = 0.02F;
+    out->target_fps = 60;
 
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-t") == 0 || strcmp(argv[i], "--texture") == 0) {
-            const char *option = argv[i];
-            char *value = next_option_value(option, argc, argv, &i);
-            if (!value) {
-                exit(1);
-            }
-            args.texture_path = value;
-        } else if (strcmp(argv[i], "-n") == 0 || strcmp(argv[i], "--normal-map") == 0) {
-            const char *option = argv[i];
-            char *value = next_option_value(option, argc, argv, &i);
-            if (!value) {
-                exit(1);
-            }
-            args.normal_map_path = value;
-        } else if (strcmp(argv[i], "--skydome") == 0) {
-            const char *option = argv[i];
-            char *value = next_option_value(option, argc, argv, &i);
-            if (!value) {
-                exit(1);
-            }
-            args.skydome_path = value;
-        } else if (strcmp(argv[i], "-W") == 0 || strcmp(argv[i], "--width") == 0) {
-            const char *option = argv[i];
-            char *value = next_option_value(option, argc, argv, &i);
-            if (!value || !parse_int_arg(option, value, &args.width)) {
-                exit(1);
-            }
-        } else if (strcmp(argv[i], "-H") == 0 || strcmp(argv[i], "--height") == 0) {
-            const char *option = argv[i];
-            char *value = next_option_value(option, argc, argv, &i);
-            if (!value || !parse_int_arg(option, value, &args.height)) {
-                exit(1);
-            }
-        } else if (strcmp(argv[i], "--camera-distance") == 0) {
-            const char *option = argv[i];
-            char *value = next_option_value(option, argc, argv, &i);
-            if (!value || !parse_float_arg(option, value, &args.camera_distance)) {
-                exit(1);
-            }
-        } else if (strcmp(argv[i], "--model-scale") == 0) {
-            const char *option = argv[i];
-            char *value = next_option_value(option, argc, argv, &i);
-            if (!value || !parse_float_arg(option, value, &args.model_scale)) {
-                exit(1);
-            }
-        } else if (strcmp(argv[i], "--spin") == 0) {
-            const char *option = argv[i];
-            char *value = next_option_value(option, argc, argv, &i);
-            if (!value || !parse_float_arg(option, value, &args.spin_speed)) {
-                exit(1);
-            }
-        } else if (strcmp(argv[i], "-f") == 0 || strcmp(argv[i], "--fps") == 0) {
-            const char *option = argv[i];
-            char *value = next_option_value(option, argc, argv, &i);
-            if (!value || !parse_int_arg(option, value, &args.target_fps)) {
-                exit(1);
-            }
-        } else if (strcmp(argv[i], "--no-lighting") == 0) {
-            args.no_lighting = true;
-        } else if (strcmp(argv[i], "--keyboard-controls") == 0) {
-            args.fps_controls = true;
-        } else if (strcmp(argv[i], "--mouse-orbit") == 0) {
-            args.mouse_orbit = true;
-        } else if (strcmp(argv[i], "--mouse-sensitivity") == 0) {
-            const char *option = argv[i];
-            char *value = next_option_value(option, argc, argv, &i);
-            if (!value || !parse_float_arg(option, value, &args.mouse_sensitivity)) {
-                exit(1);
-            }
-        } else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--status-bar") == 0) {
-            args.show_status_bar = true;
-        } else if (strcmp(argv[i], "-S") == 0 || strcmp(argv[i], "--sixel") == 0) {
-            args.use_sixel = true;
-        } else if (strcmp(argv[i], "-K") == 0 || strcmp(argv[i], "--kitty") == 0) {
-            args.use_kitty_shm = true;
-        } else if (strcmp(argv[i], "--kitty-direct") == 0) {
-            args.use_kitty = true;
-        } else if (strcmp(argv[i], "-T") == 0 || strcmp(argv[i], "--truecolor-characters") == 0) {
-            args.use_truecolor_characters = true;
-        } else if (strcmp(argv[i], "-P") == 0 || strcmp(argv[i], "--palette-characters") == 0) {
-            args.use_palette_characters = true;
-        } else if (strcmp(argv[i], "-B") == 0 || strcmp(argv[i], "--block-characters") == 0) {
-            args.use_block_characters = true;
-        } else if (strcmp(argv[i], "--hash-characters") == 0) {
-            args.use_hash_characters = true;
-        } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
-            args.show_help = true;
-        } else if (argv[i][0] != '-') {
-            args.model_path = argv[i];
-        } else {
-            fprintf(stderr, "Unknown option: %s\n", argv[i]);
+        char *arg = argv[i];
+
+        if (arg[0] != '-') {
+            out->model_path = arg;
+            continue;
+        }
+
+        const OptionSpec *spec = find_option(arg);
+        if (spec == NULL) {
+            fprintf(stderr, "Unknown option: %s\n", arg);
             print_usage();
-            exit(1);
+            return ARGS_PARSE_ERROR;
+        }
+
+        if (spec->type == OPT_FLAG) {
+            *(bool *)((char *)out + spec->offset) = true;
+            continue;
+        }
+
+        char *value = next_option_value(arg, argc, argv, &i);
+        if (value == NULL || !store_option_value(spec, arg, value, out)) {
+            return ARGS_PARSE_ERROR;
         }
     }
 
-    if (args.show_help) {
-        print_usage();
-        exit(0);
+    if (out->show_help) {
+        return ARGS_PARSE_HELP;
     }
 
-    return args;
+    return ARGS_PARSE_OK;
 }
 
 bool validate_args(const Args *args) {
