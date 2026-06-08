@@ -1,6 +1,4 @@
-#ifndef DCAT_TEXTURE_LOADER_H
-#define DCAT_TEXTURE_LOADER_H
-
+#pragma once
 #include "model.h"
 #include "texture.h"
 
@@ -14,5 +12,3 @@ bool load_normal_texture(const char *normal_arg, const MaterialInfo *material_in
 
 // Load skydome texture and mesh
 bool load_skydome(const char *skydome_path, Mesh *skydome_mesh, Texture *skydome_texture);
-
-#endif

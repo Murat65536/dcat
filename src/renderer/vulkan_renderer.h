@@ -1,6 +1,4 @@
-#ifndef DCAT_VULKAN_RENDERER_H
-#define DCAT_VULKAN_RENDERER_H
-
+#pragma once
 #include <cglm/cglm.h>
 #include <stdatomic.h>
 #include <stdbool.h>
@@ -219,5 +217,3 @@ bool vulkan_renderer_set_skydome(VulkanRenderer *r, const Mesh *mesh, const Text
 
 // Wait for idle
 void vulkan_renderer_wait_idle(const VulkanRenderer *r);
-
-#endif // DCAT_VULKAN_RENDERER_H

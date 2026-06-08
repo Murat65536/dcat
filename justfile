@@ -1,3 +1,7 @@
+# Recipes use POSIX tools (rm, xargs, git ls-files -z). On Windows, point just at
+# msys2's sh instead of the missing system `sh`; Linux/mac keep the default sh.
+set windows-shell := ["C:/msys64/usr/bin/sh.exe", "-cu"]
+
 builddir := "build"
 
 # clang-tidy must match the build toolchain (msys2 clang64), not Program Files
@@ -22,8 +26,17 @@ setup-debug:
 
 # Configure a debug build instrumented with AddressSanitizer + UBSan.
 # Uses Meson's built-in b_sanitize; b_lundef=false keeps sanitizer runtime linking happy.
+# NOTE: ASan is unusable on native Windows here -- the prebuilt libvips/glib DLL
+# allocates pointers ASan never tracks, so vips_init aborts with an unsuppressible
+# bad-malloc_usable_size. Use this on Linux; on Windows use `just ubsan`.
 asan:
     meson setup {{builddir}} --buildtype=debug -Db_sanitize=address,undefined -Db_lundef=false --reconfigure
+    meson compile -C {{builddir}}
+
+# Configure a debug build instrumented with UBSan only. Works on native Windows,
+# where ASan cannot be used (see the asan recipe note).
+ubsan:
+    meson setup {{builddir}} --buildtype=debug -Db_sanitize=undefined -Db_lundef=false --reconfigure
     meson compile -C {{builddir}}
 
 # Build whatever is currently configured.

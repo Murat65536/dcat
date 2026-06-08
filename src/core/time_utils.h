@@ -1,6 +1,4 @@
-#ifndef DCAT_TIME_UTILS_H
-#define DCAT_TIME_UTILS_H
-
+#pragma once
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -25,5 +23,3 @@ static double get_time_seconds(void) {
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
 #endif
 }
-
-#endif // DCAT_TIME_UTILS_H

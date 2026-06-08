@@ -1,6 +1,4 @@
-#ifndef DCAT_ANIMATION_H
-#define DCAT_ANIMATION_H
-
+#pragma once
 #include "../core/types.h"
 #include <cglm/cglm.h>
 
@@ -166,5 +164,3 @@ void bone_anim_map_insert(BoneAnimationMap *map, const char *name, int index);
 void skeleton_free(Skeleton *skeleton);
 void animation_free(Animation *animation);
 void animation_array_free(AnimationArray *arr);
-
-#endif // DCAT_ANIMATION_H

@@ -1,6 +1,4 @@
-#ifndef DCAT_TEXTURE_H
-#define DCAT_TEXTURE_H
-
+#pragma once
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -30,5 +28,3 @@ void texture_free(Texture *tex);
 
 // Recompute has_transparency from RGBA pixel data.
 void texture_update_transparency(Texture *tex);
-
-#endif // DCAT_TEXTURE_H

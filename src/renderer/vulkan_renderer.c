@@ -5,7 +5,6 @@
 #include "vk_resources.h"
 #include "vk_upload.h"
 #include <stdarg.h>
-#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -605,37 +604,6 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
     } else {
         for (uint32_t i = 0; i < MAX_BONES; i++) {
             glm_mat4_identity(uniforms.bone_matrices[i]);
-        }
-    }
-
-    // TEMP DIAGNOSTIC: dump bone matrix state once so Windows vs WSL can be compared.
-    {
-        static bool dumped = false;
-        if (!dumped && uniforms.has_animation) {
-            dumped = true;
-            uint32_t num_bones = bone_count < MAX_BONES ? bone_count : MAX_BONES;
-            int bad = 0;
-            for (uint32_t b = 0; b < num_bones; b++) {
-                for (int e = 0; e < 16; e++) {
-                    float v = ((const float *)uniforms.bone_matrices[b])[e];
-                    if (isnan(v) || isinf(v)) {
-                        bad++;
-                        break;
-                    }
-                }
-            }
-            const float *m = (const float *)uniforms.bone_matrices[num_bones > 1 ? 1 : 0];
-            FILE *log = fopen("dcat_bones.log", "w");
-            if (log) {
-                fprintf(log,
-                        "[dcat bones] count=%u (MAX=%d) nan/inf_matrices=%d\n"
-                        "  matrix[%d] = [%.4f %.4f %.4f %.4f | %.4f %.4f %.4f %.4f | "
-                        "%.4f %.4f %.4f %.4f | %.4f %.4f %.4f %.4f]\n",
-                        bone_count, MAX_BONES, bad, num_bones > 1 ? 1 : 0, m[0], m[1], m[2], m[3],
-                        m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], m[12], m[13], m[14],
-                        m[15]);
-                fclose(log);
-            }
         }
     }
 

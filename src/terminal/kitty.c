@@ -1,5 +1,4 @@
 #include "kitty.h"
-#include "platform/io.h"
 #include "terminal.h"
 #include <stdbool.h>
 #include <stdio.h>

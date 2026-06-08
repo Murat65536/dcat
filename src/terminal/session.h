@@ -1,6 +1,4 @@
-#ifndef DCAT_SESSION_H
-#define DCAT_SESSION_H
-
+#pragma once
 #include <stdbool.h>
 
 typedef struct TerminalSession {
@@ -10,5 +8,3 @@ typedef struct TerminalSession {
 
 void terminal_session_begin(TerminalSession *session, bool mouse_orbit);
 void terminal_session_end(TerminalSession *session);
-
-#endif // DCAT_SESSION_H

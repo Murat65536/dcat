@@ -1,6 +1,4 @@
-#ifndef DCAT_THREADING_H
-#define DCAT_THREADING_H
-
+#pragma once
 #include <stdbool.h>
 
 #ifdef _WIN32
@@ -93,5 +91,3 @@ static inline void dcat_sleep_ms(unsigned int ms) {
 }
 
 #endif
-
-#endif // DCAT_THREADING_H

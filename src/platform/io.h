@@ -1,6 +1,4 @@
-#ifndef DCAT_PLATFORM_IO_H
-#define DCAT_PLATFORM_IO_H
-
+#pragma once
 #include <stddef.h>
 
 #ifdef _WIN32
@@ -35,5 +33,3 @@ ssize_t dcat_read(int fd, void *buffer, size_t size);
 ssize_t dcat_write(int fd, const void *buffer, size_t size);
 int dcat_close(int fd);
 int dcat_getpid(void);
-
-#endif // DCAT_PLATFORM_IO_H

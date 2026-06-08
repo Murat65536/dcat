@@ -69,7 +69,7 @@ bool select_physical_device(VulkanRenderer *r) {
         return false;
     }
 
-    VkPhysicalDevice *devices = malloc(device_count * sizeof(VkPhysicalDevice));
+    VkPhysicalDevice *devices = (VkPhysicalDevice *)malloc(device_count * sizeof(VkPhysicalDevice));
     vkEnumeratePhysicalDevices(r->instance, &device_count, devices);
 
     for (uint32_t d = 0; d < device_count; d++) {

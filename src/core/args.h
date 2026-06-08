@@ -1,6 +1,4 @@
-#ifndef DCAT_ARGS_H
-#define DCAT_ARGS_H
-
+#pragma once
 #include <stdbool.h>
 
 typedef struct Args {
@@ -37,5 +35,3 @@ void print_usage(void);
 
 // Validate parsed arguments
 bool validate_args(const Args *args);
-
-#endif

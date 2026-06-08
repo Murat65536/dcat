@@ -1,11 +1,7 @@
-#ifndef DCAT_KITTY_SHM_H_
-#define DCAT_KITTY_SHM_H_
-
+#pragma once
 #include <stdbool.h>
 #include <stdint.h>
 
 void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height,
                       bool use_hash_characters);
 bool detect_kitty_shm_support(void);
-
-#endif

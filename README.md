@@ -98,11 +98,14 @@ A `justfile` provides shortcuts over the Meson commands above (install [`just`](
 ```sh
 just setup-debug   # configure a debug build in ./build
 just build         # meson compile -C build
-just asan          # debug build with AddressSanitizer + UBSan (b_sanitize)
+just asan          # debug build with AddressSanitizer + UBSan (Linux; see note)
+just ubsan         # debug build with UBSan only (use this on native Windows)
 just devenv        # shell with the built dcat on PATH
 just bump-wraps    # refresh subproject sources after editing subprojects/*.wrap
 ```
 
 Sanitizer builds use Meson's built-in `b_sanitize` (e.g. `meson setup build -Db_sanitize=address,undefined -Db_lundef=false`); no custom option is needed.
+
+AddressSanitizer is not usable on native Windows here: the prebuilt libvips/glib DLL allocates pointers ASan never tracks, so `vips_init` aborts with an unsuppressible `bad-malloc_usable_size`. Use `just asan` on Linux and `just ubsan` on Windows.
 
 `meson setup` emits `build/compile_commands.json`. The committed `.clangd` points clangd at it, so editors get full IntelliSense once any build directory named `build` is configured.

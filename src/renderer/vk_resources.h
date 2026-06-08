@@ -1,6 +1,4 @@
-#ifndef DCAT_VK_RESOURCES_H
-#define DCAT_VK_RESOURCES_H
-
+#pragma once
 #include "vulkan_renderer.h"
 
 bool create_command_pool(VulkanRenderer *r);
@@ -16,5 +14,3 @@ bool create_command_buffers(VulkanRenderer *r);
 bool create_sync_objects(VulkanRenderer *r);
 void cleanup_render_targets(VulkanRenderer *r);
 void cleanup(VulkanRenderer *r);
-
-#endif // DCAT_VK_RESOURCES_H

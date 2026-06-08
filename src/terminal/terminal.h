@@ -1,6 +1,4 @@
-#ifndef DCAT_TERMINAL_H
-#define DCAT_TERMINAL_H
-
+#pragma once
 #include "platform/io.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -88,5 +86,3 @@ static void disable_kitty_keyboard(void) {
     safe_write("\x1b[<u", 4);
 }
 #endif
-
-#endif // DCAT_TERMINAL_H

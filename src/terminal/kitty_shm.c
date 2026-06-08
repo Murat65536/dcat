@@ -1,6 +1,4 @@
 #include "kitty_shm.h"
-#include "platform/io.h"
-#include "terminal.h"
 #ifdef _WIN32
 #include <stdbool.h>
 #include <stdint.h>

@@ -1,6 +1,4 @@
-#ifndef DCAT_MODEL_H
-#define DCAT_MODEL_H
-
+#pragma once
 #include "../core/types.h"
 #include "animation.h"
 
@@ -35,5 +33,3 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
 void material_info_init(MaterialInfo *info);
 void material_info_free(MaterialInfo *info);
 void materials_free(MaterialInfo *materials, size_t count);
-
-#endif

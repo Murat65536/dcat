@@ -1,6 +1,4 @@
-#ifndef DCAT_CAMERA_H
-#define DCAT_CAMERA_H
-
+#pragma once
 #include <cglm/types.h>
 #include <stdint.h>
 
@@ -45,5 +43,3 @@ void camera_pan(Camera *cam, float dx, float dy);
 
 // Get camera forward direction vector
 void camera_forward_direction(const Camera *cam, vec3 out);
-
-#endif

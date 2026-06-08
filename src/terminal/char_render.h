@@ -1,6 +1,4 @@
-#ifndef DCAT_CHAR_RENDER_H_
-#define DCAT_CHAR_RENDER_H_
-
+#pragma once
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -48,5 +46,3 @@ typedef struct CharCellCodec {
 // state's buffer (and, in half-block mode, its prebuilt cell structure) across frames.
 void render_color_characters(const uint8_t *buffer, uint32_t width, uint32_t height, bool use_hash,
                              const CharCellCodec *codec, CharRenderState *state);
-
-#endif

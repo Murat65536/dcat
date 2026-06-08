@@ -1,6 +1,4 @@
-#ifndef DCAT_TYPES_H
-#define DCAT_TYPES_H
-
+#pragma once
 #include <cglm/cglm.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -211,21 +209,23 @@ typedef struct CameraSetup {
 
 // Utility functions
 static char *str_dup(const char *s) {
-    if (!s)
+    if (!s) {
         return NULL;
+    }
     const size_t len = strlen(s) + 1;
     char *copy = malloc(len);
-    if (copy)
+    if (copy) {
         memcpy(copy, s, len);
+    }
     return copy;
 }
 
 static float clampf(const float val, const float min_val, const float max_val) {
-    if (val < min_val)
+    if (val < min_val) {
         return min_val;
-    if (val > max_val)
+    }
+    if (val > max_val) {
         return max_val;
+    }
     return val;
 }
-
-#endif

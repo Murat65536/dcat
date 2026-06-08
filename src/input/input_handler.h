@@ -1,6 +1,4 @@
-#ifndef DCAT_INPUT_HANDLER_H
-#define DCAT_INPUT_HANDLER_H
-
+#pragma once
 #include "../core/threading.h"
 #include "../graphics/animation.h"
 #include "../graphics/camera.h"
@@ -59,5 +57,3 @@ void *input_thread_func(void *arg);
 
 // Shared key handler called by platform-specific implementations
 void handle_key(const InputThreadData *data, int key_code, int modifiers, int event_type);
-
-#endif
