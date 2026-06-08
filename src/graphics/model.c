@@ -369,23 +369,6 @@ static void process_node_animated(const struct aiNode *node, const struct aiScen
     }
 }
 
-static bool find_mesh_parent_transform(const struct aiNode *node, mat4 accumulated, mat4 out) {
-    if (node->mNumMeshes > 0) {
-        glm_mat4_copy(accumulated, out);
-        return true;
-    }
-    for (unsigned int i = 0; i < node->mNumChildren; i++) {
-        mat4 child_acc;
-        mat4 child_transform;
-        ai_matrix_to_glm(&node->mChildren[i]->mTransformation, child_transform);
-        glm_mat4_mul(accumulated, child_transform, child_acc);
-        if (find_mesh_parent_transform(node->mChildren[i], child_acc, out)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 // Build bone hierarchy
 // First pass: count total nodes
 static int count_nodes(const struct aiNode *node) {
@@ -803,15 +786,16 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
             }
         }
 
-        mat4 root_transform;
-        ai_matrix_to_glm(&scene->mRootNode->mTransformation, root_transform);
-
-        mat4 mesh_global;
-        if (find_mesh_parent_transform(scene->mRootNode, root_transform, mesh_global)) {
-            glm_mat4_inv(mesh_global, mesh->skeleton.global_inverse_transform);
-        } else {
-            glm_mat4_inv(root_transform, mesh->skeleton.global_inverse_transform);
-        }
+        // Skinned-mesh skinning is evaluated in scene space: per the glTF spec the
+        // result is sum(globalJointTransform * inverseBindMatrix * v), where the joint
+        // chain runs from the scene root and the skinned mesh node's own transform is
+        // ignored. assimp's per-bone global transform already includes the full chain
+        // from the root, and its offset matrices are the inverse-bind matrices, so the
+        // correct global-inverse is identity. Using inverse(rootNode) here would cancel
+        // any orientation baked into the root node (e.g. the Z-up->Y-up conversion that
+        // Sketchfab/FBX-derived assets store there), tipping the whole model over. This
+        // also matches the non-animated path, which bakes the entire node chain.
+        glm_mat4_identity(mesh->skeleton.global_inverse_transform);
     } else {
         mat4 identity;
         glm_mat4_identity(identity);
