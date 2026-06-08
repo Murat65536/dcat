@@ -68,9 +68,6 @@ void render_kitty(const uint8_t *buffer, uint32_t width, uint32_t height,
 }
 
 bool detect_kitty_support(void) {
-#ifdef _WIN32
-    return false;
-#else
     if (!dcat_isatty(STDOUT_FILENO) || !dcat_isatty(STDIN_FILENO))
         return false;
 
@@ -99,5 +96,4 @@ bool detect_kitty_support(void) {
 
     terminal_end_query_mode(&ts);
     return found;
-#endif
 }

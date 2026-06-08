@@ -88,12 +88,13 @@ When `bundled_libsixel` is enabled, the bundled libsixel is linked statically on
 Use `-Dbundled_libsixel=disabled` only if you intentionally want Meson to require a system `libsixel` package from the active MSYS2 environment.
 
 ### Windows Notes
-- `--kitty` and `--kitty-direct` are not supported in native Windows mode.
-- Auto-output mode falls back to character rendering modes on Windows.
+- `--kitty` (shared-memory transport) is not supported in native Windows mode, as POSIX shared memory is unavailable.
+- `--kitty-direct` (inline base64 transport) works on Windows.
+- Auto-output mode falls back to character rendering modes on Windows when no Kitty/sixel support is detected.
 
 ## Development
 
-A `justfile` provides shortcuts over the Meson commands above (install [`just`](https://github.com/casey/just), or just run the underlying commands by hand):
+`just` is used to provide shortcuts for commands.
 
 ```sh
 just setup-debug   # configure a debug build in ./build

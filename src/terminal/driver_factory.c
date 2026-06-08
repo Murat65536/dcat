@@ -100,7 +100,7 @@ const OutputDriver *driver_factory_get(const Args *args) {
 
 bool driver_is_supported_on_platform(const OutputDriver *driver) {
 #ifdef _WIN32
-    if (driver == &g_driver_kitty_shm || driver == &g_driver_kitty_direct) {
+    if (driver == &g_driver_kitty_shm) {
         return false;
     }
 #endif
