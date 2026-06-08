@@ -4,6 +4,10 @@
 bool find_memory_type(VulkanRenderer *r, uint32_t type_filter, VkMemoryPropertyFlags properties,
                       uint32_t *out_memory_type);
 
+static VkDeviceSize align_up(VkDeviceSize size, VkDeviceSize alignment) {
+    return (size + alignment - 1) & ~(alignment - 1);
+}
+
 bool create_buffer(VulkanRenderer *r, VkDeviceSize size, VkBufferUsageFlags usage,
                    VkMemoryPropertyFlags properties, VkBuffer *buffer, VulkanAllocation *alloc);
 
