@@ -20,6 +20,7 @@ static void init_u8_table(void) {
 }
 
 const char *char_u8_3digit(uint8_t v) {
+    init_u8_table();
     return u8_3digit[v];
 }
 

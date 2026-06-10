@@ -43,6 +43,10 @@ ubsan:
 build:
     meson compile -C {{builddir}}
 
+# Run the unit tests (built by default when the Unity wrap is available).
+test:
+    meson test -C {{builddir}} --print-errorlogs
+
 # Report clang-tidy findings without changing anything.
 tidy:
     run-clang-tidy -p {{builddir}} -clang-tidy-binary "{{clang_tidy}}" -header-filter='dcat.src' '{{tidy_filter}}'
@@ -52,9 +56,9 @@ tidy-fix:
     run-clang-tidy -p {{builddir}} -clang-tidy-binary "{{clang_tidy}}" -fix -header-filter='dcat.src' '{{tidy_filter}}'
     just fmt
 
-# Format all C sources and headers under src/ with .clang-format.
+# Format all C sources and headers under src/ and tests/ with .clang-format.
 fmt:
-    git ls-files -z -- 'src/*.c' 'src/*.h' | xargs -0 clang-format -i
+    git ls-files -z -- 'src/*.c' 'src/*.h' 'tests/*.c' | xargs -0 clang-format -i
 
 # Drop into an environment with the built binary on PATH.
 devenv:

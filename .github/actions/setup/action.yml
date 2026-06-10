@@ -81,8 +81,9 @@ runs:
       shell: bash
       run: |
         BUILDTYPE=$(echo "${{ inputs.buildtype }}" | tr '[:upper:]' '[:lower:]')
-        meson setup build -Dbuildtype=$BUILDTYPE --wrap-mode=nofallback
+        meson setup build -Dbuildtype=$BUILDTYPE -Dtests=enabled --wrap-mode=nofallback
         meson compile -C build
+        meson test -C build --print-errorlogs
         ccache --show-stats
 
     - name: Configure + Build (Windows)
@@ -90,6 +91,7 @@ runs:
       shell: msys2 {0}
       run: |
         BUILDTYPE=$(echo "${{ inputs.buildtype }}" | tr '[:upper:]' '[:lower:]')
-        meson setup buildDir -Dbuildtype=$BUILDTYPE -Ddefault_library=shared -Dbundled_libsixel=enabled --wrap-mode=nofallback
+        meson setup buildDir -Dbuildtype=$BUILDTYPE -Ddefault_library=shared -Dbundled_libsixel=enabled -Dtests=enabled --wrap-mode=nofallback
         meson compile -C buildDir
+        meson test -C buildDir --print-errorlogs
         ccache --show-stats

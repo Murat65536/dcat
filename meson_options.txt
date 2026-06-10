@@ -6,3 +6,9 @@ option(
   value: 'auto',
   description: 'Use the bundled libsixel fallback (auto uses bundled libsixel on Windows and system-first lookup elsewhere)'
 )
+option(
+  'tests',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build unit tests (uses the bundled Unity subproject; auto skips when unavailable)'
+)

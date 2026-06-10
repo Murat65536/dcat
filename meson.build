@@ -102,8 +102,7 @@ endif
 
 subdir('shaders')
 
-dcat_sources = [
-  'src/main.c',
+dcat_core_sources = [
   'src/platform/io.c',
   'src/platform/path.c',
   'src/core/app.c',
@@ -136,24 +135,51 @@ dcat_sources = [
 ]
 
 if host_machine.system() == 'windows'
-  dcat_sources += 'src/input/input_handler_win.c'
+  dcat_core_sources += 'src/input/input_handler_win.c'
 else
-  dcat_sources += 'src/input/input_handler_posix.c'
+  dcat_core_sources += 'src/input/input_handler_posix.c'
 endif
 
-# The bundled assimp builds as a static C++ library, so the final link of this
-# C executable must pull in the C++ runtime. Windows links it automatically; on
-# Linux the C driver does not, so add it there only (avoids breaking MSYS2/libc++).
+# The bundled assimp builds as a static C++ library, so the final link of every
+# C executable using dcat_core must pull in the C++ runtime. Windows links it
+# automatically; on Linux the C driver does not, so add it there only (avoids
+# breaking MSYS2/libc++).
 dcat_link_args = []
 if host_machine.system() != 'windows'
   dcat_link_args += '-lstdc++'
 endif
 
-dcat_exe = executable('dcat',
-  dcat_sources,
-  include_directories: include_directories('src'),
+dcat_inc = include_directories('src')
+
+# Everything except main.c lives in a static library so the unit tests can link
+# against the same objects as the installed executable.
+dcat_core_lib = static_library('dcat_core',
+  dcat_core_sources,
+  include_directories: dcat_inc,
+  dependencies: dcat_deps,
+)
+
+dcat_core_dep = declare_dependency(
+  link_with: dcat_core_lib,
+  include_directories: dcat_inc,
   dependencies: dcat_deps,
   link_args: dcat_link_args,
+)
+
+dcat_exe = executable('dcat',
+  'src/main.c',
+  dependencies: dcat_core_dep,
   install: true
 )
+
+# Unity test framework via an explicit subproject() call: CI's
+# --wrap-mode=nofallback only blocks dependency() fallbacks, not this.
+unity_subp = subproject('unity',
+  required: get_option('tests'),
+  default_options: ['default_library=static'],
+)
+if unity_subp.found()
+  unity_dep = unity_subp.get_variable('unity_dep')
+  subdir('tests')
+endif
 
