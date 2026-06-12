@@ -23,20 +23,11 @@ https://github.com/user-attachments/assets/ca47ea52-6a46-4ac2-8c9f-430fc9ea9865
   - `w/a/s/d` - Rotate the camera around the model
   - `e/r` - Zoom in and out
 
-## Character rendering option
-
-- `--hash-characters` makes character modes (`--truecolor-characters`, `--palette-characters`, `--block-characters`) render with `#` instead of half-block glyphs.
-- In this mode, vertical detail is halved (one source pixel row per terminal row).
-
 ## Build
-
-This project uses the [Meson](https://mesonbuild.com/) build system and depends on Vulkan, Assimp, cglm, libvips, and libsixel.
-
-System packages are used by default; the `subprojects/*.wrap` files are reproducible fallbacks only. `cglm` is pinned to a hashed wrapdb tarball; `assimp`, `libvips`, and `libsixel` are pinned to immutable git commits. To bump a dependency, change the `revision`/`source_hash` in the relevant `subprojects/*.wrap` and update the accompanying comment. CI builds pass `--wrap-mode=nofallback` so a missing system dependency fails loudly instead of silently source-building a vendored copy.
 
 ### Linux
 
-Install the required dependencies (Ubuntu/Debian example):
+Install the required dependencies:
 
 ```sh
 # Add LunarG Vulkan SDK repository for latest vulkan-headers
@@ -61,11 +52,7 @@ meson compile -C build-debug
 
 ### Windows
 
-On Windows, the project is built using [MSYS2](https://www.msys2.org/) with the `clang64` environment. The Windows build uses the bundled libsixel subproject by default to avoid cross-environment `pkg-config` issues.
-
-1. Install MSYS2.
-2. Open the **MSYS2 Clang x86_64** terminal.
-3. Install dependencies:
+On Windows, the project can be built using MSYS2 on clang64.
 
 ```sh
 pacman -S mingw-w64-clang-x86_64-toolchain mingw-w64-clang-x86_64-meson mingw-w64-clang-x86_64-ninja mingw-w64-clang-x86_64-cmake mingw-w64-clang-x86_64-pkgconf mingw-w64-clang-x86_64-vulkan-headers mingw-w64-clang-x86_64-vulkan-loader mingw-w64-clang-x86_64-shaderc mingw-w64-clang-x86_64-assimp mingw-w64-clang-x86_64-cglm mingw-w64-clang-x86_64-libvips git
@@ -88,13 +75,10 @@ When `bundled_libsixel` is enabled, the bundled libsixel is linked statically on
 Use `-Dbundled_libsixel=disabled` only if you intentionally want Meson to require a system `libsixel` package from the active MSYS2 environment.
 
 ### Windows Notes
-- `--kitty` (shared-memory transport) is not supported in native Windows mode, as POSIX shared memory is unavailable.
-- `--kitty-direct` (inline base64 transport) works on Windows.
-- Auto-output mode falls back to character rendering modes on Windows when no Kitty/sixel support is detected.
+
+Kitty SHM won't work on Windows
 
 ## Development
-
-`just` is used to provide shortcuts for commands.
 
 ```sh
 just setup-debug   # configure a debug build in ./build
@@ -104,9 +88,3 @@ just ubsan         # debug build with UBSan only (use this on native Windows)
 just devenv        # shell with the built dcat on PATH
 just bump-wraps    # refresh subproject sources after editing subprojects/*.wrap
 ```
-
-Sanitizer builds use Meson's built-in `b_sanitize` (e.g. `meson setup build -Db_sanitize=address,undefined -Db_lundef=false`); no custom option is needed.
-
-AddressSanitizer is not usable on native Windows here: the prebuilt libvips/glib DLL allocates pointers ASan never tracks, so `vips_init` aborts with an unsuppressible `bad-malloc_usable_size`. Use `just asan` on Linux and `just ubsan` on Windows.
-
-`meson setup` emits `build/compile_commands.json`. The committed `.clangd` points clangd at it, so editors get full IntelliSense once any build directory named `build` is configured.
