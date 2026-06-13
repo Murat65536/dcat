@@ -15,7 +15,8 @@ Checks: >
   -cppcoreguidelines-avoid-non-const-global-variables,
   -clang-diagnostic-pragma-pack,
   -readability-function-cognitive-complexity,
-  -cert-err33-c
+  -cert-err33-c,
+  -bugprone-easily-swappable-parameters,
 
 WarningsAsErrors: ''
 FormatStyle: file

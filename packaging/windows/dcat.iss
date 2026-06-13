@@ -1,4 +1,5 @@
 [Setup]
+SourceDir={#SourcePath}\..\..
 AppName=dcat
 AppVersion=0.1.0
 AppPublisher=dcat contributors
