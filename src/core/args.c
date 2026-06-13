@@ -238,5 +238,32 @@ bool validate_args(const Args *args) {
         return false;
     }
 
+    // camera_distance keeps its -1 sentinel (auto); any other value must be positive
+    // because driver-side setup only honours distances greater than zero.
+    if (args->camera_distance != -1.0F && args->camera_distance <= 0) {
+        fprintf(stderr, "Invalid camera distance: %f (must be greater than 0)\n",
+                args->camera_distance);
+        return false;
+    }
+
+    if (args->mouse_sensitivity <= 0) {
+        fprintf(stderr, "Invalid mouse sensitivity: %f (must be greater than 0)\n",
+                args->mouse_sensitivity);
+        return false;
+    }
+
+    // The six render-mode flags each select one output driver; enabling more than one
+    // leaves the choice to driver_factory precedence, which is almost certainly not
+    // what the user meant.
+    const int render_modes = (int)args->use_sixel + (int)args->use_kitty +
+                             (int)args->use_kitty_shm + (int)args->use_truecolor_characters +
+                             (int)args->use_palette_characters + (int)args->use_block_characters;
+    if (render_modes > 1) {
+        fprintf(stderr, "Conflicting render modes: choose at most one of --sixel, --kitty, "
+                        "--kitty-direct, --truecolor-characters, --palette-characters, "
+                        "--block-characters\n");
+        return false;
+    }
+
     return true;
 }

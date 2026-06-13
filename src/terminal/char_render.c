@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Lookup table: uint8 -> 3-digit zero-padded ASCII string (no terminator).
 static char u8_3digit[256][3];
 static bool u8_table_initialized = false;
 

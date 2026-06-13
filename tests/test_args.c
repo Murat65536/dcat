@@ -280,12 +280,58 @@ static void test_validate_fps_and_scale(void) {
     TEST_ASSERT_TRUE(validate_args(&args));
 }
 
-static void test_validate_ignores_unchecked_fields(void) {
-    // Documents current behavior: these fields have no validation.
+static void test_validate_camera_distance(void) {
     Args args = parsed_model_only();
-    args.camera_distance = -99.0F;
-    args.spin_speed = 1e30F;
-    args.mouse_sensitivity = -1.0F;
+
+    // -1 is the "auto" sentinel and stays valid.
+    args.camera_distance = -1.0F;
+    TEST_ASSERT_TRUE(validate_args(&args));
+    args.camera_distance = 5.0F;
+    TEST_ASSERT_TRUE(validate_args(&args));
+    args.camera_distance = 0.0F;
+    TEST_ASSERT_FALSE(validate_args(&args));
+    args.camera_distance = -2.0F;
+    TEST_ASSERT_FALSE(validate_args(&args));
+}
+
+static void test_validate_mouse_sensitivity(void) {
+    Args args = parsed_model_only();
+
+    args.mouse_sensitivity = 0.0F;
+    TEST_ASSERT_FALSE(validate_args(&args));
+    args.mouse_sensitivity = -0.5F;
+    TEST_ASSERT_FALSE(validate_args(&args));
+    args.mouse_sensitivity = 0.05F;
+    TEST_ASSERT_TRUE(validate_args(&args));
+}
+
+static void test_validate_render_mode_exclusivity(void) {
+    Args args = parsed_model_only();
+
+    // A single render mode is fine.
+    args.use_sixel = true;
+    TEST_ASSERT_TRUE(validate_args(&args));
+
+    // Two or more conflict.
+    args.use_kitty = true;
+    TEST_ASSERT_FALSE(validate_args(&args));
+
+    args = parsed_model_only();
+    args.use_truecolor_characters = true;
+    args.use_block_characters = true;
+    TEST_ASSERT_FALSE(validate_args(&args));
+
+    // hash-characters is a modifier, not a render mode, so it never conflicts.
+    args = parsed_model_only();
+    args.use_palette_characters = true;
+    args.use_hash_characters = true;
+    TEST_ASSERT_TRUE(validate_args(&args));
+}
+
+static void test_validate_ignores_spin(void) {
+    // spin_speed is intentionally unbounded: negative spins reverse direction.
+    Args args = parsed_model_only();
+    args.spin_speed = -1e30F;
     TEST_ASSERT_TRUE(validate_args(&args));
 }
 
@@ -307,6 +353,9 @@ int main(void) {
     RUN_TEST(test_validate_rejects_missing_model);
     RUN_TEST(test_validate_width_height_bounds);
     RUN_TEST(test_validate_fps_and_scale);
-    RUN_TEST(test_validate_ignores_unchecked_fields);
+    RUN_TEST(test_validate_camera_distance);
+    RUN_TEST(test_validate_mouse_sensitivity);
+    RUN_TEST(test_validate_render_mode_exclusivity);
+    RUN_TEST(test_validate_ignores_spin);
     return UNITY_END();
 }

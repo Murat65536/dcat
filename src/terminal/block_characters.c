@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Persistent buffer for variable-length output
 static char *render_buf = NULL;
 static size_t render_buf_size = 0;
 
@@ -55,8 +54,7 @@ void render_block_characters(const uint8_t *buffer, const uint32_t width, const 
     }
 
     const uint32_t rows = (height + 1) / 2;
-    // Worst case: every cell is a 3-byte block char
-    // Header(12) + rows * width * 3 + newlines(rows-1) + footer(9)
+
     const size_t max_size = (sizeof(FRAME_BEGIN) - 1) + ((size_t)rows * width * 3) +
                             (rows > 0 ? rows - 1 : 0) + (sizeof(FRAME_END) - 1);
 
