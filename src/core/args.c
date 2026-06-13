@@ -25,17 +25,37 @@ void print_usage(void) {
            "      --mouse-sensitivity S  mouse drag sensitivity\n"
            "  -s, --status-bar           show status bar\n"
            "  -S, --sixel                enable Sixel graphics mode\n"
-           "  -K, --kitty                enable Kitty graphics protocol (shared memory)\n"
-           "      --kitty-direct         enable Kitty graphics protocol (inline)\n"
+           "  -K, --kitty                enable SHM Kitty graphics protocol\n"
+           "      --kitty-direct         enable inline Kitty graphics protocol\n"
            "  -T, --truecolor-characters enable truecolor characters mode\n"
-           "  -P, --palette-characters   enable 256-color palette characters mode\n"
+           "  -P, --palette-characters   enable palette characters mode\n"
            "  -B, --block-characters     enable monochrome block characters mode\n"
-           "      --hash-characters      use # for character modes (halves displayed pixels)\n"
-           "  -h, --help                 display this help and exit\n\n");
+           "      --hash-characters      use # for character modes\n"
+           "  -h, --help                 display help\n"
+           "      --controls             display controls\n");
 }
 
-// Kind of value an option consumes. OPT_FLAG sets a bool and takes no value;
-// the others read the next argv entry and store it at the given Args offset.
+void print_controls(void) {
+    printf("Controls:\n"
+           "q - Quit\n"
+           "m - Toggle wireframe\n"
+           "Animation:\n"
+           "p - Play/pause animation\n"
+           "1 - Previous animation\n"
+           "2 - Next animation\n\n"
+           "FPS controls:\n"
+           "wasd - Move\n"
+           "ijkl - Look around\n"
+           "space - Move up\n"
+           "shift - Move down\n"
+           "v - slow down\n"
+           "b - speed up\n"
+           "Regular keyboard controls:\n"
+           "wasd - rotate around the model\n"
+           "e - zoom in\n"
+           "r - zoom out\n");
+}
+
 typedef enum OptType {
     OPT_FLAG,
     OPT_STRING,
@@ -44,10 +64,10 @@ typedef enum OptType {
 } OptType;
 
 typedef struct OptionSpec {
-    const char *short_name; // e.g. "-t", or NULL if the option is long-only
-    const char *long_name;  // e.g. "--texture"
+    const char *short_name;
+    const char *long_name;
     OptType type;
-    size_t offset; // offsetof(Args, field) for the destination member
+    size_t offset;
 } OptionSpec;
 
 static const OptionSpec OPTIONS[] = {
@@ -73,7 +93,7 @@ static const OptionSpec OPTIONS[] = {
     {"-B", "--block-characters", OPT_FLAG, offsetof(Args, use_block_characters)},
     {NULL, "--hash-characters", OPT_FLAG, offsetof(Args, use_hash_characters)},
     {"-h", "--help", OPT_FLAG, offsetof(Args, show_help)},
-};
+    {NULL, "--controls", OPT_FLAG, offsetof(Args, show_controls)}};
 
 static const OptionSpec *find_option(const char *arg) {
     for (size_t i = 0; i < sizeof(OPTIONS) / sizeof(OPTIONS[0]); i++) {
@@ -182,6 +202,10 @@ ArgsParseStatus parse_args(const int argc, char *argv[], Args *out) {
 
     if (out->show_help) {
         return ARGS_PARSE_HELP;
+    }
+
+    if (out->show_controls) {
+        return ARGS_PARSE_CONTROLS;
     }
 
     return ARGS_PARSE_OK;

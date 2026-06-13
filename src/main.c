@@ -7,6 +7,9 @@ int main(const int argc, char *argv[]) {
     case ARGS_PARSE_HELP:
         print_usage();
         return 0;
+    case ARGS_PARSE_CONTROLS:
+        print_controls();
+        return 0;
     case ARGS_PARSE_ERROR:
         return 1;
     case ARGS_PARSE_OK:

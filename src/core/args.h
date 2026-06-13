@@ -18,6 +18,7 @@ typedef struct Args {
     float mouse_sensitivity;
     bool show_status_bar;
     bool show_help;
+    bool show_controls;
     bool use_sixel;
     bool use_kitty;
     bool use_kitty_shm;
@@ -30,16 +31,17 @@ typedef struct Args {
 // Result of parsing the command line. The caller decides the process exit code,
 // so parse_args never calls exit() itself.
 typedef enum ArgsParseStatus {
-    ARGS_PARSE_OK,    // out is fully populated; proceed
-    ARGS_PARSE_HELP,  // -h/--help was requested; print usage and exit cleanly
-    ARGS_PARSE_ERROR, // a diagnostic was already printed to stderr
+    ARGS_PARSE_OK,
+    ARGS_PARSE_HELP,
+    ARGS_PARSE_CONTROLS,
+    ARGS_PARSE_ERROR,
 } ArgsParseStatus;
 
-// Parse command line arguments into *out (which is reset to defaults first).
 ArgsParseStatus parse_args(int argc, char *argv[], Args *out);
 
-// Print usage information
 void print_usage(void);
+
+void print_controls(void);
 
 // Validate parsed arguments
 bool validate_args(const Args *args);
