@@ -4,7 +4,7 @@
 #include <poll.h>
 #include <string.h>
 
-void * static input_thread_func(void *arg) {
+void *input_thread_func(void *arg) {
     InputThreadData *data = (InputThreadData *)arg;
     char buffer[512];
     ssize_t carry = 0;
