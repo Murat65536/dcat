@@ -36,7 +36,6 @@ static size_t sixel_pixels_cap = 0;
 static bool sixel_initialized = false;
 
 static void sixel_cleanup(void) {
-    /* Re-enable sixel scrolling */
     safe_write("\x1b[?80l", 6);
 }
 
@@ -94,9 +93,6 @@ bool detect_sixel_support(void) {
         return false;
     }
 
-    // XTSMGRAPHICS query: read sixel geometry (item 2).
-    // Response: \x1b[?2;Ps2;...S — Ps2=0 means no error (sixel supported).
-    // More reliable than DA1 attribute 4, which many non-sixel terminals also report.
     safe_write("\x1b[?2;1;0S", 9);
 
     char buffer[64];

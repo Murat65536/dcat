@@ -26,7 +26,9 @@ typedef struct WindowsInputState {
     bool prev_e;
     bool prev_r;
     bool has_focus;
-    int focus_seq_state;
+    MouseTracker mouse_track;
+    char vt_buf[512];
+    size_t vt_len;
 } WindowsInputState;
 
 static bool windows_key_pressed(const int vk_code) {
@@ -206,6 +208,63 @@ static void handle_windows_mouse_event(const InputThreadData *data, WindowsInput
     state->right_down = right_down;
 }
 
+static void process_windows_vt_bytes(InputThreadData *data, WindowsInputState *state) {
+    size_t i = 0;
+    const size_t n = state->vt_len;
+    while (i < n) {
+        if (state->vt_buf[i] != '\x1b') {
+            i++;
+            continue;
+        }
+        if (i + 1 >= n) {
+            break; // lone ESC; wait for more bytes
+        }
+        if (state->vt_buf[i + 1] != '[') {
+            i += 2;
+            continue;
+        }
+
+        const size_t body = i + 2;
+        size_t consumed = 0;
+        const MouseCsiResult result =
+            mouse_parse_csi(data, state->vt_buf + body, n - body, &consumed, &state->mouse_track);
+        if (result == MOUSE_CSI_INCOMPLETE) {
+            break; // need more bytes; carry from this ESC
+        }
+        if (result == MOUSE_CSI_HANDLED) {
+            i = body + consumed;
+            continue;
+        }
+
+        // Focus in/out reporting: \x1b[I / \x1b[O
+        if (body < n && (state->vt_buf[body] == 'I' || state->vt_buf[body] == 'O')) {
+            state->has_focus = (state->vt_buf[body] == 'I');
+            i = body + 1;
+            continue;
+        }
+
+        // Other CSI (keyboard) sequence: skip to its final byte (0x40-0x7E).
+        size_t j = body;
+        while (j < n && !((unsigned char)state->vt_buf[j] >= 0x40 &&
+                          (unsigned char)state->vt_buf[j] <= 0x7E)) {
+            j++;
+        }
+        if (j >= n) {
+            break; // incomplete; carry from this ESC
+        }
+        i = j + 1;
+    }
+
+    const size_t remaining = n - i;
+    if (remaining > 0 && i > 0) {
+        memmove(state->vt_buf, state->vt_buf + i, remaining);
+    }
+    state->vt_len = remaining;
+    if (state->vt_len >= sizeof(state->vt_buf)) {
+        state->vt_len = 0; // drop a stuck oversized sequence
+    }
+}
+
 static void poll_windows_console_events(InputThreadData *data, WindowsInputState *state) {
     if (state->input_handle == INVALID_HANDLE_VALUE || state->input_handle == NULL) {
         return;
@@ -225,23 +284,11 @@ static void poll_windows_console_events(InputThreadData *data, WindowsInputState
 
     for (DWORD i = 0; i < read_count; i++) {
         if (records[i].EventType == KEY_EVENT && records[i].Event.KeyEvent.bKeyDown) {
-            const char ch = records[i].Event.KeyEvent.uChar.AsciiChar;
-            switch (state->focus_seq_state) {
-            case 0:
-                state->focus_seq_state = (ch == '\x1b') ? 1 : 0;
-                break;
-            case 1:
-                state->focus_seq_state = (ch == '[') ? 2 : 0;
-                break;
-            case 2:
-                state->focus_seq_state = 0;
-                if (ch == 'I') {
-                    state->has_focus = true;
-                } else if (ch == 'O') {
-                    state->has_focus = false;
-                }
-                break;
-            default:;
+            // Accumulate the VT input stream (mouse/focus escape sequences from terminals
+            // like Windows Terminal that don't emit MOUSE_EVENT/FOCUS_EVENT records).
+            const wchar_t wch = records[i].Event.KeyEvent.uChar.UnicodeChar;
+            if (wch != 0 && wch < 0x80 && state->vt_len < sizeof(state->vt_buf)) {
+                state->vt_buf[state->vt_len++] = (char)wch;
             }
             continue;
         }
@@ -257,6 +304,9 @@ static void poll_windows_console_events(InputThreadData *data, WindowsInputState
             handle_windows_mouse_event(data, state, &records[i].Event.MouseEvent);
         }
     }
+
+    // Mouse/focus escape sequences accumulated above (Windows Terminal path).
+    process_windows_vt_bytes(data, state);
 }
 
 unsigned __stdcall input_thread_func(void *arg) {
@@ -271,6 +321,12 @@ unsigned __stdcall input_thread_func(void *arg) {
         poll_windows_console_events(data, &windows_state);
         dcat_mutex_unlock(data->state_mutex);
         dcat_sleep_ms(1);
+    }
+
+    // Drop any buffered input (e.g. a trailing mouse report) so it is not echoed to the
+    // shell after we restore cooked mode on exit.
+    if (windows_state.input_handle != INVALID_HANDLE_VALUE && windows_state.input_handle != NULL) {
+        FlushConsoleInputBuffer(windows_state.input_handle);
     }
 
     return 0;

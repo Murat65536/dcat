@@ -8,7 +8,7 @@ void *input_thread_func(void *arg) {
     InputThreadData *data = (InputThreadData *)arg;
     char buffer[512];
     ssize_t carry = 0;
-    int last_mouse_x = 0, last_mouse_y = 0;
+    MouseTracker mouse_track = {0, 0};
 
     while (!signals_should_quit()) {
         struct pollfd pfd = {STDIN_FILENO, POLLIN, 0};
@@ -50,79 +50,17 @@ void *input_thread_func(void *arg) {
             ssize_t seq_start = i;
             i += 2; // past \x1b[
 
-            // SGR mouse: \x1b[<btn;x;yM or m
-            if (buffer[i] == '<') {
-                i++;
-                // Find terminator M or m
-                ssize_t j = i;
-                while (j < n && buffer[j] != 'M' && buffer[j] != 'm')
-                    j++;
-                if (j >= n) {
-                    carry = n - seq_start;
-                    memmove(buffer, buffer + seq_start, carry);
-                    break;
-                }
-
-                // Parse btn;x;y
-                int btn = 0, mx = 0, my = 0;
-                ssize_t p = i;
-                while (p < j && buffer[p] >= '0' && buffer[p] <= '9')
-                    btn = btn * 10 + (buffer[p++] - '0');
-                if (p < j && buffer[p] == ';')
-                    p++;
-                while (p < j && buffer[p] >= '0' && buffer[p] <= '9')
-                    mx = mx * 10 + (buffer[p++] - '0');
-                if (p < j && buffer[p] == ';')
-                    p++;
-                while (p < j && buffer[p] >= '0' && buffer[p] <= '9')
-                    my = my * 10 + (buffer[p++] - '0');
-
-                if (data->mouse_orbit) {
-                    if (buffer[j] == 'M') {
-                        switch (btn) {
-                        case MOUSE_BUTTON_LEFT:
-                        case MOUSE_BUTTON_MIDDLE:
-                        case MOUSE_BUTTON_RIGHT:
-                            last_mouse_x = mx;
-                            last_mouse_y = my;
-                            break;
-                        case MOUSE_BUTTON_DRAG_LEFT: {
-                            int dx = mx - last_mouse_x;
-                            int dy = my - last_mouse_y;
-                            last_mouse_x = mx;
-                            last_mouse_y = my;
-                            if (dx != 0 || dy != 0) {
-                                camera_orbit(data->camera, (float)dx * data->mouse_sensitivity,
-                                             -(float)dy * data->mouse_sensitivity);
-                            }
-                            break;
-                        }
-                        case MOUSE_BUTTON_DRAG_RIGHT:
-                        case MOUSE_BUTTON_DRAG_MIDDLE: {
-                            int dx = mx - last_mouse_x;
-                            int dy = my - last_mouse_y;
-                            last_mouse_x = mx;
-                            last_mouse_y = my;
-                            if (dx != 0 || dy != 0) {
-                                float pan_speed = data->mouse_sensitivity * 0.2f;
-                                camera_pan(data->camera, (float)dx * pan_speed,
-                                           (float)dy * pan_speed);
-                            }
-                            break;
-                        }
-                        case MOUSE_BUTTON_SCROLL_UP:
-                            camera_zoom(data->camera, ZOOM_AMOUNT);
-                            break;
-                        case MOUSE_BUTTON_SCROLL_DOWN:
-                            camera_zoom(data->camera, -ZOOM_AMOUNT);
-                            break;
-                        default:
-                            break;
-                        }
-                    }
-                }
-
-                i = j + 1;
+            // SGR (\x1b[<...M/m) and legacy X10 (\x1b[M...) mouse reports
+            size_t mouse_consumed = 0;
+            const MouseCsiResult mouse_result =
+                mouse_parse_csi(data, buffer + i, (size_t)(n - i), &mouse_consumed, &mouse_track);
+            if (mouse_result == MOUSE_CSI_INCOMPLETE) {
+                carry = n - seq_start;
+                memmove(buffer, buffer + seq_start, carry);
+                break;
+            }
+            if (mouse_result == MOUSE_CSI_HANDLED) {
+                i += (ssize_t)mouse_consumed;
                 continue;
             }
 

@@ -5,6 +5,7 @@
 #include "../graphics/model.h"
 #include "../renderer/vulkan_renderer.h"
 #include <stdbool.h>
+#include <stddef.h>
 
 typedef enum MouseButton {
     MOUSE_BUTTON_LEFT = 0,
@@ -57,3 +58,26 @@ void *input_thread_func(void *arg);
 
 // Shared key handler called by platform-specific implementations
 void handle_key(const InputThreadData *data, int key_code, int modifiers, int event_type);
+
+// Mouse drag/scroll position tracking, shared by the SGR and legacy X10 paths.
+typedef struct MouseTracker {
+    int last_x;
+    int last_y;
+} MouseTracker;
+
+// Apply a press/motion/scroll mouse event. `btn` matches the MouseButton encoding.
+void mouse_apply_action(const InputThreadData *data, int btn, int mx, int my,
+                        MouseTracker *track);
+
+typedef enum MouseCsiResult {
+    MOUSE_CSI_NONE,       // not a mouse sequence
+    MOUSE_CSI_HANDLED,    // mouse sequence fully parsed
+    MOUSE_CSI_INCOMPLETE  // need more bytes to decide or finish
+} MouseCsiResult;
+
+// Parse a mouse report from a CSI body. `buf` points just past the "\x1b[" introducer and
+// `len` is the number of available bytes. On MOUSE_CSI_HANDLED, *consumed is set to the
+// number of bytes consumed from `buf`. Recognizes SGR (\x1b[<btn;x;yM/m) and legacy X10
+// (\x1b[M Cb Cx Cy). Mouse actions are applied only when data->mouse_orbit is set.
+MouseCsiResult mouse_parse_csi(const InputThreadData *data, const char *buf, size_t len,
+                               size_t *consumed, MouseTracker *track);

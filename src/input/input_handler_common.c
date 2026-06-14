@@ -1,6 +1,112 @@
 #include "../core/signals.h"
 #include "input_handler.h"
 
+void mouse_apply_action(const InputThreadData *data, const int btn, const int mx, const int my,
+                        MouseTracker *track) {
+    switch (btn) {
+    case MOUSE_BUTTON_LEFT:
+    case MOUSE_BUTTON_MIDDLE:
+    case MOUSE_BUTTON_RIGHT:
+        track->last_x = mx;
+        track->last_y = my;
+        break;
+    case MOUSE_BUTTON_DRAG_LEFT: {
+        const int dx = mx - track->last_x;
+        const int dy = my - track->last_y;
+        track->last_x = mx;
+        track->last_y = my;
+        if (dx != 0 || dy != 0) {
+            camera_orbit(data->camera, (float)dx * data->mouse_sensitivity,
+                         -(float)dy * data->mouse_sensitivity);
+        }
+        break;
+    }
+    case MOUSE_BUTTON_DRAG_RIGHT:
+    case MOUSE_BUTTON_DRAG_MIDDLE: {
+        const int dx = mx - track->last_x;
+        const int dy = my - track->last_y;
+        track->last_x = mx;
+        track->last_y = my;
+        if (dx != 0 || dy != 0) {
+            const float pan_speed = data->mouse_sensitivity * 0.2F;
+            camera_pan(data->camera, (float)dx * pan_speed, (float)dy * pan_speed);
+        }
+        break;
+    }
+    case MOUSE_BUTTON_SCROLL_UP:
+        camera_zoom(data->camera, ZOOM_AMOUNT);
+        break;
+    case MOUSE_BUTTON_SCROLL_DOWN:
+        camera_zoom(data->camera, -ZOOM_AMOUNT);
+        break;
+    default:
+        break;
+    }
+}
+
+// Read a base-10 unsigned integer from buf starting at *p (exclusive end `end`),
+// advancing *p past the digits.
+static int parse_uint(const char *buf, size_t *p, const size_t end) {
+    int value = 0;
+    while (*p < end && buf[*p] >= '0' && buf[*p] <= '9') {
+        value = (value * 10) + (buf[*p] - '0');
+        (*p)++;
+    }
+    return value;
+}
+
+MouseCsiResult mouse_parse_csi(const InputThreadData *data, const char *buf, const size_t len,
+                               size_t *consumed, MouseTracker *track) {
+    if (len == 0) {
+        return MOUSE_CSI_INCOMPLETE;
+    }
+
+    // SGR mouse: <btn;x;y followed by 'M' (press/motion) or 'm' (release).
+    if (buf[0] == '<') {
+        size_t j = 1;
+        while (j < len && buf[j] != 'M' && buf[j] != 'm') {
+            j++;
+        }
+        if (j >= len) {
+            return MOUSE_CSI_INCOMPLETE;
+        }
+
+        size_t p = 1;
+        const int btn = parse_uint(buf, &p, j);
+        if (p < j && buf[p] == ';') {
+            p++;
+        }
+        const int mx = parse_uint(buf, &p, j);
+        if (p < j && buf[p] == ';') {
+            p++;
+        }
+        const int my = parse_uint(buf, &p, j);
+
+        if (data->mouse_orbit && buf[j] == 'M') {
+            mouse_apply_action(data, btn, mx, my, track);
+        }
+        *consumed = j + 1;
+        return MOUSE_CSI_HANDLED;
+    }
+
+    // Legacy X10/normal mouse: M Cb Cx Cy (each byte = value + 32).
+    if (buf[0] == 'M') {
+        if (len < 4) {
+            return MOUSE_CSI_INCOMPLETE;
+        }
+        const int btn = (int)(unsigned char)buf[1] - 32;
+        const int mx = (int)(unsigned char)buf[2] - 32;
+        const int my = (int)(unsigned char)buf[3] - 32;
+        if (data->mouse_orbit) {
+            mouse_apply_action(data, btn, mx, my, track);
+        }
+        *consumed = 4;
+        return MOUSE_CSI_HANDLED;
+    }
+
+    return MOUSE_CSI_NONE;
+}
+
 // Kitty keyboard protocol key codes for modifier keys
 #define KITTY_LEFT_SHIFT 57441
 #define KITTY_RIGHT_SHIFT 57447

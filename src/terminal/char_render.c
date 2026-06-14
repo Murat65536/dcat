@@ -10,7 +10,7 @@ static void init_u8_table(void) {
     if (u8_table_initialized) {
         return;
     }
-    for (char i = 0; i < 256; i++) {
+    for (int i = 0; i < 256; i++) {
         u8_3digit[i][0] = (char)('0' + (i / 100));
         u8_3digit[i][1] = (char)('0' + ((i / 10) % 10));
         u8_3digit[i][2] = (char)('0' + (i % 10));
@@ -18,12 +18,12 @@ static void init_u8_table(void) {
     u8_table_initialized = true;
 }
 
-const static char *char_u8_3digit(uint8_t v) {
+const char *char_u8_3digit(uint8_t v) {
     init_u8_table();
     return u8_3digit[v];
 }
 
-static bool ensure_buf(const CharRenderState *state, size_t needed) {
+static bool ensure_buf(CharRenderState *state, size_t needed) {
     if (state->buf_size >= needed) {
         return true;
     }
