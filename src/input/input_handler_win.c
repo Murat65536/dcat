@@ -7,6 +7,13 @@
 #endif
 #include <windows.h>
 
+// Windows consoles report mouse coordinates in character cells, not pixels (Windows Terminal
+// does not support the SGR-Pixels extension, and conhost's MOUSE_EVENT is always cell-based).
+// Scale cell deltas to pixel-equivalent units so the default --mouse-sensitivity, tuned for
+// pixel-reporting terminals, feels the same here. Values approximate a typical console cell.
+#define MOUSE_CELL_PX_X 10.0F
+#define MOUSE_CELL_PX_Y 20.0F
+
 typedef struct WindowsInputState {
     HANDLE input_handle;
     int last_mouse_x;
@@ -194,12 +201,13 @@ static void handle_windows_mouse_event(const InputThreadData *data, WindowsInput
     state->last_mouse_y = mouse_y;
 
     if (dx != 0 || dy != 0) {
+        const float sx = (float)dx * MOUSE_CELL_PX_X;
+        const float sy = (float)dy * MOUSE_CELL_PX_Y;
         if (left_down || state->left_down) {
-            camera_orbit(data->camera, (float)dx * data->mouse_sensitivity,
-                         -(float)dy * data->mouse_sensitivity);
+            camera_orbit(data->camera, sx * data->mouse_sensitivity, -sy * data->mouse_sensitivity);
         } else if (right_down || middle_down || state->right_down || state->middle_down) {
             const float pan_speed = data->mouse_sensitivity * 0.2F;
-            camera_pan(data->camera, (float)dx * pan_speed, (float)dy * pan_speed);
+            camera_pan(data->camera, sx * pan_speed, sy * pan_speed);
         }
     }
 
@@ -270,43 +278,51 @@ static void poll_windows_console_events(InputThreadData *data, WindowsInputState
         return;
     }
 
-    DWORD pending_count = 0;
-    if (!GetNumberOfConsoleInputEvents(state->input_handle, &pending_count) || pending_count == 0) {
-        return;
-    }
+    // Drain the entire pending buffer each tick. In a VT terminal a single fast mouse move
+    // expands to a ~13-record escape sequence, so capping the read per tick lets records
+    // pile up faster than they drain and motion lags behind the cursor.
+    for (;;) {
+        DWORD pending_count = 0;
+        if (!GetNumberOfConsoleInputEvents(state->input_handle, &pending_count) ||
+            pending_count == 0) {
+            break;
+        }
 
-    INPUT_RECORD records[16];
-    const DWORD to_read = pending_count < 16 ? pending_count : 16;
-    DWORD read_count = 0;
-    if (!ReadConsoleInput(state->input_handle, records, to_read, &read_count) || read_count == 0) {
-        return;
-    }
+        INPUT_RECORD records[128];
+        const DWORD capacity = (DWORD)(sizeof(records) / sizeof(records[0]));
+        const DWORD to_read = pending_count < capacity ? pending_count : capacity;
+        DWORD read_count = 0;
+        if (!ReadConsoleInput(state->input_handle, records, to_read, &read_count) ||
+            read_count == 0) {
+            break;
+        }
 
-    for (DWORD i = 0; i < read_count; i++) {
-        if (records[i].EventType == KEY_EVENT && records[i].Event.KeyEvent.bKeyDown) {
-            // Accumulate the VT input stream (mouse/focus escape sequences from terminals
-            // like Windows Terminal that don't emit MOUSE_EVENT/FOCUS_EVENT records).
-            const wchar_t wch = records[i].Event.KeyEvent.uChar.UnicodeChar;
-            if (wch != 0 && wch < 0x80 && state->vt_len < sizeof(state->vt_buf)) {
-                state->vt_buf[state->vt_len++] = (char)wch;
+        for (DWORD i = 0; i < read_count; i++) {
+            if (records[i].EventType == KEY_EVENT && records[i].Event.KeyEvent.bKeyDown) {
+                // Accumulate the VT input stream (mouse/focus escape sequences from terminals
+                // like Windows Terminal that don't emit MOUSE_EVENT/FOCUS_EVENT records).
+                const wchar_t wch = records[i].Event.KeyEvent.uChar.UnicodeChar;
+                if (wch != 0 && wch < 0x80 && state->vt_len < sizeof(state->vt_buf)) {
+                    state->vt_buf[state->vt_len++] = (char)wch;
+                }
+                continue;
             }
-            continue;
+            if (records[i].EventType == FOCUS_EVENT) {
+                state->has_focus = (records[i].Event.FocusEvent.bSetFocus != 0);
+                continue;
+            }
+            if (records[i].EventType == WINDOW_BUFFER_SIZE_EVENT) {
+                signals_request_resize();
+                continue;
+            }
+            if (records[i].EventType == MOUSE_EVENT && data->mouse_orbit && state->has_focus) {
+                handle_windows_mouse_event(data, state, &records[i].Event.MouseEvent);
+            }
         }
-        if (records[i].EventType == FOCUS_EVENT) {
-            state->has_focus = (records[i].Event.FocusEvent.bSetFocus != 0);
-            continue;
-        }
-        if (records[i].EventType == WINDOW_BUFFER_SIZE_EVENT) {
-            signals_request_resize();
-            continue;
-        }
-        if (records[i].EventType == MOUSE_EVENT && data->mouse_orbit && state->has_focus) {
-            handle_windows_mouse_event(data, state, &records[i].Event.MouseEvent);
-        }
-    }
 
-    // Mouse/focus escape sequences accumulated above (Windows Terminal path).
-    process_windows_vt_bytes(data, state);
+        // Mouse/focus escape sequences accumulated above (Windows Terminal path).
+        process_windows_vt_bytes(data, state);
+    }
 }
 
 unsigned __stdcall input_thread_func(void *arg) {
@@ -314,6 +330,9 @@ unsigned __stdcall input_thread_func(void *arg) {
     WindowsInputState windows_state = {0};
     windows_state.has_focus = true;
     windows_state.input_handle = GetStdHandle(STD_INPUT_HANDLE);
+    // VT mouse reports arrive in character cells; scale them to pixel-equivalent units.
+    windows_state.mouse_track.scale_x = MOUSE_CELL_PX_X;
+    windows_state.mouse_track.scale_y = MOUSE_CELL_PX_Y;
 
     while (!signals_should_quit()) {
         dcat_mutex_lock(data->state_mutex);

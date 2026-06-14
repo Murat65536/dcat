@@ -4,11 +4,11 @@
 #include <poll.h>
 #include <string.h>
 
-void *input_thread_func(void *arg) {
+void * static input_thread_func(void *arg) {
     InputThreadData *data = (InputThreadData *)arg;
     char buffer[512];
     ssize_t carry = 0;
-    MouseTracker mouse_track = {0, 0};
+    MouseTracker mouse_track = {0, 0, 1.0F, 1.0F};
 
     while (!signals_should_quit()) {
         struct pollfd pfd = {STDIN_FILENO, POLLIN, 0};

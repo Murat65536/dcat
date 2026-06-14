@@ -60,9 +60,13 @@ void *input_thread_func(void *arg);
 void handle_key(const InputThreadData *data, int key_code, int modifiers, int event_type);
 
 // Mouse drag/scroll position tracking, shared by the SGR and legacy X10 paths.
+// scale_x/scale_y convert reported coordinate deltas to pixel-equivalent units so the same
+// mouse sensitivity feels consistent whether the terminal reports pixels or character cells.
 typedef struct MouseTracker {
     int last_x;
     int last_y;
+    float scale_x;
+    float scale_y;
 } MouseTracker;
 
 // Apply a press/motion/scroll mouse event. `btn` matches the MouseButton encoding.
