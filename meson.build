@@ -166,7 +166,7 @@ dcat_core_dep = declare_dependency(
   link_args: dcat_link_args,
 )
 
-dcat_exe = executable('dcat',
+executable('dcat',
   'src/main.c',
   dependencies: dcat_core_dep,
   install: true
@@ -182,4 +182,3 @@ if unity_subp.found()
   unity_dep = unity_subp.get_variable('unity_dep')
   subdir('tests')
 endif
-
