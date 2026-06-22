@@ -28,7 +28,6 @@ runs:
           ninja-build \
           libvulkan-dev \
           vulkan-headers \
-          shaderc \
           vulkan-utility-libraries-dev \
           libassimp-dev \
           libcglm-dev \
@@ -51,11 +50,34 @@ runs:
           mingw-w64-clang-x86_64-pkgconf
           mingw-w64-clang-x86_64-vulkan-headers
           mingw-w64-clang-x86_64-vulkan-loader
-          mingw-w64-clang-x86_64-shaderc
           mingw-w64-clang-x86_64-assimp
           mingw-w64-clang-x86_64-cglm
           mingw-w64-clang-x86_64-libvips
           git
+
+    - name: Install Slang (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        SLANG_VERSION=2026.11
+        cd "$RUNNER_TEMP"
+        curl -sSL -o slang.tar.gz \
+          "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
+        mkdir -p slang
+        tar -xzf slang.tar.gz -C slang
+        echo "$RUNNER_TEMP/slang/bin" >> "$GITHUB_PATH"
+
+    - name: Install Slang (Windows)
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      run: |
+        SLANG_VERSION=2026.11
+        cd "$RUNNER_TEMP"
+        curl -sSL -o slang.tar.gz \
+          "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-windows-x86_64.tar.gz"
+        mkdir -p slang
+        tar -xzf slang.tar.gz -C slang
+        cygpath -w "$PWD/slang/bin" >> "$GITHUB_PATH"
 
     - name: Set ccache dir
       shell: bash
