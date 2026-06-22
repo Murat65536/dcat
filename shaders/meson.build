@@ -1,23 +1,22 @@
-glslc = find_program('glslc', required: true)
+slangc = find_program('slangc', required: true)
 
-shader_sources = [
-  'shader.vert',
-  'shader.frag',
-  'skydome.vert',
-  'skydome.frag'
+shaders = [
+  ['shader.vert', 'vertex'],
+  ['shader.frag', 'fragment'],
+  ['skydome.vert', 'vertex'],
+  ['skydome.frag', 'fragment'],
 ]
 
-glslc_args = []
-if get_option('buildtype') == 'debug'
-  glslc_args += '-g'
-endif
+slang_args = ['-matrix-layout-column-major']
 
-foreach s : shader_sources
+foreach s : shaders
   custom_target(
-    s.underscorify() + '_spv',
-    input: s,
-    output: s + '.spv',
-    command: [glslc, glslc_args, '@INPUT@', '-o', '@OUTPUT@'],
+    s[0].underscorify() + '_spv',
+    input: s[0] + '.slang',
+    output: s[0] + '.spv',
+    command: [slangc, '@INPUT@', '-target', 'spirv', '-entry', 'main',
+              '-stage', s[1], slang_args, '-o', '@OUTPUT@'],
+    depend_files: files('common.slang'),
     install: true,
     install_dir: get_option('datadir') / 'dcat' / 'shaders',
     build_by_default: true
