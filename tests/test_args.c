@@ -1,4 +1,3 @@
-// Unit tests for src/core/args.c (parse_args + validate_args).
 #include "core/args.h"
 #include <string.h>
 #include <unity.h>

@@ -17,6 +17,7 @@ Checks: >
   -readability-function-cognitive-complexity,
   -cert-err33-c,
   -bugprone-easily-swappable-parameters,
+  -cppcoreguidelines-init-variables,
 
 WarningsAsErrors: ''
 FormatStyle: file
