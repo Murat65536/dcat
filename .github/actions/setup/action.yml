@@ -72,12 +72,16 @@ runs:
       shell: msys2 {0}
       run: |
         SLANG_VERSION=2026.11
-        cd "$RUNNER_TEMP"
+        TMP="$(cygpath -u "$RUNNER_TEMP")"
+        cd "$TMP"
         curl -sSL -o slang.tar.gz \
           "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-windows-x86_64.tar.gz"
         mkdir -p slang
         tar -xzf slang.tar.gz -C slang
-        cygpath -w "$PWD/slang/bin" >> "$GITHUB_PATH"
+        # setup-msys2 uses path-type=minimal, so $GITHUB_PATH (a Windows PATH
+        # entry) is stripped from the msys2 shell. Copy slangc + its DLLs into a
+        # dir already on the msys2 PATH instead.
+        cp -r slang/bin/. "$MINGW_PREFIX/bin/"
 
     - name: Set ccache dir
       shell: bash
