@@ -26,8 +26,14 @@ jobs:
           bash .github/scripts/package.sh
 
       - name: Compile Inno Setup Script
+        shell: bash
         run: |
-          iscc packaging/windows/dcat.iss
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION=$(git describe --tags --always --match 'v[0-9]*' 2>/dev/null || echo 0.0.0-dev)
+          fi
+          DCAT_VERSION="$VERSION" iscc packaging/windows/dcat.iss
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
@@ -72,7 +78,7 @@ jobs:
             TAG_NAME=${GITHUB_REF#refs/tags/}
             gh release create "$TAG_NAME" dcat-linux-x86_64.tar.gz dcat-windows-setup.exe \
               --title "Release $TAG_NAME" \
-              --notes "Release $TAG_NAME"
+              --generate-notes
           else
             gh release delete nightly --yes || true
             git push origin :nightly || true

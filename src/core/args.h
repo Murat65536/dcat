@@ -18,6 +18,7 @@ typedef struct Args {
     float mouse_sensitivity;
     bool show_status_bar;
     bool show_help;
+    bool show_version;
     bool show_controls;
     bool use_sixel;
     bool use_kitty;
@@ -33,6 +34,7 @@ typedef struct Args {
 typedef enum ArgsParseStatus {
     ARGS_PARSE_OK,
     ARGS_PARSE_HELP,
+    ARGS_PARSE_VERSION,
     ARGS_PARSE_CONTROLS,
     ARGS_PARSE_ERROR,
 } ArgsParseStatus;
@@ -40,6 +42,8 @@ typedef enum ArgsParseStatus {
 ArgsParseStatus parse_args(int argc, char *argv[], Args *out);
 
 void print_usage(void);
+
+void print_version(void);
 
 void print_controls(void);
 

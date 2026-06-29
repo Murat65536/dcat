@@ -1,5 +1,5 @@
 project('dcat', 'c',
-  version: '0.1.0',
+  version: '1.1.0',
   meson_version: '>=1.0.0',
   default_options: [
     'c_std=c17',
@@ -151,10 +151,23 @@ endif
 
 dcat_inc = include_directories('src')
 
+# Stamp the binary with `git describe` so `dcat --version` reports the exact
+# commit between releases; falls back to the project() version for tarball
+# builds with no .git. Regenerated each build, so the SHA stays current.
+# --match 'v[0-9]*' so the floating `nightly` release tag does not hijack the
+# description; we want the nearest real version tag.
+version_h = vcs_tag(
+  command: ['git', 'describe', '--tags', '--always', '--dirty', '--match', 'v[0-9]*'],
+  fallback: 'v' + meson.project_version(),
+  input: 'src/version.h.in',
+  output: 'version.h',
+)
+
 # Everything except main.c lives in a static library so the unit tests can link
 # against the same objects as the installed executable.
 dcat_core_lib = static_library('dcat_core',
   dcat_core_sources,
+  version_h,
   include_directories: dcat_inc,
   dependencies: dcat_deps,
 )

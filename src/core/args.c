@@ -1,4 +1,5 @@
 #include "args.h"
+#include "version.h"
 #include <errno.h>
 #include <float.h>
 #include <limits.h>
@@ -32,8 +33,11 @@ void print_usage(void) {
            "  -B, --block-characters     enable monochrome block characters mode\n"
            "      --hash-characters      use # for character modes\n"
            "  -h, --help                 display help\n"
+           "  -V, --version              display version\n"
            "      --controls             display controls\n");
 }
+
+void print_version(void) { printf("dcat %s\n", DCAT_VERSION); }
 
 void print_controls(void) {
     printf("Controls:\n"
@@ -93,6 +97,7 @@ static const OptionSpec OPTIONS[] = {
     {"-B", "--block-characters", OPT_FLAG, offsetof(Args, use_block_characters)},
     {NULL, "--hash-characters", OPT_FLAG, offsetof(Args, use_hash_characters)},
     {"-h", "--help", OPT_FLAG, offsetof(Args, show_help)},
+    {"-V", "--version", OPT_FLAG, offsetof(Args, show_version)},
     {NULL, "--controls", OPT_FLAG, offsetof(Args, show_controls)}};
 
 static const OptionSpec *find_option(const char *arg) {
@@ -202,6 +207,10 @@ ArgsParseStatus parse_args(const int argc, char *argv[], Args *out) {
 
     if (out->show_help) {
         return ARGS_PARSE_HELP;
+    }
+
+    if (out->show_version) {
+        return ARGS_PARSE_VERSION;
     }
 
     if (out->show_controls) {

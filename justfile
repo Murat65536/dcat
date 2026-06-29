@@ -71,3 +71,16 @@ clean:
 # Refresh pinned subproject sources after editing subprojects/*.wrap.
 bump-wraps:
     meson subprojects update --reset
+
+# Cut a release: bump the project() version, commit, tag vX.Y.Z, and push both.
+# The pushed tag triggers the Release workflow, which builds and publishes the
+# Windows installer + Linux tarball. The installer and `dcat --version` derive
+# their version from the tag, so this single bump is the only source to update.
+# Usage: just release 1.2.0
+release version:
+    sed -i "s/^  version: '[^']*',/  version: '{{version}}',/" meson.build
+    git add meson.build
+    git commit -m "Release v{{version}}"
+    git tag "v{{version}}"
+    git push origin HEAD
+    git push origin "v{{version}}"

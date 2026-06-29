@@ -1,7 +1,18 @@
+; Version comes from the DCAT_VERSION env var, which CI sets from the release
+; tag. Reading it via GetEnv (rather than `iscc /DAppVersion=...`) avoids Git
+; Bash mangling the leading-slash argument into a path. The fallback keeps a
+; bare `iscc dcat.iss` working for local test builds.
+#ifndef AppVersion
+  #define AppVersion GetEnv("DCAT_VERSION")
+#endif
+#if AppVersion == ""
+  #define AppVersion "0.0.0-dev"
+#endif
+
 [Setup]
 SourceDir={#SourcePath}\..\..
 AppName=dcat
-AppVersion=0.1.0
+AppVersion={#AppVersion}
 AppPublisher=dcat contributors
 DefaultDirName={localappdata}\Programs\dcat
 DefaultGroupName=dcat
