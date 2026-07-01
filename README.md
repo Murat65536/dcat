@@ -10,56 +10,25 @@ https://github.com/user-attachments/assets/ca47ea52-6a46-4ac2-8c9f-430fc9ea9865
   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Murat65536/dcat&type=date&legend=top-left" />
 </picture>
 
-## Build
+## Install
 
-### Linux
-
-Install the required dependencies:
-
-```sh
-# Add LunarG Vulkan SDK repository for latest vulkan-headers
-wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
-sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-noble.list https://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list
-sudo apt-get update
-
-sudo apt-get install -y gcc meson ninja-build libvulkan-dev vulkan-headers shaderc vulkan-utility-libraries-dev libassimp-dev libcglm-dev libsixel-dev pkg-config libvips-dev
-```
-
-Configure and build:
-
-```sh
-# Release
-meson setup build --buildtype=release
-meson compile -C build
-
-# Debug
-meson setup build-debug --buildtype=debug
-meson compile -C build-debug
-```
+Prebuilt binaries for every release — plus a `nightly` prerelease — are on the [releases page](https://github.com/Murat65536/dcat/releases). Alternatively, build from source (see [BUILD.md](BUILD.md)).
 
 ### Windows
 
-On Windows, the project can be built using MSYS2 on clang64.
+Download and run `dcat-windows-setup.exe`.
+
+### Linux
+
+Download and extract the tarball; the binary finds its `shaders/` directory next to itself, so it runs in place:
 
 ```sh
-pacman -S mingw-w64-clang-x86_64-toolchain mingw-w64-clang-x86_64-meson mingw-w64-clang-x86_64-ninja mingw-w64-clang-x86_64-cmake mingw-w64-clang-x86_64-pkgconf mingw-w64-clang-x86_64-vulkan-headers mingw-w64-clang-x86_64-vulkan-loader mingw-w64-clang-x86_64-vulkan-utility-libraries mingw-w64-clang-x86_64-shaderc mingw-w64-clang-x86_64-assimp mingw-w64-clang-x86_64-cglm mingw-w64-clang-x86_64-libvips git
+tar -xzf dcat-linux-x86_64.tar.gz
+./dcat-linux/dcat
 ```
 
-When `bundled_libsixel` is enabled, the bundled libsixel is linked statically on Windows (while other dependencies remain DLL-packaged) to avoid patching upstream libsixel export macros.
+The binary is dynamically linked, so the runtime libraries (Vulkan, assimp, libsixel, libvips) must be installed from your package manager. It is built on Ubuntu 24.04; on distros with incompatible library versions, build from source instead.
 
-Use `-Dbundled_libsixel=disabled` only if you intentionally want Meson to require a system `libsixel` package from the active MSYS2 environment.
+## Build
 
-### Windows Notes
-
-Kitty SHM won't work on Windows
-
-## Development
-
-```sh
-just setup-debug   # configure a debug build in ./build
-just build         # meson compile -C build
-just asan          # debug build with AddressSanitizer + UBSan (Linux)
-just ubsan         # debug build with UBSan only (Windows)
-just devenv        # shell with the built dcat on PATH
-just bump-wraps    # refresh subproject sources after editing subprojects/*.wrap
-```
+To build from source, see [BUILD.md](BUILD.md).

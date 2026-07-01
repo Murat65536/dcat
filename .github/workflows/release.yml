@@ -61,7 +61,6 @@ jobs:
           cp build/dcat dcat-linux/
           cp build/shaders/*.spv dcat-linux/shaders/
           cp LICENSE dcat-linux/
-          cp README.md dcat-linux/
           tar -czvf dcat-linux-x86_64.tar.gz dcat-linux
 
       - name: Download Windows Artifact
