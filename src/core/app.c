@@ -538,7 +538,6 @@ int app_run_loop(AppContext *app) {
     refresh_camera_matrices(&app->camera, view, projection);
 
     double last_frame_time = get_time_seconds();
-    unsigned long long frame_count = 0;
 
     while (!signals_should_quit()) {
         if (!resize_renderer_if_needed(&app->args, app->output_driver, app->renderer,
@@ -594,8 +593,6 @@ int app_run_loop(AppContext *app) {
         }
 
         pace_frame(frame_start, app->target_frame_time);
-
-        frame_count++;
     }
 
     return 0;
