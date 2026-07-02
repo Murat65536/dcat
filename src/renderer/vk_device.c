@@ -8,8 +8,8 @@ bool create_instance(VulkanRenderer *r) {
     app_info.pApplicationName = "dcat";
     app_info.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
     app_info.pEngineName = "No Engine";
-    app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    app_info.apiVersion = VK_API_VERSION_1_2;
+    app_info.engineVersion = 0;
+    app_info.apiVersion = VK_API_VERSION_1_0;
 
     VkInstanceCreateInfo create_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     create_info.pApplicationInfo = &app_info;
