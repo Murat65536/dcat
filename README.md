@@ -6,7 +6,7 @@ https://github.com/user-attachments/assets/ca47ea52-6a46-4ac2-8c9f-430fc9ea9865
 
 ## Install
 
-Prebuilt binaries for every release — plus a `nightly` prerelease — are on the [releases page](https://github.com/Murat65536/dcat/releases). Alternatively, build from source (see [BUILD.md](BUILD.md)).
+Prebuilt binaries for every release are on the [releases page](https://github.com/Murat65536/dcat/releases). Alternatively, build from source (see [BUILD.md](BUILD.md)).
 
 ### Windows
 
@@ -21,7 +21,7 @@ tar -xzf dcat-linux-x86_64.tar.gz
 ./dcat-linux/dcat
 ```
 
-The binary is dynamically linked, so the runtime libraries (Vulkan, assimp, libsixel, libvips) must be installed from your package manager. It is built on Ubuntu 24.04; on distros with incompatible library versions, build from source instead.
+The binary is dynamically linked, so the runtime libraries (Vulkan, assimp, libsixel, libvips) must be installed from your package manager.
 
 ## Build
 
