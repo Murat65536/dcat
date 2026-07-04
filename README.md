@@ -27,8 +27,10 @@ tar -xzf dcat-linux-x86_64.tar.gz
 
 The binary is dynamically linked, so the runtime libraries (Vulkan, assimp, libsixel, libvips) must be installed from your package manager.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Murat65536/dcat&type=date&theme=dark&legend=top-left" />
-  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Murat65536/dcat&type=date&legend=top-left" />
-  <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Murat65536/dcat&type=date&legend=top-left" />
-</picture>
+## Star History
+
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Murat65536/dcat&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Murat65536/dcat&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Murat65536/dcat&type=date&legend=top-left" />
+ </picture>
