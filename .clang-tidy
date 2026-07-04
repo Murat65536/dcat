@@ -18,6 +18,7 @@ Checks: >
   -cert-err33-c,
   -bugprone-easily-swappable-parameters,
   -cppcoreguidelines-init-variables,
+  -readability-math-missing-parentheses,
 
 WarningsAsErrors: ''
 FormatStyle: file

@@ -89,13 +89,13 @@ runs:
       run: echo "CCACHE_DIR=${{ github.workspace }}/.ccache" >> "$GITHUB_ENV"
 
     - name: Cache Meson subproject downloads
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: subprojects/packagecache
         key: packagecache-${{ runner.os }}-${{ hashFiles('subprojects/*.wrap') }}
 
     - name: Cache ccache
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ${{ github.workspace }}/.ccache
         key: ccache-${{ runner.os }}-${{ inputs.buildtype }}-${{ github.sha }}

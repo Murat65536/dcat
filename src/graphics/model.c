@@ -142,7 +142,7 @@ static void process_node(const struct aiNode *node, const struct aiScene *scene,
 
     for (unsigned int i = 0; i < node->mNumMeshes; i++) {
         const struct aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
-        if (mesh->mPrimitiveTypes != aiPrimitiveType_TRIANGLE) {
+        if (!(mesh->mPrimitiveTypes & aiPrimitiveType_TRIANGLE)) {
             continue;
         }
         const uint32_t base_index = (uint32_t)vertices->count;
@@ -230,7 +230,9 @@ static void process_node_animated(const struct aiNode *node, const struct aiScen
                                   bool flip_uv_y, unsigned int uv_channel) {
     for (unsigned int i = 0; i < node->mNumMeshes; i++) {
         const struct aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
-        if (mesh->mPrimitiveTypes != aiPrimitiveType_TRIANGLE) {
+        // See process_node(): accept any mesh with the triangle bit set, since
+        // triangulated n-gons also carry aiPrimitiveType_NGONEncodingFlag.
+        if (!(mesh->mPrimitiveTypes & aiPrimitiveType_TRIANGLE)) {
             continue;
         }
         const uint32_t base_index = (uint32_t)vertices->count;
