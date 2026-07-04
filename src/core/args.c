@@ -37,7 +37,9 @@ void print_usage(void) {
            "      --controls             display controls\n");
 }
 
-void print_version(void) { printf("dcat %s\n", DCAT_VERSION); }
+void print_version(void) {
+    printf("dcat %s\n", DCAT_VERSION);
+}
 
 void print_controls(void) {
     printf("Controls:\n"

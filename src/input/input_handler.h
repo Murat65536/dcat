@@ -70,13 +70,12 @@ typedef struct MouseTracker {
 } MouseTracker;
 
 // Apply a press/motion/scroll mouse event. `btn` matches the MouseButton encoding.
-void mouse_apply_action(const InputThreadData *data, int btn, int mx, int my,
-                        MouseTracker *track);
+void mouse_apply_action(const InputThreadData *data, int btn, int mx, int my, MouseTracker *track);
 
 typedef enum MouseCsiResult {
-    MOUSE_CSI_NONE,       // not a mouse sequence
-    MOUSE_CSI_HANDLED,    // mouse sequence fully parsed
-    MOUSE_CSI_INCOMPLETE  // need more bytes to decide or finish
+    MOUSE_CSI_NONE,      // not a mouse sequence
+    MOUSE_CSI_HANDLED,   // mouse sequence fully parsed
+    MOUSE_CSI_INCOMPLETE // need more bytes to decide or finish
 } MouseCsiResult;
 
 // Parse a mouse report from a CSI body. `buf` points just past the "\x1b[" introducer and

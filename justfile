@@ -1,12 +1,16 @@
-# Recipes use POSIX tools (rm, xargs, git ls-files -z). On Windows, point just at
-# msys2's sh instead of the missing system `sh`; Linux/mac keep the default sh.
-set windows-shell := ["C:/msys64/usr/bin/sh.exe", "-cu"]
+set windows-shell := ["sh", "-cu"]
 
 builddir := "build"
 
-# clang-tidy must match the build toolchain (msys2 clang64), not Program Files
-# LLVM — otherwise cglm's SIMD headers throw hundreds of bogus parse errors.
-clang_tidy := "C:/msys64/clang64/bin/clang-tidy.exe"
+# clang-tidy must match the build toolchain, or cglm's SIMD headers throw
+# hundreds of bogus parse errors. On Windows that means the active MSYS2
+# environment's binary (via $MINGW_PREFIX: clang64, ucrt64, ...), not a stray
+# Program Files LLVM; on Linux the clang-tidy on PATH is already correct.
+clang_tidy := if os() == "windows" {
+    env_var_or_default("MINGW_PREFIX", "C:/msys64/clang64") + "/bin/clang-tidy.exe"
+} else {
+    "clang-tidy"
+}
 
 # run-clang-tidy resolves paths to absolute, so the positional filter matches the
 # absolute path segment; '.' stands in for the path separator. This excludes
@@ -16,13 +20,13 @@ tidy_filter := "dcat.src."
 default:
     @just --list
 
-# Configure an optimized release build.
-setup-release:
-    meson setup {{builddir}} --buildtype=release --reconfigure
+# Configure a release build. Extra meson-setup args pass through (e.g. -Dfoo=bar); override the tree with `just builddir=other setup-release`.
+setup-release *args:
+    meson setup {{builddir}} --buildtype=release --reconfigure {{args}}
 
-# Configure a debug build (asserts, Vulkan validation).
-setup-debug:
-    meson setup {{builddir}} --buildtype=debug --reconfigure
+# Configure a debug build (asserts, Vulkan validation). Same extra-arg passthrough as setup-release.
+setup-debug *args:
+    meson setup {{builddir}} --buildtype=debug --reconfigure {{args}}
 
 # Configure a debug build instrumented with AddressSanitizer + UBSan.
 # Uses Meson's built-in b_sanitize; b_lundef=false keeps sanitizer runtime linking happy.
@@ -39,9 +43,9 @@ ubsan:
     meson setup {{builddir}} --buildtype=debug -Db_sanitize=undefined -Db_lundef=false --reconfigure
     meson compile -C {{builddir}}
 
-# Build whatever is currently configured.
-build:
-    meson compile -C {{builddir}}
+# Build whatever is currently configured. Extra meson-compile args pass through (e.g. -v).
+build *args:
+    meson compile -C {{builddir}} {{args}}
 
 # Run the unit tests (built by default when the Unity wrap is available).
 test:
@@ -57,8 +61,9 @@ tidy-fix:
     just fmt
 
 # Format all C sources and headers under src/ and tests/ with .clang-format.
+# Pass the file list straight to clang-format (no xargs; msys2 sh lacks it).
 fmt:
-    git ls-files -z -- 'src/*.c' 'src/*.h' 'tests/*.c' | xargs -0 clang-format -i
+    clang-format -i `git ls-files -- 'src/*.c' 'src/*.h' 'tests/*.c'`
 
 # Drop into an environment with the built binary on PATH.
 devenv:
@@ -73,10 +78,6 @@ bump-wraps:
     meson subprojects update --reset
 
 # Cut a release: bump the project() version, commit, tag vX.Y.Z, and push both.
-# The pushed tag triggers the Release workflow, which builds and publishes the
-# Windows installer + Linux tarball. The installer and `dcat --version` derive
-# their version from the tag, so this single bump is the only source to update.
-# Usage: just release 1.2.0
 release version:
     sed -i "s/^  version: '[^']*',/  version: '{{version}}',/" meson.build
     git add meson.build
