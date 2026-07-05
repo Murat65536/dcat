@@ -19,6 +19,7 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -cppcoreguidelines-init-variables,
   -readability-math-missing-parentheses,
+  -cert-err34-c,
 
 WarningsAsErrors: ''
 FormatStyle: file

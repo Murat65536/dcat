@@ -1,4 +1,5 @@
 #include "vk_device.h"
+#include "version.h"
 #include "vulkan/vulkan_core.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -79,10 +80,18 @@ static void populate_debug_messenger_info(VkDebugUtilsMessengerCreateInfoEXT *in
 }
 #endif
 
+static uint32_t dcat_vk_application_version(void) {
+    unsigned major = 0;
+    unsigned minor = 0;
+    unsigned patch = 0;
+    sscanf(DCAT_VERSION, "v%u.%u.%u", &major, &minor, &patch);
+    return VK_MAKE_VERSION(major, minor, patch);
+}
+
 bool create_instance(VulkanRenderer *r) {
     VkApplicationInfo app_info = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO};
     app_info.pApplicationName = "dcat";
-    app_info.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
+    app_info.applicationVersion = dcat_vk_application_version();
     app_info.pEngineName = "No Engine";
     app_info.engineVersion = 0;
     app_info.apiVersion = VK_API_VERSION_1_0;
