@@ -51,12 +51,15 @@ jobs:
 
       - name: Generate coverage report
         run: |
-          ninja -C build coverage-text coverage-html
-          cat build/meson-logs/coverage.txt
+          pipx install gcovr
+          cd build
+          mkdir -p coveragereport
+          gcovr -r .. libdcat_core.a.p tests --txt coverage.txt --html-details coveragereport/index.html
+          cat coverage.txt
           {
             echo '## Test coverage'
             echo '```'
-            cat build/meson-logs/coverage.txt
+            cat coverage.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -64,4 +67,4 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: coverage-html
-          path: build/meson-logs/coveragereport
+          path: build/coveragereport
