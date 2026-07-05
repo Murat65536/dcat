@@ -1,26 +1,21 @@
-set windows-shell := ["sh", "-cu"]
+# Absolute sh.exe path + /usr/bin PATH prepend so recipes (and coreutils) work from PowerShell/cmd, where MSYS2 is not on PATH; settings are const, so this can't probe env.
+set windows-shell := ["C:/msys64/usr/bin/sh.exe", "-cu", 'PATH="/usr/bin:$PATH"; eval "$0"']
 
 builddir := "build"
 
-# clang-tidy must match the build toolchain, or cglm's SIMD headers throw
-# hundreds of bogus parse errors. On Windows that means the active MSYS2
-# environment's binary (via $MINGW_PREFIX: clang64, ucrt64, ...), not a stray
-# Program Files LLVM; on Linux the clang-tidy on PATH is already correct.
+# clang-tidy must match the build toolchain (on Windows: the active MSYS2 env's binary via $MINGW_PREFIX, not a stray Program Files LLVM), or cglm's SIMD headers throw bogus parse errors.
 clang_tidy := if os() == "windows" {
     env_var_or_default("MINGW_PREFIX", "C:/msys64/clang64") + "/bin/clang-tidy.exe"
 } else {
     "clang-tidy"
 }
 
-# run-clang-tidy resolves paths to absolute, so the positional filter matches the
-# absolute path segment; '.' stands in for the path separator. This excludes
-# subproject sources (libsixel, cglm) while keeping our own src/ tree.
 tidy_filter := "dcat.src."
 
 default:
     @just --list
 
-# Configure a release build. Extra meson-setup args pass through (e.g. -Dfoo=bar); override the tree with `just builddir=other setup-release`.
+# Configure a release build. Extra meson-setup args pass through. Override the tree with `just builddir=other setup-release`.
 setup-release *args:
     meson setup {{builddir}} --buildtype=release --reconfigure {{args}}
 
@@ -28,17 +23,12 @@ setup-release *args:
 setup-debug *args:
     meson setup {{builddir}} --buildtype=debug --reconfigure {{args}}
 
-# Configure a debug build instrumented with AddressSanitizer + UBSan.
-# Uses Meson's built-in b_sanitize; b_lundef=false keeps sanitizer runtime linking happy.
-# NOTE: ASan is unusable on native Windows here -- the prebuilt libvips/glib DLL
-# allocates pointers ASan never tracks, so vips_init aborts with an unsuppressible
-# bad-malloc_usable_size. Use this on Linux; on Windows use `just ubsan`.
+# Configure a debug build with ASan + UBSan (b_lundef=false for sanitizer runtime linking). Linux-only: the prebuilt libvips/glib DLL makes vips_init abort under ASan; on Windows use `just ubsan`.
 asan:
     meson setup {{builddir}} --buildtype=debug -Db_sanitize=address,undefined -Db_lundef=false --reconfigure
     meson compile -C {{builddir}}
 
-# Configure a debug build instrumented with UBSan only. Works on native Windows,
-# where ASan cannot be used (see the asan recipe note).
+# Configure a debug build instrumented with UBSan only; works on native Windows, where ASan cannot be used (see the asan recipe note).
 ubsan:
     meson setup {{builddir}} --buildtype=debug -Db_sanitize=undefined -Db_lundef=false --reconfigure
     meson compile -C {{builddir}}
@@ -51,6 +41,13 @@ build *args:
 test:
     meson test -C {{builddir}} --print-errorlogs
 
+# Rebuild with coverage, run the tests, and print a gcovr summary (run from builddir on our object dirs, not via meson's coverage-text: llvm-cov can't resolve ../src/... from the root). Requires gcovr.
+coverage:
+    meson setup {{builddir}} --buildtype=debug -Db_coverage=true --reconfigure
+    meson compile -C {{builddir}}
+    meson test -C {{builddir}} --print-errorlogs
+    cd {{builddir}} && gcovr -r .. libdcat_core.a.p tests --txt
+
 # Report clang-tidy findings without changing anything.
 tidy:
     run-clang-tidy -p {{builddir}} -clang-tidy-binary "{{clang_tidy}}" -header-filter='dcat.src' '{{tidy_filter}}'
@@ -60,8 +57,7 @@ tidy-fix:
     run-clang-tidy -p {{builddir}} -clang-tidy-binary "{{clang_tidy}}" -fix -header-filter='dcat.src' '{{tidy_filter}}'
     just fmt
 
-# Format all C sources and headers under src/ and tests/ with .clang-format.
-# Pass the file list straight to clang-format (no xargs; msys2 sh lacks it).
+# Format all C sources and headers under src/ and tests/ with .clang-format, passing the file list straight to clang-format (no xargs; msys2 sh lacks it).
 fmt:
     clang-format -i `git ls-files -- 'src/*.c' 'src/*.h' 'tests/*.c'`
 

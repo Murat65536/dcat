@@ -5,6 +5,10 @@ inputs:
     description: 'Meson build type (release or debug)'
     required: true
     default: 'release'
+  setup-args:
+    description: 'Extra arguments appended to meson setup (e.g. -Db_sanitize=address,undefined)'
+    required: false
+    default: ''
 
 runs:
   using: "composite"
@@ -33,7 +37,8 @@ runs:
           libcglm-dev \
           libsixel-dev \
           pkg-config \
-          libvips-dev
+          libvips-dev \
+          gcovr
 
     - name: Setup MSYS2
       if: runner.os == 'Windows'
@@ -108,7 +113,7 @@ runs:
       shell: bash
       run: |
         BUILDTYPE=$(echo "${{ inputs.buildtype }}" | tr '[:upper:]' '[:lower:]')
-        meson setup build -Dbuildtype=$BUILDTYPE -Dtests=enabled --wrap-mode=nofallback
+        meson setup build -Dbuildtype=$BUILDTYPE -Dtests=enabled --wrap-mode=nofallback ${{ inputs.setup-args }}
         meson compile -C build
         meson test -C build --print-errorlogs
         ccache --show-stats
@@ -118,7 +123,7 @@ runs:
       shell: msys2 {0}
       run: |
         BUILDTYPE=$(echo "${{ inputs.buildtype }}" | tr '[:upper:]' '[:lower:]')
-        meson setup buildDir -Dbuildtype=$BUILDTYPE -Ddefault_library=shared -Dbundled_libsixel=enabled -Dtests=enabled --wrap-mode=nofallback
+        meson setup buildDir -Dbuildtype=$BUILDTYPE -Ddefault_library=shared -Dbundled_libsixel=enabled -Dtests=enabled --wrap-mode=nofallback ${{ inputs.setup-args }}
         meson compile -C buildDir
         meson test -C buildDir --print-errorlogs
         ccache --show-stats

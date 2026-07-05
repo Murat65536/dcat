@@ -1,3 +1,9 @@
+# UBSan findings only print by default; halt_on_error makes them fail `meson test` (no-op in non-sanitized builds; ASan already halts on its own).
+add_test_setup('default',
+  is_default: true,
+  env: ['UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1'],
+)
+
 foreach name : ['args', 'char_render']
   test(
     name,

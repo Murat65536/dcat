@@ -16,11 +16,17 @@ jobs:
             buildtype: Release
           - os: ubuntu-latest
             buildtype: Debug
+          # ASan + UBSan test run; Linux-only since ASan can't handle the prebuilt libvips DLL on Windows (see the justfile asan recipe).
+          - os: ubuntu-latest
+            buildtype: Debug
+            variant: asan-ubsan
+            setup-args: -Db_sanitize=address,undefined -Db_lundef=false
           - os: windows-latest
             buildtype: Release
           - os: windows-latest
             buildtype: Debug
     runs-on: ${{ matrix.os }}
+    name: build (${{ matrix.os }}, ${{ matrix.buildtype }}${{ matrix.variant && format(', {0}', matrix.variant) || '' }})
 
     steps:
       - uses: actions/checkout@v6
@@ -29,3 +35,33 @@ jobs:
         uses: ./.github/actions/setup
         with:
           buildtype: ${{ matrix.buildtype }}
+          setup-args: ${{ matrix.setup-args }}
+
+  coverage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build + test with coverage
+        uses: ./.github/actions/setup
+        with:
+          buildtype: Debug
+          setup-args: -Db_coverage=true
+
+      - name: Generate coverage report
+        run: |
+          ninja -C build coverage-text coverage-html
+          cat build/meson-logs/coverage.txt
+          {
+            echo '## Test coverage'
+            echo '```'
+            cat build/meson-logs/coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload HTML coverage report
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html
+          path: build/meson-logs/coveragereport
