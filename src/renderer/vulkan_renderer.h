@@ -94,6 +94,10 @@ typedef struct VulkanRenderer {
     vec3 normalized_light_dir;
 
     VkInstance instance;
+#ifndef NDEBUG
+    VkDebugUtilsMessengerEXT debug_messenger;
+    PFN_vkSetDebugUtilsObjectNameEXT pfn_set_object_name;
+#endif
     VkPhysicalDevice physical_device;
     VkDevice device;
     VkQueue graphics_queue;
@@ -182,6 +186,15 @@ typedef struct VulkanRenderer {
     char last_error_message[256];
     uint32_t current_frame;
 } VulkanRenderer;
+
+#ifndef NDEBUG
+void vk_set_object_name(VulkanRenderer *r, VkObjectType type, uint64_t handle, const char *fmt,
+                        ...);
+#define VK_NAME(r, type, handle, ...)                                                              \
+    vk_set_object_name((r), (type), (uint64_t)(handle), __VA_ARGS__)
+#else
+#define VK_NAME(r, type, handle, ...) ((void)0)
+#endif
 
 // Create/destroy
 VulkanRenderer *vulkan_renderer_create(uint32_t width, uint32_t height);

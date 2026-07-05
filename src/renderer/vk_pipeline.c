@@ -39,6 +39,8 @@ bool create_descriptor_set_layout(VulkanRenderer *r) {
         fprintf(stderr, "Failed to create descriptor set layout\n");
         return false;
     }
+    VK_NAME(r, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, r->descriptor_set_layout,
+            "descriptor_set_layout");
     return true;
 }
 
@@ -60,6 +62,7 @@ bool create_pipeline_layout(VulkanRenderer *r) {
         fprintf(stderr, "Failed to create pipeline layout\n");
         return false;
     }
+    VK_NAME(r, VK_OBJECT_TYPE_PIPELINE_LAYOUT, r->pipeline_layout, "pipeline_layout");
     return true;
 }
 
@@ -136,6 +139,7 @@ bool create_render_pass(VulkanRenderer *r) {
         fprintf(stderr, "Failed to create render pass\n");
         return false;
     }
+    VK_NAME(r, VK_OBJECT_TYPE_RENDER_PASS, r->render_pass, "render_pass");
     return true;
 }
 
@@ -151,8 +155,8 @@ bool create_graphics_pipeline(VulkanRenderer *r) {
         return false;
     }
 
-    VkShaderModule vert_module = create_shader_module(r, vert_code, vert_size);
-    VkShaderModule frag_module = create_shader_module(r, frag_code, frag_size);
+    VkShaderModule vert_module = create_shader_module(r, vert_code, vert_size, "shader.vert");
+    VkShaderModule frag_module = create_shader_module(r, frag_code, frag_size, "shader.frag");
     free(vert_code);
     free(frag_code);
 
@@ -317,6 +321,10 @@ bool create_graphics_pipeline(VulkanRenderer *r) {
 
     vkDestroyShaderModule(r->device, vert_module, NULL);
     vkDestroyShaderModule(r->device, frag_module, NULL);
+
+    VK_NAME(r, VK_OBJECT_TYPE_PIPELINE, r->graphics_pipeline, "graphics_pipeline");
+    VK_NAME(r, VK_OBJECT_TYPE_PIPELINE, r->blend_pipeline, "blend_pipeline");
+    VK_NAME(r, VK_OBJECT_TYPE_PIPELINE, r->wireframe_pipeline, "wireframe_pipeline");
     return true;
 }
 
@@ -333,8 +341,8 @@ bool create_skydome_pipeline(VulkanRenderer *r) {
         return false;
     }
 
-    VkShaderModule vert_module = create_shader_module(r, vert_code, vert_size);
-    VkShaderModule frag_module = create_shader_module(r, frag_code, frag_size);
+    VkShaderModule vert_module = create_shader_module(r, vert_code, vert_size, "skydome.vert");
+    VkShaderModule frag_module = create_shader_module(r, frag_code, frag_size, "skydome.frag");
     free(vert_code);
     free(frag_code);
 
@@ -360,6 +368,8 @@ bool create_skydome_pipeline(VulkanRenderer *r) {
         vkDestroyShaderModule(r->device, frag_module, NULL);
         return false;
     }
+    VK_NAME(r, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, r->skydome_descriptor_set_layout,
+            "skydome_descriptor_set_layout");
 
     // Create skydome pipeline layout
     VkPushConstantRange push_constant_range = {0};
@@ -380,6 +390,8 @@ bool create_skydome_pipeline(VulkanRenderer *r) {
         vkDestroyShaderModule(r->device, frag_module, NULL);
         return false;
     }
+    VK_NAME(r, VK_OBJECT_TYPE_PIPELINE_LAYOUT, r->skydome_pipeline_layout,
+            "skydome_pipeline_layout");
 
     // Setup shader stages
     VkPipelineShaderStageCreateInfo shader_stages[2] = {
@@ -475,6 +487,8 @@ bool create_skydome_pipeline(VulkanRenderer *r) {
 
     vkDestroyShaderModule(r->device, vert_module, NULL);
     vkDestroyShaderModule(r->device, frag_module, NULL);
+
+    VK_NAME(r, VK_OBJECT_TYPE_PIPELINE, r->skydome_pipeline, "skydome_pipeline");
 
     // Allocate skydome descriptor sets
     VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];

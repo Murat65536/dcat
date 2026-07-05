@@ -107,6 +107,8 @@ bool update_material_texture(VulkanRenderer *r, MaterialGPUData *mat, const Text
                                   &mat->cached_diffuse_width, &mat->cached_diffuse_height)) {
             return false;
         }
+        VK_NAME(r, VK_OBJECT_TYPE_IMAGE, mat->diffuse_image, "diffuse_image");
+        VK_NAME(r, VK_OBJECT_TYPE_IMAGE_VIEW, mat->diffuse_image_view, "diffuse_image_view");
         mat->cached_diffuse_data_ptr = diffuse->data;
         if (size_changed) {
             for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -126,6 +128,8 @@ bool update_material_texture(VulkanRenderer *r, MaterialGPUData *mat, const Text
                                   &mat->cached_normal_width, &mat->cached_normal_height)) {
             return false;
         }
+        VK_NAME(r, VK_OBJECT_TYPE_IMAGE, mat->normal_image, "normal_image");
+        VK_NAME(r, VK_OBJECT_TYPE_IMAGE_VIEW, mat->normal_image_view, "normal_image_view");
         mat->cached_normal_data_ptr = normal->data;
         if (size_changed) {
             for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -191,6 +195,8 @@ bool update_skydome_texture(VulkanRenderer *r, const Texture *texture) {
         memset(&r->skydome_image_alloc, 0, sizeof(r->skydome_image_alloc));
         return false;
     }
+    VK_NAME(r, VK_OBJECT_TYPE_IMAGE, r->skydome_image, "skydome_image");
+    VK_NAME(r, VK_OBJECT_TYPE_IMAGE_VIEW, r->skydome_image_view, "skydome_image_view");
 
     VkDeviceSize image_size = texture->data_size;
     VkBuffer staging_buf = VK_NULL_HANDLE;
@@ -238,6 +244,7 @@ bool update_vertex_buffer(VulkanRenderer *r, const VertexArray *vertices) {
                                        &r->vertex_buffer_alloc)) {
             return false;
         }
+        VK_NAME(r, VK_OBJECT_TYPE_BUFFER, r->vertex_buffer, "vertex_buffer");
         r->cached_vertex_count = vertices->count;
     }
 
@@ -261,6 +268,7 @@ bool update_index_buffer(VulkanRenderer *r, const Uint32Array *indices) {
                                        &r->index_buffer_alloc)) {
             return false;
         }
+        VK_NAME(r, VK_OBJECT_TYPE_BUFFER, r->index_buffer, "index_buffer");
         r->cached_index_count = indices->count;
     }
 

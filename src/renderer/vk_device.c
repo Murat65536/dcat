@@ -1,7 +1,83 @@
 #include "vk_device.h"
+#include "vulkan/vulkan_core.h"
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef NDEBUG
+void vk_set_object_name(VulkanRenderer *r, VkObjectType type, uint64_t handle, const char *fmt,
+                        ...) {
+    if (r->pfn_set_object_name == NULL || handle == 0) {
+        return;
+    }
+
+    char name[128];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(name, sizeof(name), fmt, args);
+    va_end(args);
+
+    VkDebugUtilsObjectNameInfoEXT info = {.sType =
+                                              VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
+    info.objectType = type;
+    info.objectHandle = handle;
+    info.pObjectName = name;
+    r->pfn_set_object_name(r->device, &info);
+}
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type,
+    const VkDebugUtilsMessengerCallbackDataEXT *callback_data, void *user_data) {
+    (void)user_data;
+
+    const char *type_text;
+    if (type & VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT) {
+        type_text = "GENERAL";
+    } else if (type & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) {
+        type_text = "VALIDATION";
+    } else if (type & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) {
+        type_text = "PERFORMANCE";
+    } else {
+        type_text = "UNKNOWN";
+    }
+
+    const char *severity_text;
+    const char *color;
+    if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+        color = "\x1b[91m";
+        severity_text = "ERROR";
+    } else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+        color = "\x1b[93m";
+        severity_text = "WARNING";
+    } else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
+        color = "\x1b[96m";
+        severity_text = "INFO";
+    } else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
+        color = "\x1b[90m";
+        severity_text = "VERBOSE";
+    } else {
+        color = "";
+        severity_text = "UNKNOWN";
+    }
+
+    fprintf(stderr, "[VULKAN:%s:%s%s\x1b[0m] %s\n", type_text, color, severity_text,
+            callback_data->pMessage);
+    return VK_FALSE;
+}
+
+static void populate_debug_messenger_info(VkDebugUtilsMessengerCreateInfoEXT *info) {
+    info->sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    info->messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT |
+                            VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                            VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+                            VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
+    info->messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                        VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                        VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    info->pfnUserCallback = debug_callback;
+}
+#endif
 
 bool create_instance(VulkanRenderer *r) {
     VkApplicationInfo app_info = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO};
@@ -42,12 +118,46 @@ bool create_instance(VulkanRenderer *r) {
         create_info.enabledLayerCount = validation_layer_count;
         create_info.ppEnabledLayerNames = validation_layers;
     }
+
+    uint32_t ext_count = 0;
+    vkEnumerateInstanceExtensionProperties(NULL, &ext_count, NULL);
+    VkExtensionProperties *available_exts = malloc(ext_count * sizeof(VkExtensionProperties));
+    vkEnumerateInstanceExtensionProperties(NULL, &ext_count, available_exts);
+
+    bool debug_utils_available = false;
+    for (uint32_t i = 0; i < ext_count; i++) {
+        if (strcmp(available_exts[i].extensionName, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0) {
+            debug_utils_available = true;
+            break;
+        }
+    }
+    free(available_exts);
+
+    const char *extensions[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
+    VkDebugUtilsMessengerCreateInfoEXT debug_info = {0};
+    if (debug_utils_available) {
+        create_info.enabledExtensionCount = sizeof(extensions) / sizeof(extensions[0]);
+        create_info.ppEnabledExtensionNames = extensions;
+        populate_debug_messenger_info(&debug_info);
+        create_info.pNext = &debug_info;
+    }
 #endif
 
     if (vkCreateInstance(&create_info, NULL, &r->instance) != VK_SUCCESS) {
         fprintf(stderr, "Failed to create Vulkan instance\n");
         return false;
     }
+
+#ifndef NDEBUG
+    if (debug_utils_available) {
+        PFN_vkCreateDebugUtilsMessengerEXT create_messenger =
+            (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
+                r->instance, "vkCreateDebugUtilsMessengerEXT");
+        if (create_messenger != NULL) {
+            create_messenger(r->instance, &debug_info, NULL, &r->debug_messenger);
+        }
+    }
+#endif
     return true;
 }
 
@@ -75,25 +185,13 @@ bool select_physical_device(VulkanRenderer *r) {
 
         for (uint32_t i = 0; i < queue_family_count; i++) {
             if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                // Check for required features
-                VkPhysicalDeviceVulkan12Features features12 = {
-                    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+                VkPhysicalDeviceFeatures features;
+                vkGetPhysicalDeviceFeatures(devices[d], &features);
 
-                VkPhysicalDeviceFeatures2 features2 = {
-                    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
-                features2.pNext = &features12;
-
-                vkGetPhysicalDeviceFeatures2(devices[d], &features2);
-
-                if (!features12.shaderInt8 || !features12.storageBuffer8BitAccess ||
-                    !features12.uniformAndStorageBuffer8BitAccess ||
-                    !features2.features.fillModeNonSolid) {
+                if (!features.fillModeNonSolid) {
                     fprintf(stderr,
-                            "Device %d skipped: missing required features (int8: %d, 8bit_storage: "
-                            "%d, 8bit_uniform: %d, wireframe: %d)\n",
-                            d, features12.shaderInt8, features12.storageBuffer8BitAccess,
-                            features12.uniformAndStorageBuffer8BitAccess,
-                            features2.features.fillModeNonSolid);
+                            "Device %d skipped: missing required features (wireframe: %d)\n", d,
+                            features.fillModeNonSolid);
                     continue;
                 }
 
@@ -131,21 +229,13 @@ bool create_logical_device(VulkanRenderer *r) {
     queue_create_info.queueCount = 1;
     queue_create_info.pQueuePriorities = &queue_priority;
 
-    // Legacy features
+    // Only Vulkan 1.0 core features are required.
     VkPhysicalDeviceFeatures device_features = {0};
     device_features.fillModeNonSolid = VK_TRUE;
     // Make out-of-range buffer accesses well-defined (return 0) instead of UB.
     device_features.robustBufferAccess = VK_TRUE;
 
-    // Vulkan 1.2 features (replacing the individual structs)
-    VkPhysicalDeviceVulkan12Features features12 = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
-    features12.shaderInt8 = VK_TRUE;
-    features12.storageBuffer8BitAccess = VK_TRUE;
-    features12.uniformAndStorageBuffer8BitAccess = VK_TRUE;
-
     VkDeviceCreateInfo create_info = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
-    create_info.pNext = &features12;
     create_info.pQueueCreateInfos = &queue_create_info;
     create_info.queueCreateInfoCount = 1;
     create_info.pEnabledFeatures = &device_features;
@@ -155,6 +245,14 @@ bool create_logical_device(VulkanRenderer *r) {
         return false;
     }
 
+#ifndef NDEBUG
+    r->pfn_set_object_name = (PFN_vkSetDebugUtilsObjectNameEXT)vkGetDeviceProcAddr(
+        r->device, "vkSetDebugUtilsObjectNameEXT");
+#endif
+
     vkGetDeviceQueue(r->device, r->graphics_queue_family, 0, &r->graphics_queue);
+
+    VK_NAME(r, VK_OBJECT_TYPE_DEVICE, r->device, "device");
+    VK_NAME(r, VK_OBJECT_TYPE_QUEUE, r->graphics_queue, "graphics_queue");
     return true;
 }

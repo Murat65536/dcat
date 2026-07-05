@@ -238,6 +238,8 @@ bool vulkan_renderer_set_skydome(VulkanRenderer *r, const Mesh *mesh, const Text
                                        &r->skydome_index_buffer_alloc)) {
             return false;
         }
+        VK_NAME(r, VK_OBJECT_TYPE_BUFFER, r->skydome_vertex_buffer, "skydome_vertex_buffer");
+        VK_NAME(r, VK_OBJECT_TYPE_BUFFER, r->skydome_index_buffer, "skydome_index_buffer");
     }
 
     if (texture && texture->data_size > 0) {
@@ -410,6 +412,8 @@ static bool ensure_material_gpu(VulkanRenderer *r, const uint32_t material_count
                 }
                 return false;
             }
+            VK_NAME(r, VK_OBJECT_TYPE_BUFFER, mat->fragment_uniform_buffers[i],
+                    "fragment_uniform_buffer[m%u][%d]", m, i);
         }
     }
 

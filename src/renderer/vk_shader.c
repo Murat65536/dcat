@@ -137,7 +137,8 @@ char *read_shader_file(VulkanRenderer *r, const char *filename, size_t *out_size
     return NULL;
 }
 
-VkShaderModule create_shader_module(VulkanRenderer *r, const char *code, size_t size) {
+VkShaderModule create_shader_module(VulkanRenderer *r, const char *code, size_t size,
+                                    const char *label) {
     VkShaderModuleCreateInfo create_info = {.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
     create_info.codeSize = size;
     create_info.pCode = (const uint32_t *)code;
@@ -147,5 +148,6 @@ VkShaderModule create_shader_module(VulkanRenderer *r, const char *code, size_t 
         fprintf(stderr, "Failed to create shader module\n");
         return VK_NULL_HANDLE;
     }
+    VK_NAME(r, VK_OBJECT_TYPE_SHADER_MODULE, shader_module, "%s", label);
     return shader_module;
 }

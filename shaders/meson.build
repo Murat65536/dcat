@@ -7,7 +7,10 @@ shaders = [
   ['skydome.frag', 'fragment'],
 ]
 
-slang_args = ['-matrix-layout-column-major']
+# Target SPIR-V 1.0 for maximum device reach (Vulkan 1.0). Slang's direct SPIR-V
+# backend floors at 1.3, so `-emit-spirv-via-glsl` is required for the lower
+# `-profile spirv_1_0` to take effect (it routes codegen through glslang).
+slang_args = ['-matrix-layout-column-major', '-emit-spirv-via-glsl', '-profile', 'spirv_1_0']
 
 foreach s : shaders
   custom_target(

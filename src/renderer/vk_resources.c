@@ -12,6 +12,7 @@ bool create_command_pool(VulkanRenderer *r) {
         fprintf(stderr, "Failed to create command pool\n");
         return false;
     }
+    VK_NAME(r, VK_OBJECT_TYPE_COMMAND_POOL, r->command_pool, "command_pool");
     return true;
 }
 
@@ -37,6 +38,7 @@ bool create_descriptor_pool_with_capacity(VulkanRenderer *r, const uint32_t mate
                                   material_capacity);
         return false;
     }
+    VK_NAME(r, VK_OBJECT_TYPE_DESCRIPTOR_POOL, *out_pool, "descriptor_pool");
     return true;
 }
 
@@ -71,6 +73,8 @@ bool create_render_targets(VulkanRenderer *r) {
             cleanup_render_targets(r);
             return false;
         }
+        VK_NAME(r, VK_OBJECT_TYPE_IMAGE, r->color_image[i], "color_image[%d]", i);
+        VK_NAME(r, VK_OBJECT_TYPE_IMAGE_VIEW, r->color_image_view[i], "color_image_view[%d]", i);
 
         // Depth image
         if (!create_image(r, r->width, r->height, VK_FORMAT_D32_SFLOAT,
@@ -86,6 +90,8 @@ bool create_render_targets(VulkanRenderer *r) {
             cleanup_render_targets(r);
             return false;
         }
+        VK_NAME(r, VK_OBJECT_TYPE_IMAGE, r->depth_image[i], "depth_image[%d]", i);
+        VK_NAME(r, VK_OBJECT_TYPE_IMAGE_VIEW, r->depth_image_view[i], "depth_image_view[%d]", i);
     }
 
     return true;
@@ -109,6 +115,7 @@ bool create_framebuffer(VulkanRenderer *r) {
                                       "Failed to create framebuffer");
             return false;
         }
+        VK_NAME(r, VK_OBJECT_TYPE_FRAMEBUFFER, r->framebuffer[i], "framebuffer[%d]", i);
     }
     return true;
 }
@@ -129,6 +136,7 @@ bool create_staging_buffers(VulkanRenderer *r) {
                 return false;
             }
         }
+        VK_NAME(r, VK_OBJECT_TYPE_BUFFER, r->staging_buffers[i], "staging_buffer[%d]", i);
     }
     return true;
 }
@@ -141,6 +149,7 @@ bool create_uniform_buffers(VulkanRenderer *r) {
                            &r->uniform_buffers[i], &r->uniform_buffer_allocs[i])) {
             return false;
         }
+        VK_NAME(r, VK_OBJECT_TYPE_BUFFER, r->uniform_buffers[i], "uniform_buffer[%d]", i);
     }
     return true;
 }
@@ -159,6 +168,7 @@ bool create_sampler(VulkanRenderer *r) {
         fprintf(stderr, "Failed to create sampler\n");
         return false;
     }
+    VK_NAME(r, VK_OBJECT_TYPE_SAMPLER, r->sampler, "sampler");
     return true;
 }
 
@@ -173,6 +183,9 @@ bool create_command_buffers(VulkanRenderer *r) {
         fprintf(stderr, "Failed to allocate command buffers\n");
         return false;
     }
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VK_NAME(r, VK_OBJECT_TYPE_COMMAND_BUFFER, r->command_buffers[i], "command_buffer[%d]", i);
+    }
     return true;
 }
 
@@ -185,6 +198,7 @@ bool create_sync_objects(VulkanRenderer *r) {
             fprintf(stderr, "Failed to create fence\n");
             return false;
         }
+        VK_NAME(r, VK_OBJECT_TYPE_FENCE, r->in_flight_fences[i], "in_flight_fence[%d]", i);
     }
     return true;
 }
@@ -365,6 +379,16 @@ void cleanup(VulkanRenderer *r) {
     }
 
     if (r->instance != VK_NULL_HANDLE) {
+#ifndef NDEBUG
+        if (r->debug_messenger != VK_NULL_HANDLE) {
+            PFN_vkDestroyDebugUtilsMessengerEXT destroy_messenger =
+                (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
+                    r->instance, "vkDestroyDebugUtilsMessengerEXT");
+            if (destroy_messenger != NULL) {
+                destroy_messenger(r->instance, r->debug_messenger, NULL);
+            }
+        }
+#endif
         vkDestroyInstance(r->instance, NULL);
     }
 }

@@ -16,7 +16,7 @@ Builds are driven through [`just`](https://github.com/casey/just), which wraps M
 | `just setup-release` | **Default.** Optimized, no asserts. Day-to-day use.        |
 | `just setup-debug`   | Development: asserts and Vulkan validation layers enabled. |
 
-Sanitizer builds: `just asan` (Linux) or `just ubsan` (Windows). Test coverage: `just coverage` (requires [gcovr](https://gcovr.com/)). Pass extra Meson options through, e.g. `just setup-release -Dbundled_libsixel=disabled` (see [Build options](#build-options)).
+Sanitizer builds: `just asan` (Linux) or `just ubsan` (Windows). Test coverage: `just coverage` (requires [gcovr](https://gcovr.com/) >= 8; install via pip/pipx, distro packages can be too old and crash). Pass extra Meson options through, e.g. `just setup-release -Dbundled_libsixel=disabled` (see [Build options](#build-options)).
 
 ## Dependencies
 
