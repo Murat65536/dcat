@@ -479,8 +479,8 @@ void write_terminal_recovery_sequence(const int fd) {
 
 void terminal_restore_default_state(void) {
     terminal_disarm_recovery();
-    disable_raw_mode();
     write_terminal_recovery_sequence(terminal_recovery_fd);
+    disable_raw_mode();
 }
 
 void terminal_restore_after_crash(void) {
