@@ -6,6 +6,7 @@ project('dcat', 'c',
     'cpp_std=c++17',
     'warning_level=3',
     'werror=false',
+    'b_ndebug=if-release',
   ]
 )
 

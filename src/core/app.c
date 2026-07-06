@@ -383,10 +383,25 @@ void app_cleanup(AppContext *app) {
     }
 }
 
+#ifdef NDEBUG
+static void dummy_log_handler(const char *log_domain, GLogLevelFlags log_level,
+                              const char *message, void *user_data) {
+    (void)log_domain;
+    (void)log_level;
+    (void)message;
+    (void)user_data;
+}
+#endif
+
 bool app_init(AppContext *app, const Args *args, const char *prog_name) {
     memset(app, 0, sizeof(AppContext));
 
     app->args = *args;
+
+#ifdef NDEBUG
+    g_log_set_handler("VIPS", G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION,
+                      dummy_log_handler, NULL);
+#endif
 
     if (VIPS_INIT(prog_name)) {
         fprintf(stderr, "Failed to initialize libvips\n");
