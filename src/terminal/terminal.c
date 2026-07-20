@@ -25,22 +25,19 @@
 #endif
 #endif
 
-static const char TERMINAL_RECOVERY_SEQUENCE[] =
-#ifndef _WIN32
-    "\x1b[?2026l"
-#endif
-    "\x1b[<u"
-    "\x1b[?1000l"
-    "\x1b[?1002l"
-    "\x1b[?1003l"
-    "\x1b[?1004l"
-    "\x1b[?1005l"
-    "\x1b[?1006l"
-    "\x1b[?1015l"
-    "\x1b[?1016l"
-    "\x1b[0m"
-    "\x1b[?25h"
-    "\x1b[?1049l";
+static const char TERMINAL_RECOVERY_SEQUENCE[] = "\x1b[?2026l"
+                                                 "\x1b[<u"
+                                                 "\x1b[?1000l"
+                                                 "\x1b[?1002l"
+                                                 "\x1b[?1003l"
+                                                 "\x1b[?1004l"
+                                                 "\x1b[?1005l"
+                                                 "\x1b[?1006l"
+                                                 "\x1b[?1015l"
+                                                 "\x1b[?1016l"
+                                                 "\x1b[0m"
+                                                 "\x1b[?25h"
+                                                 "\x1b[?1049l";
 
 #ifndef _WIN32
 static bool get_winsize(struct winsize *ws) {
@@ -125,14 +122,17 @@ void get_terminal_size_pixels(uint32_t *width, uint32_t *height) {
         *width = ws.ws_xpixel;
         *height = ws.ws_ypixel;
     } else {
-        *width = DEFAULT_TERM_WIDTH;
-        *height = DEFAULT_TERM_HEIGHT;
+        uint32_t cols;
+        uint32_t rows;
+        get_terminal_size(&cols, &rows);
+        *width = cols * 10U;
+        *height = rows * 20U;
     }
 #endif
 }
 
-void calculate_render_dimensions(int explicit_width, int explicit_height, bool use_sixel,
-                                 bool use_kitty, bool use_hash_characters, bool reserve_bottom_line,
+void calculate_render_dimensions(int explicit_width, int explicit_height, bool use_pixel_protocol,
+                                 bool use_hash_characters, bool reserve_bottom_line,
                                  uint32_t *out_width, uint32_t *out_height) {
     if (explicit_width > 0 && explicit_height > 0) {
         *out_width = (uint32_t)explicit_width;
@@ -140,7 +140,7 @@ void calculate_render_dimensions(int explicit_width, int explicit_height, bool u
         return;
     }
 
-    if (use_sixel || use_kitty) {
+    if (use_pixel_protocol) {
         get_terminal_size_pixels(out_width, out_height);
         if (reserve_bottom_line) {
             uint32_t cols;
@@ -219,10 +219,6 @@ static void terminal_recovery_callback(void) {
     }
 }
 
-void asan_on_error(void) {
-    terminal_recovery_callback();
-}
-
 static void terminal_write_fd(const int fd, const char *data, const size_t size) {
 #ifdef _WIN32
     if (fd == STDOUT_FILENO) {
@@ -261,6 +257,36 @@ void safe_write(const char *data, size_t size) {
     terminal_write_fd(STDOUT_FILENO, data, size);
 }
 
+int terminal_base64_encode(const char *src, const int len, char *dst) {
+    static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    int i = 0;
+    int j = 0;
+    for (; i + 2 < len; i += 3) {
+        const unsigned char a = (unsigned char)src[i];
+        const unsigned char b = (unsigned char)src[i + 1];
+        const unsigned char c = (unsigned char)src[i + 2];
+        dst[j++] = b64[a >> 2];
+        dst[j++] = b64[((a & 3) << 4) | (b >> 4)];
+        dst[j++] = b64[((b & 0xf) << 2) | (c >> 6)];
+        dst[j++] = b64[c & 0x3f];
+    }
+    if (i < len) {
+        const unsigned char a = (unsigned char)src[i];
+        dst[j++] = b64[a >> 2];
+        if (i + 1 < len) {
+            const unsigned char b = (unsigned char)src[i + 1];
+            dst[j++] = b64[((a & 3) << 4) | (b >> 4)];
+            dst[j++] = b64[(b & 0xf) << 2];
+        } else {
+            dst[j++] = b64[(a & 3) << 4];
+            dst[j++] = '=';
+        }
+        dst[j++] = '=';
+    }
+    dst[j] = '\0';
+    return j;
+}
+
 void draw_status_bar(const float fps, const float speed, const float *pos,
                      const char *animation_name) {
     uint32_t cols;
@@ -276,17 +302,10 @@ void draw_status_bar(const float fps, const float speed, const float *pos,
         snprintf(anim_part, sizeof(anim_part), " | ANIM: %s", animation_name);
     }
 
-#ifdef _WIN32
     const int len = snprintf(buffer, sizeof(buffer),
                              "\x1b[%u;1H\x1b[2K\x1b[7m FPS: %.1f | SPEED: "
                              "%.2f | POS: %.2f, %.2f, %.2f%s \x1b[0m\x1b[H",
                              rows, fps, speed, pos[0], pos[1], pos[2], anim_part);
-#else
-    int len = snprintf(buffer, sizeof(buffer),
-                       "\x1b[?2026h\x1b[%u;1H\x1b[2K\x1b[7m FPS: %.1f | SPEED: "
-                       "%.2f | POS: %.2f, %.2f, %.2f%s \x1b[0m\x1b[H\x1b[?2026l",
-                       rows, fps, speed, pos[0], pos[1], pos[2], anim_part);
-#endif
     if (len > 0) {
         size_t written = (size_t)len;
         if (written >= sizeof(buffer)) {
@@ -336,6 +355,9 @@ void termios_state_restore(TermiosState *state) {
         return;
     }
     SetConsoleMode(state->handle, state->saved_mode);
+    if (state->output_valid) {
+        SetConsoleMode(state->output_handle, state->saved_output_mode);
+    }
 #else
     tcsetattr(state->fd, TCSAFLUSH, &state->saved);
 #endif
@@ -348,12 +370,23 @@ bool terminal_begin_query_mode(TermiosState *state) {
 #ifdef _WIN32
     state->mode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
     state->mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+    state->output_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (state->output_handle != INVALID_HANDLE_VALUE && state->output_handle != NULL &&
+        GetConsoleMode(state->output_handle, &state->saved_output_mode)) {
+        state->output_valid =
+            SetConsoleMode(state->output_handle,
+                           state->saved_output_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0;
+    }
 #else
     state->settings.c_lflag &= ~(ICANON | ECHO);
     state->settings.c_cc[VMIN] = 0;
     state->settings.c_cc[VTIME] = 1;
 #endif
-    return termios_state_apply(state);
+    if (termios_state_apply(state)) {
+        return true;
+    }
+    termios_state_restore(state);
+    return false;
 }
 
 void terminal_end_query_mode(TermiosState *state) {

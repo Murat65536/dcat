@@ -16,7 +16,7 @@ Builds are driven through [`just`](https://github.com/casey/just), which wraps M
 | `just setup-release` | **Default.** Optimized, no asserts. Day-to-day use.        |
 | `just setup-debug`   | Development: asserts and Vulkan validation layers enabled. |
 
-Sanitizer builds: `just asan` (Linux) or `just ubsan` (Windows). Test coverage: `just coverage` (requires [gcovr](https://gcovr.com/) >= 8; install via pip/pipx, distro packages can be too old and crash). Pass extra Meson options through, e.g. `just setup-release -Dbundled_libsixel=disabled` (see [Build options](#build-options)).
+Sanitizer builds: `just asan` (Linux) or `just ubsan` (Windows). Test coverage: `just coverage` (requires [gcovr](https://gcovr.com/) >= 8; install via pip/pipx, distro packages can be too old and crash).
 
 ## Dependencies
 
@@ -30,8 +30,10 @@ wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc
 sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-noble.list https://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list
 sudo apt-get update
 
-sudo apt-get install -y gcc meson ninja-build libvulkan-dev vulkan-headers vulkan-utility-libraries-dev libassimp-dev libcglm-dev libsixel-dev pkg-config libvips-dev
+sudo apt-get install -y gcc meson ninja-build libvulkan-dev vulkan-headers vulkan-utility-libraries-dev libassimp-dev libcglm-dev libchafa-dev pkg-config libvips-dev
 ```
+
+Chafa 1.16 or newer is required. If your distribution ships an older release, install a current Chafa release before configuring dcat.
 
 Install [`just`](https://github.com/casey/just) too (`cargo install just`, or your distro's package).
 
@@ -42,7 +44,7 @@ On Windows the project is built with [MSYS2](https://www.msys2.org/). The **clan
 Other environments (ucrt64, mingw64) should work with the corresponding package prefix, but are untested.
 
 ```sh
-pacman -S mingw-w64-clang-x86_64-toolchain mingw-w64-clang-x86_64-meson mingw-w64-clang-x86_64-ninja mingw-w64-clang-x86_64-cmake mingw-w64-clang-x86_64-pkgconf mingw-w64-clang-x86_64-vulkan-headers mingw-w64-clang-x86_64-vulkan-loader mingw-w64-clang-x86_64-vulkan-utility-libraries mingw-w64-clang-x86_64-assimp mingw-w64-clang-x86_64-cglm mingw-w64-clang-x86_64-libvips mingw-w64-clang-x86_64-just git
+pacman -S mingw-w64-clang-x86_64-toolchain mingw-w64-clang-x86_64-meson mingw-w64-clang-x86_64-ninja mingw-w64-clang-x86_64-cmake mingw-w64-clang-x86_64-pkgconf mingw-w64-clang-x86_64-vulkan-headers mingw-w64-clang-x86_64-vulkan-loader mingw-w64-clang-x86_64-vulkan-utility-libraries mingw-w64-clang-x86_64-assimp mingw-w64-clang-x86_64-cglm mingw-w64-clang-x86_64-chafa mingw-w64-clang-x86_64-libvips mingw-w64-clang-x86_64-just git
 ```
 
 ### Slang shader compiler
@@ -60,12 +62,6 @@ export PATH="$HOME/.local/slang/bin:$PATH"
 ```
 
 **Windows** — either install the [LunarG Vulkan SDK](https://vulkan.lunarg.com/) (which bundles `slangc`), or extract a [Slang release](https://github.com/shader-slang/slang/releases) (`windows-x86_64`) and copy its `bin/` contents into `$MINGW_PREFIX/bin`.
-
-## Build options
-
-- **`bundled_libsixel`** (default enabled) — when enabled, the bundled libsixel is linked statically on Windows (while other dependencies remain DLL-packaged) to avoid patching upstream libsixel export macros.
-
-  > Use `-Dbundled_libsixel=disabled` if you intentionally want Meson to require a system `libsixel` package from the active MSYS2 environment.
 
 ## Development
 

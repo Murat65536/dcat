@@ -4,7 +4,7 @@ add_test_setup('default',
   env: ['UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1'],
 )
 
-foreach name : ['args', 'char_render']
+foreach name : ['args', 'chafa_driver']
   test(
     name,
     executable('test_' + name, 'test_' + name + '.c', dependencies: [dcat_core_dep, unity_dep]),

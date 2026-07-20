@@ -26,7 +26,7 @@ void print_usage(void) {
            "      --mouse-sensitivity S  mouse drag sensitivity\n"
            "  -s, --status-bar           show status bar\n"
            "  -S, --sixel                enable Sixel graphics mode\n"
-           "  -K, --kitty                enable SHM Kitty graphics protocol\n"
+           "  -K, --kitty                enable Kitty graphics protocol\n"
            "      --kitty-direct         enable inline Kitty graphics protocol\n"
            "  -T, --truecolor-characters enable truecolor characters mode\n"
            "  -P, --palette-characters   enable palette characters mode\n"
@@ -35,6 +35,7 @@ void print_usage(void) {
            "  -h, --help                 display help\n"
            "  -V, --version              display version\n"
            "      --controls             display controls\n");
+    printf("\nWith no output-mode flag, Chafa selects the best supported terminal format.\n");
 }
 
 void print_version(void) {

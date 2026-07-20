@@ -25,7 +25,11 @@ tar -xzf dcat-linux-x86_64.tar.gz
 ```
 
 
-The binary is dynamically linked, so the runtime libraries (Vulkan, assimp, libsixel, libvips) must be installed from your package manager.
+The binary is dynamically linked, so the runtime libraries (Vulkan, assimp, Chafa, libvips) must be installed from your package manager.
+
+## Terminal output
+
+With no output-mode flag, dcat uses Chafa's terminal database to select Kitty, Sixel, iTerm2, truecolor, indexed color, or monochrome output. The existing output flags still force a mode; `--kitty` keeps the local shared-memory fast path, while `--kitty-direct` uses Chafa's inline Kitty encoder.
 
 ## Star History
 

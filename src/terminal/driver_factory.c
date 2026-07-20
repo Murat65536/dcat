@@ -1,108 +1,117 @@
 #include "terminal/driver_factory.h"
-#include "terminal/block_characters.h"
-#include "terminal/kitty.h"
+#include "terminal/chafa_driver.h"
+#ifndef _WIN32
 #include "terminal/kitty_shm.h"
-#include "terminal/palette_characters.h"
-#include "terminal/sixel.h"
-#include "terminal/truecolor_characters.h"
+#endif
 
 #include <stddef.h>
 
+#ifndef _WIN32
 static const OutputDriver g_driver_kitty_shm = {
     .name = "kitty_shm",
-    .flag_name = "--kitty",
-    .uses_kitty_protocol = true,
     .uses_character_cells = false,
-    .detect_support = detect_kitty_shm_support,
     .render_frame = render_kitty_shm,
 };
+#endif
 
 static const OutputDriver g_driver_kitty_direct = {
     .name = "kitty_direct",
-    .flag_name = "--kitty-direct",
-    .uses_kitty_protocol = true,
     .uses_character_cells = false,
-    .detect_support = detect_kitty_support,
-    .render_frame = render_kitty,
+    .render_frame = chafa_driver_render,
 };
 
 static const OutputDriver g_driver_sixel = {
     .name = "sixel",
-    .flag_name = "--sixel",
-    .uses_kitty_protocol = false,
     .uses_character_cells = false,
-    .detect_support = detect_sixel_support,
-    .render_frame = render_sixel,
+    .render_frame = chafa_driver_render,
+};
+
+static const OutputDriver g_driver_iterm2 = {
+    .name = "iterm2",
+    .uses_character_cells = false,
+    .render_frame = chafa_driver_render,
 };
 
 static const OutputDriver g_driver_truecolor = {
     .name = "truecolor",
-    .flag_name = "--truecolor-characters",
-    .uses_kitty_protocol = false,
     .uses_character_cells = true,
-    .detect_support = detect_truecolor_support,
-    .render_frame = render_truecolor_characters,
+    .render_frame = chafa_driver_render,
 };
 
 static const OutputDriver g_driver_palette = {
     .name = "palette",
-    .flag_name = "--palette-characters",
-    .uses_kitty_protocol = false,
     .uses_character_cells = true,
-    .detect_support = NULL,
-    .render_frame = render_palette_characters,
+    .render_frame = chafa_driver_render,
 };
 
 static const OutputDriver g_driver_block = {
     .name = "block",
-    .flag_name = "--block-characters",
-    .uses_kitty_protocol = false,
     .uses_character_cells = true,
-    .detect_support = NULL,
-    .render_frame = render_block_characters,
+    .render_frame = chafa_driver_render,
 };
+
+static const OutputDriver *select_chafa(const OutputDriver *driver, const ChafaPixelMode pixel_mode,
+                                        const ChafaCanvasMode canvas_mode) {
+    chafa_driver_configure(pixel_mode, canvas_mode);
+    return driver;
+}
 
 const OutputDriver *driver_factory_get(const Args *args) {
     if (args->use_kitty_shm) {
+#ifdef _WIN32
+        return select_chafa(&g_driver_kitty_direct, CHAFA_PIXEL_MODE_KITTY,
+                            CHAFA_CANVAS_MODE_TRUECOLOR);
+#else
         return &g_driver_kitty_shm;
+#endif
     }
     if (args->use_kitty) {
-        return &g_driver_kitty_direct;
+        return select_chafa(&g_driver_kitty_direct, CHAFA_PIXEL_MODE_KITTY,
+                            CHAFA_CANVAS_MODE_TRUECOLOR);
     }
     if (args->use_sixel) {
-        return &g_driver_sixel;
+        return select_chafa(&g_driver_sixel, CHAFA_PIXEL_MODE_SIXELS, CHAFA_CANVAS_MODE_TRUECOLOR);
     }
     if (args->use_truecolor_characters) {
-        return &g_driver_truecolor;
+        return select_chafa(&g_driver_truecolor, CHAFA_PIXEL_MODE_SYMBOLS,
+                            CHAFA_CANVAS_MODE_TRUECOLOR);
     }
     if (args->use_palette_characters) {
-        return &g_driver_palette;
+        return select_chafa(&g_driver_palette, CHAFA_PIXEL_MODE_SYMBOLS,
+                            CHAFA_CANVAS_MODE_INDEXED_240);
     }
     if (args->use_block_characters) {
-        return &g_driver_block;
+        return select_chafa(&g_driver_block, CHAFA_PIXEL_MODE_SYMBOLS, CHAFA_CANVAS_MODE_FGBG);
     }
 
-    if (g_driver_kitty_shm.detect_support()) {
+    ChafaPixelMode pixel_mode;
+    ChafaCanvasMode canvas_mode;
+    chafa_driver_detect(&pixel_mode, &canvas_mode);
+
+#ifndef _WIN32
+    const char *kitty_pid = getenv("KITTY_PID");
+    if (pixel_mode == CHAFA_PIXEL_MODE_KITTY && kitty_pid && kitty_pid[0]) {
         return &g_driver_kitty_shm;
     }
-    if (g_driver_kitty_direct.detect_support()) {
-        return &g_driver_kitty_direct;
-    }
-    if (g_driver_sixel.detect_support()) {
-        return &g_driver_sixel;
-    }
-    if (g_driver_truecolor.detect_support()) {
-        return &g_driver_truecolor;
-    }
-
-    return &g_driver_palette;
-}
-
-bool driver_is_supported_on_platform(const OutputDriver *driver) {
-#ifdef _WIN32
-    if (driver == &g_driver_kitty_shm) {
-        return false;
-    }
 #endif
-    return true;
+
+    switch (pixel_mode) {
+    case CHAFA_PIXEL_MODE_KITTY:
+        return select_chafa(&g_driver_kitty_direct, pixel_mode, canvas_mode);
+    case CHAFA_PIXEL_MODE_SIXELS:
+        return select_chafa(&g_driver_sixel, pixel_mode, canvas_mode);
+    case CHAFA_PIXEL_MODE_ITERM2:
+        return select_chafa(&g_driver_iterm2, pixel_mode, canvas_mode);
+    case CHAFA_PIXEL_MODE_SYMBOLS:
+    case CHAFA_PIXEL_MODE_MAX:
+        break;
+    }
+
+    if (canvas_mode == CHAFA_CANVAS_MODE_TRUECOLOR) {
+        return select_chafa(&g_driver_truecolor, pixel_mode, canvas_mode);
+    }
+    if (canvas_mode != CHAFA_CANVAS_MODE_FGBG && canvas_mode != CHAFA_CANVAS_MODE_FGBG_BGFG) {
+        return select_chafa(&g_driver_palette, pixel_mode, canvas_mode);
+    }
+    return select_chafa(&g_driver_block, pixel_mode, canvas_mode);
 }

@@ -51,15 +51,7 @@ vulkan_dep = dependency('vulkan', required: true)
 assimp_dep = dependency('assimp', method: 'pkg-config', fallback: ['assimp', 'assimp_dep'])
 cglm_dep = dependency('cglm', method: 'pkg-config', fallback: ['cglm', 'cglm_dep'])
 vips_dep = dependency('vips', fallback: ['vips', 'vips_dep'])
-
-bundled_libsixel = get_option('bundled_libsixel')
-if bundled_libsixel == 'enabled' or (bundled_libsixel == 'auto' and host_machine.system() == 'windows')
-  sixel_dep = subproject('libsixel').get_variable('sixel_dep')
-elif bundled_libsixel == 'disabled'
-  sixel_dep = dependency('libsixel', required: true)
-else
-  sixel_dep = dependency('libsixel', fallback: ['libsixel', 'sixel_dep'])
-endif
+chafa_dep = dependency('chafa', version: '>=1.16', required: true)
 
 threads_dep = dependency('threads')
 m_dep = cc.find_library('m', required: false)
@@ -70,7 +62,7 @@ dcat_deps = [
   assimp_dep,
   cglm_dep,
   vips_dep,
-  sixel_dep,
+  chafa_dep,
   threads_dep
 ]
 
@@ -126,12 +118,7 @@ dcat_core_sources = [
   'src/terminal/terminal.c',
   'src/terminal/session.c',
   'src/terminal/driver_factory.c',
-  'src/terminal/char_render.c',
-  'src/terminal/truecolor_characters.c',
-  'src/terminal/palette_characters.c',
-  'src/terminal/block_characters.c',
-  'src/terminal/sixel.c',
-  'src/terminal/kitty.c',
+  'src/terminal/chafa_driver.c',
   'src/terminal/kitty_shm.c'
 ]
 

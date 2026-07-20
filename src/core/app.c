@@ -1,4 +1,3 @@
-#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +15,7 @@
 #include "graphics/texture_loader.h"
 #include "input/input_handler.h"
 #include "renderer/vulkan_renderer.h"
+#include "terminal/chafa_driver.h"
 #include "terminal/driver_factory.h"
 #include "terminal/output_driver.h"
 #include "terminal/session.h"
@@ -65,10 +65,8 @@ static void calculate_output_dimensions(const Args *args, const OutputDriver *ou
                                         uint32_t *width, uint32_t *height) {
     const bool use_hash_characters =
         (args->use_hash_characters && output_driver->uses_character_cells) != 0;
-    const bool use_sixel =
-        (!output_driver->uses_kitty_protocol && !output_driver->uses_character_cells) != 0;
-    calculate_render_dimensions(args->width, args->height, use_sixel,
-                                output_driver->uses_kitty_protocol, use_hash_characters,
+    const bool use_pixel_protocol = (!output_driver->uses_character_cells) != 0;
+    calculate_render_dimensions(args->width, args->height, use_pixel_protocol, use_hash_characters,
                                 args->show_status_bar, width, height);
 }
 
@@ -287,11 +285,17 @@ static bool render_frame(RenderContext *ctx, const AnimationContext *anim_ctx, c
 
     if (framebuffer) {
         const bool use_hash = (use_hash_characters && output_driver->uses_character_cells) != 0;
+        if (output_driver->uses_character_cells) {
+            safe_write("\x1b[?2026h", 8);
+        }
         output_driver->render_frame(framebuffer, width, height, use_hash);
 
         if (show_status_bar) {
             draw_status_bar(fps, move_speed, camera_position,
                             get_animation_name(anim_ctx, mesh, current_animation_index));
+        }
+        if (output_driver->uses_character_cells) {
+            safe_write("\x1b[?2026l", 8);
         }
     }
 
@@ -345,6 +349,7 @@ void app_cleanup(AppContext *app) {
     if (app->input_thread_started) {
         dcat_thread_join(app->input_thread);
     }
+    chafa_driver_cleanup();
     terminal_session_end(&app->terminal_session);
     if (app->fatal_report.active) {
         fprintf(stderr, "%s\n", app->fatal_report.message);
@@ -384,8 +389,8 @@ void app_cleanup(AppContext *app) {
 }
 
 #ifdef NDEBUG
-static void dummy_log_handler(const char *log_domain, GLogLevelFlags log_level,
-                              const char *message, void *user_data) {
+static void dummy_log_handler(const char *log_domain, GLogLevelFlags log_level, const char *message,
+                              void *user_data) {
     (void)log_domain;
     (void)log_level;
     (void)message;
@@ -409,14 +414,6 @@ bool app_init(AppContext *app, const Args *args, const char *prog_name) {
     }
 
     app->output_driver = driver_factory_get(&app->args);
-    if (!driver_is_supported_on_platform(app->output_driver)) {
-        fprintf(stderr,
-                "Output mode %s is not supported on native Windows. "
-                "Use --truecolor-characters, --palette-characters, or "
-                "--block-characters.\n",
-                app->output_driver->flag_name);
-        return false;
-    }
 
     signals_init();
 

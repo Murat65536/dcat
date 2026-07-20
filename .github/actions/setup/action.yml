@@ -2,7 +2,7 @@ name: 'Setup'
 description: 'Installs dependencies and builds the project with Meson on Linux and Windows (MSYS2)'
 inputs:
   buildtype:
-    description: 'Meson build type (release or debug)'
+    description: 'Meson build type'
     required: true
     default: 'release'
   setup-args:
@@ -35,10 +35,27 @@ runs:
           vulkan-utility-libraries-dev \
           libassimp-dev \
           libcglm-dev \
-          libsixel-dev \
+          libchafa-dev \
           pkg-config \
           libvips-dev \
           gcovr
+
+    - name: Install Chafa 1.18.2 (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        if ! pkg-config --atleast-version=1.16 chafa; then
+          CHAFA_VERSION=1.18.2
+          cd "$RUNNER_TEMP"
+          curl -sSL -o chafa.tar.xz \
+            "https://hpjansson.org/chafa/releases/chafa-${CHAFA_VERSION}.tar.xz"
+          tar -xJf chafa.tar.xz
+          cd "chafa-${CHAFA_VERSION}"
+          ./configure --prefix=/usr/local --without-tools
+          make -j2
+          sudo make install
+          sudo ldconfig
+        fi
 
     - name: Setup MSYS2
       if: runner.os == 'Windows'
@@ -58,6 +75,7 @@ runs:
           mingw-w64-clang-x86_64-vulkan-utility-libraries
           mingw-w64-clang-x86_64-assimp
           mingw-w64-clang-x86_64-cglm
+          mingw-w64-clang-x86_64-chafa
           mingw-w64-clang-x86_64-libvips
           git
 
@@ -123,7 +141,7 @@ runs:
       shell: msys2 {0}
       run: |
         BUILDTYPE=$(echo "${{ inputs.buildtype }}" | tr '[:upper:]' '[:lower:]')
-        meson setup buildDir -Dbuildtype=$BUILDTYPE -Ddefault_library=shared -Dbundled_libsixel=enabled -Dtests=enabled --wrap-mode=nofallback ${{ inputs.setup-args }}
+        meson setup buildDir -Dbuildtype=$BUILDTYPE -Ddefault_library=shared -Dtests=enabled --wrap-mode=nofallback ${{ inputs.setup-args }}
         meson compile -C buildDir
         meson test -C buildDir --print-errorlogs
         ccache --show-stats

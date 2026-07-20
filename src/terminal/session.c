@@ -8,13 +8,16 @@ void terminal_session_begin(TerminalSession *session, const bool mouse_orbit) {
     signals_set_terminal_session_active(true);
     terminal_arm_recovery();
 
-    hide_cursor();
-    enter_alternate_screen();
+    safe_write("\x1b[?25l\x1b[?1049h", 14);
     enable_raw_mode();
     terminal_set_mouse_input_enabled(mouse_orbit);
-    enable_kitty_keyboard();
+#ifdef _WIN32
+    safe_write("\x1b[?1004h", 8);
+#else
+    safe_write("\x1b[>31u", 6);
+#endif
     if (mouse_orbit) {
-        enable_mouse_orbit_tracking();
+        safe_write("\x1b[?1002h\x1b[?1006h\x1b[?1016h", 24);
     }
 }
 

@@ -25,39 +25,7 @@ void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height,
     (void)use_hash_characters;
 }
 
-bool detect_kitty_shm_support(void) {
-    return false;
-}
-
 #else
-
-static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-static int b64_encode(const char *src, int len, char *dst) {
-    int i = 0, j = 0;
-    for (; i + 2 < len; i += 3) {
-        unsigned char a = src[i], b = src[i + 1], c = src[i + 2];
-        dst[j++] = b64[a >> 2];
-        dst[j++] = b64[((a & 3) << 4) | (b >> 4)];
-        dst[j++] = b64[((b & 0xf) << 2) | (c >> 6)];
-        dst[j++] = b64[c & 0x3f];
-    }
-    if (i < len) {
-        unsigned char a = src[i];
-        dst[j++] = b64[a >> 2];
-        if (i + 1 < len) {
-            unsigned char b = src[i + 1];
-            dst[j++] = b64[((a & 3) << 4) | (b >> 4)];
-            dst[j++] = b64[((b & 0xf) << 2)];
-        } else {
-            dst[j++] = b64[((a & 3) << 4)];
-            dst[j++] = '=';
-        }
-        dst[j++] = '=';
-    }
-    dst[j] = '\0';
-    return j;
-}
 
 static int kitty_pid;
 static int kitty_frame;
@@ -111,7 +79,7 @@ void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height,
     dcat_close(fd);
 
     char name_b64[128];
-    int name_b64_len = b64_encode(shm_name, strlen(shm_name), name_b64);
+    int name_b64_len = terminal_base64_encode(shm_name, (int)strlen(shm_name), name_b64);
 
     char cmd[512];
     int cmd_len = snprintf(cmd, sizeof(cmd), "\x1b[H\x1b_Gf=32,a=T,t=s,i=1,p=1,s=%u,v=%u,q=2,C=1;",
@@ -121,72 +89,6 @@ void render_kitty_shm(const uint8_t *buffer, uint32_t width, uint32_t height,
     memcpy(cmd + cmd_len, "\x1b\\", 2);
     cmd_len += 2;
     safe_write(cmd, (size_t)cmd_len);
-}
-
-bool detect_kitty_shm_support(void) {
-    if (!dcat_isatty(STDOUT_FILENO) || !dcat_isatty(STDIN_FILENO))
-        return false;
-
-    static const char *shm_name = "/dcat_detect";
-    static const uint8_t pixel[4] = {0, 0, 0, 0};
-
-    int fd = shm_open(shm_name, O_CREAT | O_RDWR, 0600);
-    if (fd == -1)
-        return false;
-
-    bool ok = ftruncate(fd, 4) == 0;
-    if (ok) {
-        void *ptr = mmap(NULL, 4, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-        if (ptr != MAP_FAILED) {
-            memcpy(ptr, pixel, 4);
-            munmap(ptr, 4);
-        } else {
-            ok = false;
-        }
-    }
-    dcat_close(fd);
-    if (!ok) {
-        shm_unlink(shm_name);
-        return false;
-    }
-
-    char encoded_name[64];
-    int encoded_len = b64_encode(shm_name, strlen(shm_name), encoded_name);
-
-    char query[256];
-    int qlen = snprintf(query, sizeof(query), "\x1b_Ga=T,t=s,f=32,s=1,v=1,i=31;");
-    memcpy(query + qlen, encoded_name, encoded_len);
-    qlen += encoded_len;
-    memcpy(query + qlen, "\x1b\\", 2);
-    qlen += 2;
-
-    static const char *cleanup = "\x1b_Ga=d,d=i,i=31\x1b\\";
-
-    TermiosState ts;
-    if (!terminal_begin_query_mode(&ts)) {
-        shm_unlink(shm_name);
-        return false;
-    }
-
-    safe_write(query, (size_t)qlen);
-
-    char buf[32];
-    bool found = false;
-
-    ssize_t r = terminal_read_query(buf, sizeof(buf) - 1, '\\');
-    if (r > 0) {
-        buf[r] = '\0';
-        if (strstr(buf, "\x1b_Gi=31;OK"))
-            found = true;
-    }
-
-    shm_unlink(shm_name);
-
-    if (found)
-        safe_write(cleanup, strlen(cleanup));
-
-    terminal_end_query_mode(&ts);
-    return found;
 }
 
 #endif

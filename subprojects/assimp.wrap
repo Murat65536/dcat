@@ -1,5 +1,3 @@
-# Pinned to the immutable commit for tag v5.4.3 (reproducible builds).
-# To bump: pick a new release tag, resolve its commit SHA, update revision + this comment.
 [wrap-git]
 directory = assimp
 url = https://github.com/assimp/assimp.git

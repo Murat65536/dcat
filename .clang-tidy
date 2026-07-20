@@ -1,5 +1,5 @@
 ---
-# Only diagnose our own sources, never subprojects/ (cglm, libsixel, ...).
+# Only diagnose our own sources, never bundled third-party subprojects.
 HeaderFilterRegex: 'src/.*'
 
 Checks: >
