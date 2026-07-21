@@ -7,13 +7,6 @@
 #endif
 #include <windows.h>
 
-// Windows consoles report mouse coordinates in character cells, not pixels (Windows Terminal
-// does not support the SGR-Pixels extension, and conhost's MOUSE_EVENT is always cell-based).
-// Scale cell deltas to pixel-equivalent units so the default --mouse-sensitivity, tuned for
-// pixel-reporting terminals, feels the same here. Values approximate a typical console cell.
-#define MOUSE_CELL_PX_X 10.0F
-#define MOUSE_CELL_PX_Y 20.0F
-
 typedef struct WindowsInputState {
     HANDLE input_handle;
     int last_mouse_x;
@@ -201,13 +194,12 @@ static void handle_windows_mouse_event(const InputThreadData *data, WindowsInput
     state->last_mouse_y = mouse_y;
 
     if (dx != 0 || dy != 0) {
-        const float sx = (float)dx * MOUSE_CELL_PX_X;
-        const float sy = (float)dy * MOUSE_CELL_PX_Y;
         if (left_down || state->left_down) {
-            camera_orbit(data->camera, sx * data->mouse_sensitivity, -sy * data->mouse_sensitivity);
+            camera_orbit(data->camera, (float)dx * data->mouse_sensitivity,
+                         -(float)dy * data->mouse_sensitivity);
         } else if (right_down || middle_down || state->right_down || state->middle_down) {
             const float pan_speed = data->mouse_sensitivity * 0.2F;
-            camera_pan(data->camera, sx * pan_speed, sy * pan_speed);
+            camera_pan(data->camera, (float)dx * pan_speed, (float)dy * pan_speed);
         }
     }
 
@@ -330,9 +322,6 @@ unsigned __stdcall input_thread_func(void *arg) {
     WindowsInputState windows_state = {0};
     windows_state.has_focus = true;
     windows_state.input_handle = GetStdHandle(STD_INPUT_HANDLE);
-    // VT mouse reports arrive in character cells; scale them to pixel-equivalent units.
-    windows_state.mouse_track.scale_x = MOUSE_CELL_PX_X;
-    windows_state.mouse_track.scale_y = MOUSE_CELL_PX_Y;
 
     while (!signals_should_quit()) {
         dcat_mutex_lock(data->state_mutex);

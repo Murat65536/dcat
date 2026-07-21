@@ -11,24 +11,25 @@ void mouse_apply_action(const InputThreadData *data, const int btn, const int mx
         track->last_y = my;
         break;
     case MOUSE_BUTTON_DRAG_LEFT: {
-        const float dx = (float)(mx - track->last_x) * track->scale_x;
-        const float dy = (float)(my - track->last_y) * track->scale_y;
+        const int dx = mx - track->last_x;
+        const int dy = my - track->last_y;
         track->last_x = mx;
         track->last_y = my;
-        if (dx != 0.0F || dy != 0.0F) {
-            camera_orbit(data->camera, dx * data->mouse_sensitivity, -dy * data->mouse_sensitivity);
+        if (dx != 0 || dy != 0) {
+            camera_orbit(data->camera, (float)dx * data->mouse_sensitivity,
+                         -(float)dy * data->mouse_sensitivity);
         }
         break;
     }
     case MOUSE_BUTTON_DRAG_RIGHT:
     case MOUSE_BUTTON_DRAG_MIDDLE: {
-        const float dx = (float)(mx - track->last_x) * track->scale_x;
-        const float dy = (float)(my - track->last_y) * track->scale_y;
+        const int dx = mx - track->last_x;
+        const int dy = my - track->last_y;
         track->last_x = mx;
         track->last_y = my;
-        if (dx != 0.0F || dy != 0.0F) {
+        if (dx != 0 || dy != 0) {
             const float pan_speed = data->mouse_sensitivity * 0.2F;
-            camera_pan(data->camera, dx * pan_speed, dy * pan_speed);
+            camera_pan(data->camera, (float)dx * pan_speed, (float)dy * pan_speed);
         }
         break;
     }
