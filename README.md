@@ -33,11 +33,3 @@ The binary is dynamically linked, so the runtime libraries (Vulkan, assimp, Chaf
 ## Terminal output
 
 With no output-mode flag, dcat uses Chafa's terminal database to select Kitty, Sixel, iTerm2, truecolor, indexed color, or monochrome output. The existing output flags still force a mode; `--kitty` keeps the local shared-memory fast path, while `--kitty-direct` uses Chafa's inline Kitty encoder.
-
-## Star History
-
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Murat65536/dcat&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Murat65536/dcat&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Murat65536/dcat&type=date&legend=top-left" />
- </picture>
