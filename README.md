@@ -2,6 +2,8 @@
 
 A 3d model viewer for the terminal
 
+<img width="480" height="270" alt="loop" src="https://github.com/user-attachments/assets/02850533-69e6-4463-a4d9-837a49257779" />
+
 https://github.com/user-attachments/assets/ca47ea52-6a46-4ac2-8c9f-430fc9ea9865
 
 ## Install
