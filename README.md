@@ -2,7 +2,8 @@
 
 A 3d model viewer for the terminal
 
-<img width="480" height="270" alt="loop" src="https://github.com/user-attachments/assets/02850533-69e6-4463-a4d9-837a49257779" />
+<img width="1092" height="614" alt="loop" src="https://github.com/user-attachments/assets/e0c3bb1e-a8f3-4cc6-bb7a-cca1505ab9c6" />
+
 
 https://github.com/user-attachments/assets/ca47ea52-6a46-4ac2-8c9f-430fc9ea9865
 
