@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=dcat
+Comment=View 3D models in the terminal
+Exec=dcat %f
+Icon=dcat
+Terminal=true
+NoDisplay=true
+Categories=Graphics;

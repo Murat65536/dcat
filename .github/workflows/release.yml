@@ -42,26 +42,56 @@ jobs:
           path: installer/dcat-windows-setup.exe
 
   release-linux:
-    name: Linux Release
-    runs-on: ubuntu-latest
+    name: Linux AppImage Release
+    # ponytail: old glibc broadens compatibility; use an Ubuntu 22.04 container when this hosted image retires.
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
     needs: [ release-windows ]
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install Meson
+        run: |
+          pipx install 'meson==1.10.1'
+          pipx environment --value PIPX_BIN_DIR >> "$GITHUB_PATH"
+
       - name: Build
         uses: ./.github/actions/setup
         with:
           buildtype: 'Release'
 
-      - name: Prepare Release Artifacts
+      - name: Build AppImage
+        env:
+          LINUXDEPLOY_VERSION: 1-alpha-20251107-1
+          LINUXDEPLOY_SHA256: c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
         run: |
-          mkdir -p dcat-linux/shaders
-          cp build/dcat dcat-linux/
-          cp build/shaders/*.spv dcat-linux/shaders/
-          cp LICENSE dcat-linux/
-          tar -czvf dcat-linux-x86_64.tar.gz dcat-linux
+          curl -fL -o linuxdeploy-x86_64.AppImage \
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_VERSION}/linuxdeploy-x86_64.AppImage"
+          echo "${LINUXDEPLOY_SHA256}  linuxdeploy-x86_64.AppImage" | sha256sum --check
+          chmod +x linuxdeploy-x86_64.AppImage
+
+          mkdir -p AppDir/usr/bin/shaders AppDir/usr/share/doc/dcat
+          cp build/shaders/*.spv AppDir/usr/bin/shaders/
+          cp LICENSE AppDir/usr/share/doc/dcat/
+          if [ -d "$RUNNER_TEMP/chafa-1.18.2" ]; then
+            mkdir -p AppDir/usr/share/doc/chafa
+            cp "$RUNNER_TEMP/chafa-1.18.2"/COPYING* AppDir/usr/share/doc/chafa/
+          fi
+
+          APPIMAGE_EXTRACT_AND_RUN=1 ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --executable build/dcat \
+            --desktop-file packaging/linux/dcat.desktop \
+            --icon-file packaging/linux/dcat.svg \
+            --output appimage
+
+          appimage=$(find . -maxdepth 1 -name 'dcat*.AppImage' -print -quit)
+          test -n "$appimage"
+          if [ "$appimage" != "./dcat-x86_64.AppImage" ]; then
+            mv "$appimage" dcat-x86_64.AppImage
+          fi
+          APPIMAGE_EXTRACT_AND_RUN=1 ./dcat-x86_64.AppImage --help >/dev/null
 
       - name: Download Windows Artifact
         uses: actions/download-artifact@v8
@@ -75,13 +105,13 @@ jobs:
         run: |
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             TAG_NAME=${GITHUB_REF#refs/tags/}
-            gh release create "$TAG_NAME" dcat-linux-x86_64.tar.gz dcat-windows-setup.exe \
+            gh release create "$TAG_NAME" dcat-x86_64.AppImage dcat-windows-setup.exe \
               --title "Release $TAG_NAME" \
               --generate-notes
           else
             gh release delete nightly --yes || true
             git push origin :nightly || true
-            gh release create nightly dcat-linux-x86_64.tar.gz dcat-windows-setup.exe \
+            gh release create nightly dcat-x86_64.AppImage dcat-windows-setup.exe \
               --prerelease \
               --title "Nightly Build" \
               --target main

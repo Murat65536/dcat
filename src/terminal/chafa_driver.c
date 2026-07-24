@@ -19,41 +19,34 @@ typedef struct {
 
 static ChafaDriverState g_state;
 
-ChafaPixelMode chafa_driver_pixel_mode_from_response(const char *response) {
+static ChafaPixelMode pixel_mode_from_response(ChafaTermInfo *term_info, const char *response,
+                                               const size_t response_length) {
     if (strstr(response, "\x1b_Gi=31;OK")) {
         return CHAFA_PIXEL_MODE_KITTY;
     }
 
-    const char *parameters = strstr(response, "\x1b[?");
-    if (!parameters) {
-        return CHAFA_PIXEL_MODE_SYMBOLS;
-    }
-    parameters += 3;
-
-    while (*parameters) {
-        unsigned int value = 0;
-        if (*parameters < '0' || *parameters > '9') {
-            return CHAFA_PIXEL_MODE_SYMBOLS;
-        }
-        while (*parameters >= '0' && *parameters <= '9') {
-            value = value * 10U + (unsigned int)(*parameters - '0');
-            parameters++;
-        }
-        if (value == 4U) {
-            return *parameters == ';' || *parameters == 'c' ? CHAFA_PIXEL_MODE_SIXELS
-                                                            : CHAFA_PIXEL_MODE_SYMBOLS;
-        }
-        if (*parameters == 'c') {
-            return CHAFA_PIXEL_MODE_SYMBOLS;
-        }
-        if (*parameters++ != ';') {
-            return CHAFA_PIXEL_MODE_SYMBOLS;
+    guint args[CHAFA_TERM_SEQ_ARGS_MAX];
+    gint n_args = 0;
+    if (terminal_parse_sequence(term_info, CHAFA_TERM_SEQ_PRIMARY_DEVICE_ATTRIBUTES, response,
+                                response_length, args, &n_args)) {
+        for (gint i = 0; i < n_args; i++) {
+            if (args[i] == 4U) {
+                return CHAFA_PIXEL_MODE_SIXELS;
+            }
         }
     }
     return CHAFA_PIXEL_MODE_SYMBOLS;
 }
 
-static ChafaPixelMode probe_pixel_mode(void) {
+ChafaPixelMode chafa_driver_pixel_mode_from_response(const char *response) {
+    ChafaTermInfo *term_info = chafa_term_db_get_fallback_info(chafa_term_db_get_default());
+    const ChafaPixelMode pixel_mode =
+        pixel_mode_from_response(term_info, response, strlen(response));
+    chafa_term_info_unref(term_info);
+    return pixel_mode;
+}
+
+static ChafaPixelMode probe_pixel_mode(ChafaTermInfo *term_info) {
     if (!dcat_isatty(STDIN_FILENO) || !dcat_isatty(STDOUT_FILENO)) {
         return CHAFA_PIXEL_MODE_SYMBOLS;
     }
@@ -62,8 +55,12 @@ static ChafaPixelMode probe_pixel_mode(void) {
     if (!terminal_begin_query_mode(&state)) {
         return CHAFA_PIXEL_MODE_SYMBOLS;
     }
-    static const char query[] = "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[0c";
-    safe_write(query, sizeof(query) - 1U);
+    static const char kitty_query[] = "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\";
+    char query[sizeof(kitty_query) - 1U + CHAFA_TERM_SEQ_LENGTH_MAX];
+    memcpy(query, kitty_query, sizeof(kitty_query) - 1U);
+    const char *query_end = chafa_term_info_emit_query_primary_device_attributes(
+        term_info, query + sizeof(kitty_query) - 1U);
+    safe_write(query, (size_t)(query_end - query));
     char response[256];
     const ssize_t length = terminal_read_query(response, sizeof(response) - 1U, 0);
     terminal_end_query_mode(&state);
@@ -71,7 +68,7 @@ static ChafaPixelMode probe_pixel_mode(void) {
         return CHAFA_PIXEL_MODE_SYMBOLS;
     }
     response[length] = '\0';
-    return chafa_driver_pixel_mode_from_response(response);
+    return pixel_mode_from_response(term_info, response, (size_t)length);
 }
 
 static void initialize(void) {
@@ -86,13 +83,13 @@ static void initialize(void) {
     g_state.detected_pixel_mode = chafa_term_info_get_best_pixel_mode(g_state.term_info);
     g_state.detected_canvas_mode = chafa_term_info_get_best_canvas_mode(g_state.term_info);
 
-    if (g_state.detected_pixel_mode == CHAFA_PIXEL_MODE_SYMBOLS) {
-        g_state.detected_pixel_mode = probe_pixel_mode();
-    }
-
     ChafaTermInfo *fallback = chafa_term_db_get_fallback_info(chafa_term_db_get_default());
     chafa_term_info_supplement(g_state.term_info, fallback);
     chafa_term_info_unref(fallback);
+
+    if (g_state.detected_pixel_mode == CHAFA_PIXEL_MODE_SYMBOLS) {
+        g_state.detected_pixel_mode = probe_pixel_mode(g_state.term_info);
+    }
 
     g_state.pixel_mode = g_state.detected_pixel_mode;
     g_state.canvas_mode = g_state.detected_canvas_mode;
@@ -117,6 +114,23 @@ void chafa_driver_configure(const ChafaPixelMode pixel_mode, const ChafaCanvasMo
     }
 }
 
+ChafaDitherMode chafa_driver_dither_mode(const ChafaPixelMode pixel_mode,
+                                         const ChafaCanvasMode canvas_mode) {
+    if (pixel_mode == CHAFA_PIXEL_MODE_SIXELS) {
+        return CHAFA_DITHER_MODE_NOISE;
+    }
+    switch (canvas_mode) {
+    case CHAFA_CANVAS_MODE_INDEXED_256:
+    case CHAFA_CANVAS_MODE_INDEXED_240:
+    case CHAFA_CANVAS_MODE_INDEXED_16:
+    case CHAFA_CANVAS_MODE_INDEXED_8:
+    case CHAFA_CANVAS_MODE_INDEXED_16_8:
+        return CHAFA_DITHER_MODE_NOISE;
+    default:
+        return CHAFA_DITHER_MODE_NONE;
+    }
+}
+
 static ChafaCanvas *create_canvas(const uint32_t width, const uint32_t height,
                                   const bool use_hash_characters) {
     ChafaCanvasConfig *config = chafa_canvas_config_new();
@@ -125,14 +139,23 @@ static ChafaCanvas *create_canvas(const uint32_t width, const uint32_t height,
     int canvas_height;
     if (g_state.pixel_mode == CHAFA_PIXEL_MODE_SYMBOLS) {
         ChafaSymbolMap *symbols = chafa_symbol_map_new();
-        canvas_width = (int)width;
-        canvas_height = (int)(use_hash_characters ? height : (height + 1U) / 2U);
         if (use_hash_characters) {
+            canvas_width = (int)width;
+            canvas_height = (int)height;
             chafa_symbol_map_add_by_range(symbols, ' ', ' ');
             chafa_symbol_map_add_by_range(symbols, '#', '#');
         } else {
+            canvas_width =
+                (int)((width + SYMBOL_CELL_SOURCE_WIDTH - 1U) / SYMBOL_CELL_SOURCE_WIDTH);
+            canvas_height =
+                (int)((height + SYMBOL_CELL_SOURCE_HEIGHT - 1U) / SYMBOL_CELL_SOURCE_HEIGHT);
+            const ChafaSymbolTags safe_graphics =
+                chafa_term_info_get_safe_symbol_tags(g_state.term_info) &
+                (CHAFA_SYMBOL_TAG_SPACE | CHAFA_SYMBOL_TAG_BLOCK | CHAFA_SYMBOL_TAG_BORDER |
+                 CHAFA_SYMBOL_TAG_BRAILLE);
             chafa_symbol_map_add_by_tags(symbols, CHAFA_SYMBOL_TAG_SPACE | CHAFA_SYMBOL_TAG_SOLID |
-                                                      CHAFA_SYMBOL_TAG_VHALF);
+                                                      safe_graphics);
+            chafa_symbol_map_remove_by_tags(symbols, CHAFA_SYMBOL_TAG_WIDE);
         }
         chafa_canvas_config_set_symbol_map(config, symbols);
         chafa_symbol_map_unref(symbols);
@@ -162,6 +185,11 @@ static ChafaCanvas *create_canvas(const uint32_t width, const uint32_t height,
     chafa_canvas_config_set_geometry(config, canvas_width, canvas_height);
     chafa_canvas_config_set_pixel_mode(config, g_state.pixel_mode);
     chafa_canvas_config_set_canvas_mode(config, g_state.canvas_mode);
+    chafa_canvas_config_set_dither_mode(
+        config, chafa_driver_dither_mode(g_state.pixel_mode, g_state.canvas_mode));
+    if (g_state.pixel_mode == CHAFA_PIXEL_MODE_SIXELS) {
+        chafa_canvas_config_set_dither_grain_size(config, 1, 1);
+    }
     chafa_canvas_config_set_transparency_threshold(config, 1.0F);
 
     ChafaCanvas *canvas = chafa_canvas_new(config);

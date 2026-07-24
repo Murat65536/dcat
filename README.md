@@ -17,24 +17,9 @@ Download and run `dcat-windows-setup.exe`.
 
 ### Linux
 
-Download and extract the tarball; the binary finds its `shaders/` directory next to itself, so it runs in place:
+Download `dcat-x86_64.AppImage`, make it executable, and run it:
 
 ```sh
-tar -xzf dcat-linux-x86_64.tar.gz
-./dcat-linux/dcat
+chmod +x dcat-x86_64.AppImage
+./dcat-x86_64.AppImage model.glb
 ```
-
-
-The binary is dynamically linked, so the runtime libraries (Vulkan, assimp, Chafa, libvips) must be installed from your package manager.
-
-## Terminal output
-
-With no output-mode flag, dcat uses Chafa's terminal database to select Kitty, Sixel, iTerm2, truecolor, indexed color, or monochrome output. The existing output flags still force a mode; `--kitty` keeps the local shared-memory fast path, while `--kitty-direct` uses Chafa's inline Kitty encoder.
-
-## Star History
-
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Murat65536/dcat&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Murat65536/dcat&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Murat65536/dcat&type=date&legend=top-left" />
- </picture>

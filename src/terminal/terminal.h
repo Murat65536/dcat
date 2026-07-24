@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+struct ChafaTermInfo;
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -14,6 +16,8 @@
 
 #define DEFAULT_TERM_WIDTH 80
 #define DEFAULT_TERM_HEIGHT 24
+#define SYMBOL_CELL_SOURCE_WIDTH 2U
+#define SYMBOL_CELL_SOURCE_HEIGHT 4U
 
 void get_terminal_size(uint32_t *cols, uint32_t *rows);
 void get_terminal_size_pixels(uint32_t *width, uint32_t *height);
@@ -57,4 +61,6 @@ void terminal_restore_default_state(void);
 void terminal_restore_after_crash(void);
 
 ssize_t terminal_read_query(char *buffer, size_t size, char terminator);
+bool terminal_parse_sequence(struct ChafaTermInfo *term_info, int sequence, const char *response,
+                             size_t response_length, unsigned int *args_out, int *n_args_out);
 int terminal_base64_encode(const char *src, int len, char *dst);

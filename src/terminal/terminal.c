@@ -1,5 +1,6 @@
 #include "terminal.h"
 #include "platform/io.h"
+#include <chafa.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -88,25 +89,30 @@ void get_terminal_size_pixels(uint32_t *width, uint32_t *height) {
     if (dcat_isatty(STDOUT_FILENO) && dcat_isatty(STDIN_FILENO)) {
         TermiosState ts;
         if (terminal_begin_query_mode(&ts)) {
-            safe_write("\x1b[14t", 5);
+            ChafaTermInfo *term_info = chafa_term_db_get_fallback_info(chafa_term_db_get_default());
+            char query[CHAFA_TERM_SEQ_LENGTH_MAX];
+            const char *query_end = chafa_term_info_emit_query_text_area_size_px(term_info, query);
+            safe_write(query, (size_t)(query_end - query));
             char buf[64];
             ssize_t r = terminal_read_query(buf, sizeof(buf) - 1, 't');
             terminal_end_query_mode(&ts);
             if (r > 0) {
-                buf[r] = '\0';
-                char *p = strstr(buf, "\x1b[4;");
-                unsigned int h = 0;
-                unsigned int w = 0;
-                if (p && sscanf(p, "\x1b[4;%u;%ut", &h, &w) == 2 && h > 0 && w > 0) {
-                    *width = w;
-                    *height = h;
+                guint args[CHAFA_TERM_SEQ_ARGS_MAX];
+                gint n_args = 0;
+                if (terminal_parse_sequence(term_info, CHAFA_TERM_SEQ_TEXT_AREA_SIZE_PX, buf,
+                                            (size_t)r, args, &n_args) &&
+                    n_args == 2 && args[0] > 0 && args[1] > 0) {
+                    *width = args[1];
+                    *height = args[0];
                     cached_cols = cols;
                     cached_rows = rows;
-                    cached_pixel_width = w;
-                    cached_pixel_height = h;
+                    cached_pixel_width = *width;
+                    cached_pixel_height = *height;
+                    chafa_term_info_unref(term_info);
                     return;
                 }
             }
+            chafa_term_info_unref(term_info);
         }
     }
 
@@ -162,8 +168,8 @@ void calculate_render_dimensions(int explicit_width, int explicit_height, bool u
     if (reserve_bottom_line && rows > 0) {
         rows--;
     }
-    *out_width = cols;
-    *out_height = (int)use_hash_characters ? rows : rows * 2;
+    *out_width = use_hash_characters ? cols : cols * SYMBOL_CELL_SOURCE_WIDTH;
+    *out_height = use_hash_characters ? rows : rows * SYMBOL_CELL_SOURCE_HEIGHT;
 }
 
 static TermiosState raw_mode_state;
@@ -576,4 +582,29 @@ ssize_t terminal_read_query(char *buffer, size_t size, char terminator) {
     }
     return (ssize_t)total_read;
 #endif
+}
+
+bool terminal_parse_sequence(ChafaTermInfo *term_info, const int sequence, const char *response,
+                             const size_t response_length, guint *args_out, gint *n_args_out) {
+    if (response_length > G_MAXINT) {
+        return false;
+    }
+
+    for (size_t offset = 0; offset < response_length; offset++) {
+        gchar *input = (gchar *)response + offset;
+        gint input_length = (gint)(response_length - offset);
+        gint n_args = 0;
+        if (chafa_term_info_parse_seq_varargs(term_info, (ChafaTermSeq)sequence, &input,
+                                              &input_length, args_out,
+                                              &n_args) == CHAFA_PARSE_SUCCESS) {
+            if (n_args_out) {
+                *n_args_out = n_args;
+            }
+            return true;
+        }
+    }
+    if (n_args_out) {
+        *n_args_out = 0;
+    }
+    return false;
 }

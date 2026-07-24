@@ -1,6 +1,4 @@
-# Building dcat
-
-Builds are driven through [`just`](https://github.com/casey/just), which wraps Meson.
+# Building
 
 ## Quick Start
 
@@ -9,14 +7,7 @@ Builds are driven through [`just`](https://github.com/casey/just), which wraps M
 3. Compile it: `just build`
 4. Run the result: `build/dcat`
 
-## Build types
-
-| Recipe               | Use for                                                    |
-| -------------------- | ---------------------------------------------------------- |
-| `just setup-release` | **Default.** Optimized, no asserts. Day-to-day use.        |
-| `just setup-debug`   | Development: asserts and Vulkan validation layers enabled. |
-
-Sanitizer builds: `just asan` (Linux) or `just ubsan` (Windows). Test coverage: `just coverage` (requires [gcovr](https://gcovr.com/) >= 8; install via pip/pipx, distro packages can be too old and crash).
+Sanitizer builds: `just asan` (Linux) or `just ubsan` (Windows). Test coverage: `just coverage` (requires [gcovr](https://gcovr.com/) >= 8)
 
 ## Dependencies
 
@@ -35,8 +26,6 @@ sudo apt-get install -y gcc meson ninja-build libvulkan-dev vulkan-headers vulka
 
 Chafa 1.16 or newer is required. If your distribution ships an older release, install a current Chafa release before configuring dcat.
 
-Install [`just`](https://github.com/casey/just) too (`cargo install just`, or your distro's package).
-
 ### Windows (MSYS2)
 
 On Windows the project is built with [MSYS2](https://www.msys2.org/). The **clang64** environment is what CI builds and tests.
@@ -49,7 +38,7 @@ pacman -S mingw-w64-clang-x86_64-toolchain mingw-w64-clang-x86_64-meson mingw-w6
 
 ### Slang shader compiler
 
-Both platforms need the Slang shader compiler (`slangc`) on `PATH`. It is not packaged by apt or MSYS2, so install it separately.
+Both platforms need the Slang shader compiler. It is not packaged by apt or MSYS2, so install it separately.
 
 **Linux** — download a release build and add it to `PATH`:
 
@@ -62,7 +51,3 @@ export PATH="$HOME/.local/slang/bin:$PATH"
 ```
 
 **Windows** — either install the [LunarG Vulkan SDK](https://vulkan.lunarg.com/) (which bundles `slangc`), or extract a [Slang release](https://github.com/shader-slang/slang/releases) (`windows-x86_64`) and copy its `bin/` contents into `$MINGW_PREFIX/bin`.
-
-## Development
-
-Run `just` with no arguments to list all recipes (test, fmt, tidy, devenv, clean, ...).
