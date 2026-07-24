@@ -72,12 +72,3 @@ clean:
 # Refresh pinned subproject sources after editing subprojects/*.wrap.
 bump-wraps:
     meson subprojects update --reset
-
-# Cut a release: bump the project() version, commit, tag vX.Y.Z, and push both.
-release version:
-    sed -i "s/^  version: '[^']*',/  version: '{{version}}',/" meson.build
-    git add meson.build
-    git commit -m "Release v{{version}}"
-    git tag "v{{version}}"
-    git push origin HEAD
-    git push origin "v{{version}}"
