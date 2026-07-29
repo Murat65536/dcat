@@ -81,9 +81,9 @@ static void populate_debug_messenger_info(VkDebugUtilsMessengerCreateInfoEXT *in
 #endif
 
 static uint32_t dcat_vk_application_version(void) {
-    unsigned major = 0;
-    unsigned minor = 0;
-    unsigned patch = 0;
+    unsigned int major = 0;
+    unsigned int minor = 0;
+    unsigned int patch = 0;
     sscanf(DCAT_VERSION, "v%u.%u.%u", &major, &minor, &patch);
     return VK_MAKE_VERSION(major, minor, patch);
 }
@@ -94,7 +94,7 @@ bool create_instance(VulkanRenderer *r) {
     app_info.applicationVersion = dcat_vk_application_version();
     app_info.pEngineName = "No Engine";
     app_info.engineVersion = 0;
-    app_info.apiVersion = VK_API_VERSION_1_0;
+    app_info.apiVersion = VK_API_VERSION_1_1;
 
     VkInstanceCreateInfo create_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     create_info.pApplicationInfo = &app_info;
@@ -185,6 +185,10 @@ bool select_physical_device(VulkanRenderer *r) {
     for (uint32_t d = 0; d < device_count; d++) {
         VkPhysicalDeviceProperties props;
         vkGetPhysicalDeviceProperties(devices[d], &props);
+
+        if (props.apiVersion < VK_API_VERSION_1_1) {
+            continue;
+        }
 
         uint32_t queue_family_count = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(devices[d], &queue_family_count, NULL);
