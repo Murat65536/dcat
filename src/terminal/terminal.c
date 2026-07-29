@@ -28,6 +28,7 @@
 
 static const char TERMINAL_RECOVERY_SEQUENCE[] = "\x1b[?2026l"
                                                  "\x1b[<u"
+                                                 "\x1b[?9001l"
                                                  "\x1b[?1000l"
                                                  "\x1b[?1002l"
                                                  "\x1b[?1003l"

@@ -55,10 +55,10 @@ static int parse_uint(const char *buf, size_t *p, const size_t end) {
     return value;
 }
 
-MouseCsiResult mouse_parse_csi(const InputThreadData *data, const char *buf, const size_t len,
+InputCsiResult mouse_parse_csi(const InputThreadData *data, const char *buf, const size_t len,
                                size_t *consumed, MouseTracker *track) {
     if (len == 0) {
-        return MOUSE_CSI_INCOMPLETE;
+        return INPUT_CSI_INCOMPLETE;
     }
 
     // SGR mouse: <btn;x;y followed by 'M' (press/motion) or 'm' (release).
@@ -68,7 +68,7 @@ MouseCsiResult mouse_parse_csi(const InputThreadData *data, const char *buf, con
             j++;
         }
         if (j >= len) {
-            return MOUSE_CSI_INCOMPLETE;
+            return INPUT_CSI_INCOMPLETE;
         }
 
         size_t p = 1;
@@ -86,13 +86,13 @@ MouseCsiResult mouse_parse_csi(const InputThreadData *data, const char *buf, con
             mouse_apply_action(data, btn, mx, my, track);
         }
         *consumed = j + 1;
-        return MOUSE_CSI_HANDLED;
+        return INPUT_CSI_HANDLED;
     }
 
     // Legacy X10/normal mouse: M Cb Cx Cy (each byte = value + 32).
     if (buf[0] == 'M') {
         if (len < 4) {
-            return MOUSE_CSI_INCOMPLETE;
+            return INPUT_CSI_INCOMPLETE;
         }
         const int btn = (int)(unsigned char)buf[1] - 32;
         const int mx = (int)(unsigned char)buf[2] - 32;
@@ -101,10 +101,10 @@ MouseCsiResult mouse_parse_csi(const InputThreadData *data, const char *buf, con
             mouse_apply_action(data, btn, mx, my, track);
         }
         *consumed = 4;
-        return MOUSE_CSI_HANDLED;
+        return INPUT_CSI_HANDLED;
     }
 
-    return MOUSE_CSI_NONE;
+    return INPUT_CSI_NONE;
 }
 
 // Kitty keyboard protocol key codes for modifier keys
@@ -112,6 +112,113 @@ MouseCsiResult mouse_parse_csi(const InputThreadData *data, const char *buf, con
 #define KITTY_RIGHT_SHIFT 57447
 #define KITTY_LEFT_CTRL 57442
 #define KITTY_RIGHT_CTRL 57448
+
+static bool parse_win32_key(const char *buf, const size_t len, int *key_code, int *event_type) {
+    unsigned int fields[6] = {0, 0, 0, 0, 0, 1};
+    size_t p = 0;
+
+    for (size_t field = 0; field < 6; field++) {
+        if (p >= len || buf[p] < '0' || buf[p] > '9') {
+            return false;
+        }
+        while (p < len && buf[p] >= '0' && buf[p] <= '9') {
+            const unsigned int digit = (unsigned int)(buf[p] - '0');
+            if (fields[field] > (65535U - digit) / 10U) {
+                return false;
+            }
+            fields[field] = fields[field] * 10U + digit;
+            p++;
+        }
+        if (field < 5) {
+            if (p >= len || buf[p++] != ';') {
+                return false;
+            }
+        }
+    }
+    if (p + 1 != len || buf[p] != '_') {
+        return false;
+    }
+
+    const unsigned int virtual_key = fields[0];
+    const unsigned int unicode_char = fields[2];
+    if (virtual_key >= 'A' && virtual_key <= 'Z') {
+        *key_code = (int)(virtual_key + ('a' - 'A'));
+    } else if (virtual_key == 0x10 || virtual_key == 0xA0 || virtual_key == 0xA1) {
+        *key_code = KITTY_LEFT_SHIFT;
+    } else if (virtual_key == 0x11 || virtual_key == 0xA2 || virtual_key == 0xA3) {
+        *key_code = KITTY_LEFT_CTRL;
+    } else if (unicode_char >= 'A' && unicode_char <= 'Z') {
+        *key_code = (int)(unicode_char + ('a' - 'A'));
+    } else {
+        *key_code = (int)unicode_char;
+    }
+    *event_type = fields[3] == 0 ? 3 : 1;
+    return true;
+}
+
+static bool parse_kitty_key(const char *buf, const size_t len, int *key_code, int *modifiers,
+                            int *event_type) {
+    const size_t end = len - 1;
+    size_t p = 0;
+    if (end == 0 || buf[p] < '0' || buf[p] > '9') {
+        return false;
+    }
+
+    *key_code = parse_uint(buf, &p, end);
+    while (p < end && buf[p] == ':') {
+        p++;
+        (void)parse_uint(buf, &p, end);
+    }
+
+    *modifiers = 1;
+    *event_type = 1;
+    if (p < end && buf[p] == ';') {
+        p++;
+        const int value = parse_uint(buf, &p, end);
+        if (value > 0) {
+            *modifiers = value;
+        }
+        if (p < end && buf[p] == ':') {
+            p++;
+            const int event = parse_uint(buf, &p, end);
+            if (event > 0) {
+                *event_type = event;
+            }
+        }
+    }
+    return true;
+}
+
+InputCsiResult input_parse_csi(const InputThreadData *data, const char *buf, const size_t len,
+                               size_t *consumed, MouseTracker *track) {
+    const InputCsiResult mouse = mouse_parse_csi(data, buf, len, consumed, track);
+    if (mouse != INPUT_CSI_NONE) {
+        return mouse;
+    }
+
+    size_t end = 0;
+    while (end < len && !((unsigned char)buf[end] >= 0x40 && (unsigned char)buf[end] <= 0x7E)) {
+        end++;
+    }
+    if (end == len) {
+        return INPUT_CSI_INCOMPLETE;
+    }
+
+    *consumed = end + 1;
+    int key_code = 0;
+    int modifiers = 1;
+    int event_type = 1;
+    if (buf[end] == '_') {
+        if (parse_win32_key(buf, *consumed, &key_code, &event_type)) {
+            handle_key(data, key_code, modifiers, event_type);
+        }
+    } else if (buf[end] == 'u' || buf[end] == '~' || (buf[end] >= 'A' && buf[end] <= 'Z')) {
+        if (parse_kitty_key(buf, *consumed, &key_code, &modifiers, &event_type)) {
+            handle_key(data, key_code, modifiers, event_type);
+        }
+    }
+    return INPUT_CSI_HANDLED;
+}
 
 void handle_key(const InputThreadData *data, const int key_code, const int modifiers,
                 const int event_type) {
@@ -170,13 +277,13 @@ void handle_key(const InputThreadData *data, const int key_code, const int modif
         }
     }
 
-    // Discrete actions on press only
-    if (event_type != 1) {
+    if (key_code == 'q' && pressed) {
+        signals_request_quit();
         return;
     }
 
-    if (key_code == 'q') {
-        signals_request_quit();
+    // Discrete actions on press only
+    if (event_type != 1) {
         return;
     }
 

@@ -1,7 +1,8 @@
-[wrap-git]
-directory = assimp
-url = https://github.com/assimp/assimp.git
-revision = c35200e38ea8f058812b83de2ef32c6093b0ece2
+[wrap-file]
+directory = assimp-5.4.3
+source_url = https://github.com/assimp/assimp/archive/refs/tags/v5.4.3.tar.gz
+source_filename = assimp-5.4.3.tar.gz
+source_hash = 66dfbaee288f2bc43172440a55d0235dfc7bf885dda6435c038e8000e79582cb
 method = cmake
 
 [provide]

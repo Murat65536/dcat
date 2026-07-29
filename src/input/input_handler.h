@@ -53,7 +53,7 @@ void *input_thread_func(void *arg);
 #endif
 
 // Shared constants for camera control
-#define ROTATION_AMOUNT (GLM_PI / 8.0f)
+#define ROTATION_AMOUNT ((float)GLM_PI / 8.0f)
 #define ZOOM_AMOUNT 0.05f
 
 // Shared key handler called by platform-specific implementations
@@ -68,15 +68,19 @@ typedef struct MouseTracker {
 // Apply a press/motion/scroll mouse event. `btn` matches the MouseButton encoding.
 void mouse_apply_action(const InputThreadData *data, int btn, int mx, int my, MouseTracker *track);
 
-typedef enum MouseCsiResult {
-    MOUSE_CSI_NONE,      // not a mouse sequence
-    MOUSE_CSI_HANDLED,   // mouse sequence fully parsed
-    MOUSE_CSI_INCOMPLETE // need more bytes to decide or finish
-} MouseCsiResult;
+typedef enum InputCsiResult {
+    INPUT_CSI_NONE,
+    INPUT_CSI_HANDLED,
+    INPUT_CSI_INCOMPLETE
+} InputCsiResult;
 
 // Parse a mouse report from a CSI body. `buf` points just past the "\x1b[" introducer and
-// `len` is the number of available bytes. On MOUSE_CSI_HANDLED, *consumed is set to the
+// `len` is the number of available bytes. On INPUT_CSI_HANDLED, *consumed is set to the
 // number of bytes consumed from `buf`. Recognizes SGR (\x1b[<btn;x;yM/m) and legacy X10
 // (\x1b[M Cb Cx Cy). Mouse actions are applied only when data->mouse_orbit is set.
-MouseCsiResult mouse_parse_csi(const InputThreadData *data, const char *buf, size_t len,
+InputCsiResult mouse_parse_csi(const InputThreadData *data, const char *buf, size_t len,
+                               size_t *consumed, MouseTracker *track);
+
+// Parse and apply one mouse, Kitty-keyboard, or Win32-input CSI sequence.
+InputCsiResult input_parse_csi(const InputThreadData *data, const char *buf, size_t len,
                                size_t *consumed, MouseTracker *track);

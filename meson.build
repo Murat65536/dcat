@@ -90,6 +90,30 @@ else
   endif
 endif
 
+if get_option('tracy')
+  add_languages('cpp')
+
+  tracy_project = subproject(
+    'tracy',
+    default_options: [
+      'default_library=static',
+      'tracy_enable=true',
+      'on_demand=true',
+      'only_localhost=true',
+      'no_sampling=true',
+      'no_system_tracing=true',
+    ],
+  )
+
+  dcat_deps += tracy_project.get_variable('tracy_dep')
+  if host_machine.system() == 'windows'
+    dcat_deps += [
+      cc.find_library('ws2_32'),
+      cc.find_library('dbghelp'),
+    ]
+  endif
+endif
+
 subdir('shaders')
 
 dcat_core_sources = [

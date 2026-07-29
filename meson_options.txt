@@ -5,3 +5,4 @@ option(
   value: 'auto',
   description: 'Build unit tests (uses the bundled Unity subproject; auto skips when unavailable)'
 )
+option('tracy', type: 'boolean', value: false, description: 'Enable Tracy profiling')

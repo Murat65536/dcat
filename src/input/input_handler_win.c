@@ -226,12 +226,12 @@ static void process_windows_vt_bytes(InputThreadData *data, WindowsInputState *s
 
         const size_t body = i + 2;
         size_t consumed = 0;
-        const MouseCsiResult result =
+        const InputCsiResult result =
             mouse_parse_csi(data, state->vt_buf + body, n - body, &consumed, &state->mouse_track);
-        if (result == MOUSE_CSI_INCOMPLETE) {
+        if (result == INPUT_CSI_INCOMPLETE) {
             break; // need more bytes; carry from this ESC
         }
-        if (result == MOUSE_CSI_HANDLED) {
+        if (result == INPUT_CSI_HANDLED) {
             i = body + consumed;
             continue;
         }

@@ -1,7 +1,8 @@
-[wrap-git]
-directory = libvips
-url = https://github.com/libvips/libvips.git
-revision = f18403d7bf49b574a2a1c6887dbe9c696a5125fc
+[wrap-file]
+directory = libvips-8.15.2
+source_url = https://github.com/libvips/libvips/archive/refs/tags/v8.15.2.tar.gz
+source_filename = libvips-8.15.2.tar.gz
+source_hash = 8c3ece7be367636fd676573a8ff22170c07e95e81fd94f2d1eb9966800522e1f
 
 [provide]
 dependency_names = vips

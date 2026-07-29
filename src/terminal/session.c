@@ -14,7 +14,8 @@ void terminal_session_begin(TerminalSession *session, const bool mouse_orbit) {
 #ifdef _WIN32
     safe_write("\x1b[?1004h", 8);
 #else
-    safe_write("\x1b[>31u", 6);
+    // Windows Terminal <1.25 uses Win32-input mode; newer terminals prefer Kitty.
+    safe_write("\x1b[?9001h\x1b[>31u", 14);
 #endif
     if (mouse_orbit) {
         safe_write("\x1b[?1002h\x1b[?1006h\x1b[?1016h", 24);

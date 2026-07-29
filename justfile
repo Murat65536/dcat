@@ -70,4 +70,4 @@ clean:
 
 # Refresh pinned subproject sources after editing subprojects/*.wrap.
 bump-wraps:
-    meson subprojects update --reset
+    meson subprojects update --reset -j 1

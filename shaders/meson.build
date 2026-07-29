@@ -1,4 +1,4 @@
-slangc = find_program('slangc', required: true)
+slangc = find_program('slangc', 'slangc.exe', required: true)
 
 shaders = [
   ['shader.vert', 'vertex'],
