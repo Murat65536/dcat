@@ -8,7 +8,7 @@
 #include <time.h>
 #endif
 
-static double get_time_seconds(void) {
+static inline double get_time_seconds(void) {
 #ifdef _WIN32
     static LARGE_INTEGER frequency = {0};
     LARGE_INTEGER counter;

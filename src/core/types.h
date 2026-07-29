@@ -10,9 +10,10 @@
 #define ALIGN_SIZE 32
 
 // Aligned memory allocation for SIMD operations
-static void *aligned_malloc(size_t size) {
-    if (size == 0)
+static inline void *aligned_malloc(size_t size) {
+    if (size == 0) {
         return NULL;
+    }
 #ifdef _WIN32
     return _aligned_malloc(size, ALIGN_SIZE);
 #else
@@ -23,7 +24,7 @@ static void *aligned_malloc(size_t size) {
 #endif
 }
 
-static void *aligned_realloc(void *ptr, const size_t old_size, const size_t new_size) {
+static inline void *aligned_realloc(void *ptr, const size_t old_size, const size_t new_size) {
     if (new_size == 0) {
         if (ptr) {
 #ifdef _WIN32
@@ -61,7 +62,8 @@ static void *aligned_realloc(void *ptr, const size_t old_size, const size_t new_
 #endif
 }
 
-static void *aligned_realloc_checked(void *ptr, const size_t old_size, const size_t new_size) {
+static inline void *aligned_realloc_checked(void *ptr, const size_t old_size,
+                                            const size_t new_size) {
     void *new_ptr = aligned_realloc(ptr, old_size, new_size);
     if (!new_ptr && new_size > 0) {
         fputs("Fatal: out of memory while growing dynamic array\n", stderr);
@@ -70,9 +72,10 @@ static void *aligned_realloc_checked(void *ptr, const size_t old_size, const siz
     return new_ptr;
 }
 
-static void aligned_free(void *ptr) {
-    if (!ptr)
+static inline void aligned_free(void *ptr) {
+    if (!ptr) {
         return;
+    }
 #ifdef _WIN32
     _aligned_free(ptr);
 #else
@@ -208,7 +211,7 @@ typedef struct CameraSetup {
 } CameraSetup;
 
 // Utility functions
-static char *str_dup(const char *s) {
+static inline char *str_dup(const char *s) {
     if (!s) {
         return NULL;
     }
@@ -220,7 +223,7 @@ static char *str_dup(const char *s) {
     return copy;
 }
 
-static float clampf(const float val, const float min_val, const float max_val) {
+static inline float clampf(const float val, const float min_val, const float max_val) {
     if (val < min_val) {
         return min_val;
     }

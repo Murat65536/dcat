@@ -29,14 +29,6 @@ typedef struct QuaternionKeyArray {
 // Bone name to index mapping using hash table for O(1) lookups
 #define BONE_MAP_SIZE 256
 
-static uint32_t bone_hash(const char *name) {
-    uint32_t hash = 5381;
-    while (*name) {
-        hash = ((hash << 5) + hash) + (unsigned char)*name++;
-    }
-    return hash;
-}
-
 typedef struct BoneMapEntry {
     char *name;
     int index;

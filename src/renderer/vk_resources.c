@@ -3,6 +3,10 @@
 #include <stddef.h>
 #include <stdio.h>
 
+static VkDeviceSize align_up(VkDeviceSize size, VkDeviceSize alignment) {
+    return (size + alignment - 1) & ~(alignment - 1);
+}
+
 bool create_command_pool(VulkanRenderer *r) {
     VkCommandPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     pool_info.queueFamilyIndex = r->graphics_queue_family;

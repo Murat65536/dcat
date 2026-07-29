@@ -4,6 +4,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+static uint32_t bone_hash(const char *name) {
+    uint32_t hash = 5381;
+    while (*name) {
+        hash = ((hash << 5) + hash) + (unsigned char)*name++;
+    }
+    return hash;
+}
+
 void animation_state_init(AnimationState *state) {
     state->current_animation_index = 0;
     state->current_time = 0.0F;

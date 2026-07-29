@@ -7,6 +7,7 @@
 
 static VkShaderModule create_shader_module(VulkanRenderer *r, const uint32_t *code, size_t size,
                                            const char *label) {
+    (void)label;
     VkShaderModuleCreateInfo create_info = {.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
     create_info.codeSize = size;
     create_info.pCode = code;
