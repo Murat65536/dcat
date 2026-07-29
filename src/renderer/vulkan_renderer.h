@@ -181,7 +181,6 @@ typedef struct VulkanRenderer {
     // Cache
     uint64_t cached_mesh_generation;
 
-    char shader_directory[256];
     VkResult last_error_code;
     char last_error_message[256];
     uint32_t current_frame;

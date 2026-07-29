@@ -6,11 +6,10 @@ set -e
 
 # 1. Create directories
 rm -rf dist
-mkdir -p dist/shaders
+mkdir -p dist
 
-# 2. Copy the executable, shaders, and docs
+# 2. Copy the executable and docs
 cp "$BUILD_DIR/dcat.exe" dist/
-cp "$BUILD_DIR"/shaders/*.spv dist/shaders/ 2>/dev/null || true
 cp LICENSE README.md dist/ 2>/dev/null || true
 
 resolve_dll_path() {

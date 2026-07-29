@@ -71,8 +71,7 @@ jobs:
           echo "${LINUXDEPLOY_SHA256}  linuxdeploy-x86_64.AppImage" | sha256sum --check
           chmod +x linuxdeploy-x86_64.AppImage
 
-          mkdir -p AppDir/usr/bin/shaders AppDir/usr/share/doc/dcat
-          cp build/shaders/*.spv AppDir/usr/bin/shaders/
+          mkdir -p AppDir/usr/bin AppDir/usr/share/doc/dcat
           cp LICENSE AppDir/usr/share/doc/dcat/
           if [ -d "$RUNNER_TEMP/chafa-1.18.2" ]; then
             mkdir -p AppDir/usr/share/doc/chafa

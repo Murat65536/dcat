@@ -75,9 +75,6 @@ endif
 
 add_project_arguments('-DCGLM_FORCE_DEPTH_ZERO_TO_ONE', language: ['c', 'cpp'])
 
-shader_install_dir = get_option('prefix') / get_option('datadir') / 'dcat' / 'shaders'
-add_project_arguments('-DSHADER_INSTALL_DIR="' + shader_install_dir + '"', language: ['c', 'cpp'])
-
 if get_option('buildtype') == 'debug'
   add_project_arguments('-DDEBUG_BUILD=1', '-DVK_ENABLE_VALIDATION=1', language: ['c', 'cpp'])
 endif
@@ -97,7 +94,6 @@ subdir('shaders')
 
 dcat_core_sources = [
   'src/platform/io.c',
-  'src/platform/path.c',
   'src/core/app.c',
   'src/core/args.c',
   'src/core/signals.c',
@@ -110,7 +106,6 @@ dcat_core_sources = [
   'src/renderer/vulkan_renderer.c',
   'src/renderer/vk_device.c',
   'src/renderer/vk_memory.c',
-  'src/renderer/vk_shader.c',
   'src/renderer/vk_pipeline.c',
   'src/renderer/vk_resources.c',
   'src/renderer/vk_upload.c',
@@ -119,7 +114,8 @@ dcat_core_sources = [
   'src/terminal/session.c',
   'src/terminal/driver_factory.c',
   'src/terminal/chafa_driver.c',
-  'src/terminal/kitty_shm.c'
+  'src/terminal/kitty_shm.c',
+  embedded_shaders
 ]
 
 if host_machine.system() == 'windows'
@@ -137,7 +133,7 @@ if host_machine.system() != 'windows'
   dcat_link_args += '-lstdc++'
 endif
 
-dcat_inc = include_directories('src')
+dcat_inc = include_directories('src', 'shaders')
 
 # Stamp the binary with `git describe` so `dcat --version` reports the exact
 # commit between releases; falls back to the project() version for tarball

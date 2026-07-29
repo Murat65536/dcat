@@ -1,5 +1,4 @@
-# Absolute sh.exe path + /usr/bin PATH prepend so recipes (and coreutils) work from PowerShell/cmd, where MSYS2 is not on PATH; settings are const, so this can't probe env.
-set windows-shell := ["C:/msys64/usr/bin/sh.exe", "-cu", 'PATH="/usr/bin:$PATH"; eval "$0"']
+set windows-shell := ["C:/msys64/usr/bin/sh.exe", "-cu", 'PATH="${MINGW_PREFIX:-/clang64}/bin:/usr/bin:$PATH"; eval "$0"']
 
 builddir := "build"
 

@@ -1,6 +1,24 @@
 #include "vk_pipeline.h"
-#include "vk_shader.h"
+#include "shader.frag.spv.h"
+#include "shader.vert.spv.h"
+#include "skydome.frag.spv.h"
+#include "skydome.vert.spv.h"
 #include <stdio.h>
+
+static VkShaderModule create_shader_module(VulkanRenderer *r, const uint32_t *code, size_t size,
+                                           const char *label) {
+    VkShaderModuleCreateInfo create_info = {.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+    create_info.codeSize = size;
+    create_info.pCode = code;
+
+    VkShaderModule shader_module;
+    if (vkCreateShaderModule(r->device, &create_info, NULL, &shader_module) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create shader module\n");
+        return VK_NULL_HANDLE;
+    }
+    VK_NAME(r, VK_OBJECT_TYPE_SHADER_MODULE, shader_module, "%s", label);
+    return shader_module;
+}
 
 bool create_descriptor_set_layout(VulkanRenderer *r) {
     VkDescriptorSetLayoutBinding bindings[4] = {0};
@@ -144,21 +162,10 @@ bool create_render_pass(VulkanRenderer *r) {
 }
 
 bool create_graphics_pipeline(VulkanRenderer *r) {
-    size_t vert_size;
-    size_t frag_size;
-    char *vert_code = read_shader_file(r, "shader.vert.spv", &vert_size);
-    char *frag_code = read_shader_file(r, "shader.frag.spv", &frag_size);
-
-    if (!vert_code || !frag_code) {
-        free(vert_code);
-        free(frag_code);
-        return false;
-    }
-
-    VkShaderModule vert_module = create_shader_module(r, vert_code, vert_size, "shader.vert");
-    VkShaderModule frag_module = create_shader_module(r, frag_code, frag_size, "shader.frag");
-    free(vert_code);
-    free(frag_code);
+    VkShaderModule vert_module =
+        create_shader_module(r, shader_vert_spv, sizeof(shader_vert_spv), "shader.vert");
+    VkShaderModule frag_module =
+        create_shader_module(r, shader_frag_spv, sizeof(shader_frag_spv), "shader.frag");
 
     if (vert_module == VK_NULL_HANDLE || frag_module == VK_NULL_HANDLE) {
         return false;
@@ -329,22 +336,10 @@ bool create_graphics_pipeline(VulkanRenderer *r) {
 }
 
 bool create_skydome_pipeline(VulkanRenderer *r) {
-    size_t vert_size;
-    size_t frag_size;
-    char *vert_code = read_shader_file(r, "skydome.vert.spv", &vert_size);
-    char *frag_code = read_shader_file(r, "skydome.frag.spv", &frag_size);
-
-    if (!vert_code || !frag_code) {
-        fprintf(stderr, "Warning: Skydome shaders not found\n");
-        free(vert_code);
-        free(frag_code);
-        return false;
-    }
-
-    VkShaderModule vert_module = create_shader_module(r, vert_code, vert_size, "skydome.vert");
-    VkShaderModule frag_module = create_shader_module(r, frag_code, frag_size, "skydome.frag");
-    free(vert_code);
-    free(frag_code);
+    VkShaderModule vert_module =
+        create_shader_module(r, skydome_vert_spv, sizeof(skydome_vert_spv), "skydome.vert");
+    VkShaderModule frag_module =
+        create_shader_module(r, skydome_frag_spv, sizeof(skydome_frag_spv), "skydome.frag");
 
     if (vert_module == VK_NULL_HANDLE || frag_module == VK_NULL_HANDLE) {
         return false;
