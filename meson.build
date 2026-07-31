@@ -55,7 +55,6 @@ chafa_dep = dependency('chafa', version: '>=1.16', required: true)
 
 threads_dep = dependency('threads')
 m_dep = cc.find_library('m', required: false)
-rt_dep = cc.find_library('rt', required: false)
 
 dcat_deps = [
   vulkan_dep,
@@ -68,9 +67,6 @@ dcat_deps = [
 
 if m_dep.found()
   dcat_deps += m_dep
-endif
-if rt_dep.found()
-  dcat_deps += rt_dep
 endif
 
 add_project_arguments('-DCGLM_FORCE_DEPTH_ZERO_TO_ONE', language: ['c', 'cpp'])
@@ -136,9 +132,7 @@ dcat_core_sources = [
   'src/input/input_handler_common.c',
   'src/terminal/terminal.c',
   'src/terminal/session.c',
-  'src/terminal/driver_factory.c',
   'src/terminal/chafa_driver.c',
-  'src/terminal/kitty_shm.c',
   embedded_shaders
 ]
 

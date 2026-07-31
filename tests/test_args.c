@@ -43,11 +43,9 @@ static void test_defaults_and_reset(void) {
     TEST_ASSERT_FALSE(args.show_help);
     TEST_ASSERT_FALSE(args.use_sixel);
     TEST_ASSERT_FALSE(args.use_kitty);
-    TEST_ASSERT_FALSE(args.use_kitty_shm);
     TEST_ASSERT_FALSE(args.use_truecolor_characters);
     TEST_ASSERT_FALSE(args.use_palette_characters);
     TEST_ASSERT_FALSE(args.use_block_characters);
-    TEST_ASSERT_FALSE(args.use_hash_characters);
 }
 
 static void test_positional_model_path(void) {
@@ -113,40 +111,33 @@ static void test_float_options(void) {
 
 static void test_flag_options(void) {
     Args args;
-    char *argv[] = {"dcat", "--no-lighting",    "--keyboard-controls", "--mouse-orbit",
-                    "-s",   "--hash-characters"};
+    char *argv[] = {"dcat", "--no-lighting", "--keyboard-controls", "--mouse-orbit", "-s"};
     TEST_ASSERT_EQUAL_INT(ARGS_PARSE_OK, parse_args(ARGV_COUNT(argv), argv, &args));
     TEST_ASSERT_TRUE(args.no_lighting);
     // --keyboard-controls intentionally maps to the fps_controls field.
     TEST_ASSERT_TRUE(args.fps_controls);
     TEST_ASSERT_TRUE(args.mouse_orbit);
     TEST_ASSERT_TRUE(args.show_status_bar);
-    TEST_ASSERT_TRUE(args.use_hash_characters);
 }
 
 static void test_renderer_flag_mapping(void) {
     Args args;
 
-    // -K/--kitty selects the shared-memory transport; --kitty-direct the inline one.
     char *argv[] = {"dcat", "-K"};
     TEST_ASSERT_EQUAL_INT(ARGS_PARSE_OK, parse_args(ARGV_COUNT(argv), argv, &args));
-    TEST_ASSERT_TRUE(args.use_kitty_shm);
-    TEST_ASSERT_FALSE(args.use_kitty);
+    TEST_ASSERT_TRUE(args.use_kitty);
 
     char *argv2[] = {"dcat", "--kitty"};
     TEST_ASSERT_EQUAL_INT(ARGS_PARSE_OK, parse_args(ARGV_COUNT(argv2), argv2, &args));
-    TEST_ASSERT_TRUE(args.use_kitty_shm);
-    TEST_ASSERT_FALSE(args.use_kitty);
+    TEST_ASSERT_TRUE(args.use_kitty);
 
     char *argv3[] = {"dcat", "--kitty-direct"};
     TEST_ASSERT_EQUAL_INT(ARGS_PARSE_OK, parse_args(ARGV_COUNT(argv3), argv3, &args));
     TEST_ASSERT_TRUE(args.use_kitty);
-    TEST_ASSERT_FALSE(args.use_kitty_shm);
 
     char *argv4[] = {"dcat", "-S", "-T", "-P", "-B"};
     TEST_ASSERT_EQUAL_INT(ARGS_PARSE_OK, parse_args(ARGV_COUNT(argv4), argv4, &args));
-    // The parser enforces no exclusivity between renderer flags; selection
-    // precedence lives in driver_factory.
+    // Parsing records every flag; validate_args enforces exclusivity.
     TEST_ASSERT_TRUE(args.use_sixel);
     TEST_ASSERT_TRUE(args.use_truecolor_characters);
     TEST_ASSERT_TRUE(args.use_palette_characters);
@@ -181,6 +172,9 @@ static void test_error_unknown_option(void) {
 
     char *argv3[] = {"dcat", "-"};
     TEST_ASSERT_EQUAL_INT(ARGS_PARSE_ERROR, parse_args(ARGV_COUNT(argv3), argv3, &args));
+
+    char *argv4[] = {"dcat", "--hash-characters"};
+    TEST_ASSERT_EQUAL_INT(ARGS_PARSE_ERROR, parse_args(ARGV_COUNT(argv4), argv4, &args));
 }
 
 static void test_error_missing_value(void) {
@@ -319,12 +313,6 @@ static void test_validate_render_mode_exclusivity(void) {
     args.use_truecolor_characters = true;
     args.use_block_characters = true;
     TEST_ASSERT_FALSE(validate_args(&args));
-
-    // hash-characters is a modifier, not a render mode, so it never conflicts.
-    args = parsed_model_only();
-    args.use_palette_characters = true;
-    args.use_hash_characters = true;
-    TEST_ASSERT_TRUE(validate_args(&args));
 }
 
 static void test_validate_ignores_spin(void) {

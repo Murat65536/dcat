@@ -27,11 +27,10 @@ void print_usage(void) {
            "  -s, --status-bar           show status bar\n"
            "  -S, --sixel                enable Sixel graphics mode\n"
            "  -K, --kitty                enable Kitty graphics protocol\n"
-           "      --kitty-direct         enable inline Kitty graphics protocol\n"
+           "      --kitty-direct         alias for --kitty\n"
            "  -T, --truecolor-characters enable truecolor characters mode\n"
            "  -P, --palette-characters   enable palette characters mode\n"
            "  -B, --block-characters     enable monochrome block characters mode\n"
-           "      --hash-characters      use # for character modes\n"
            "  -h, --help                 display help\n"
            "  -V, --version              display version\n"
            "      --controls             display controls\n");
@@ -93,12 +92,11 @@ static const OptionSpec OPTIONS[] = {
     {NULL, "--mouse-sensitivity", OPT_FLOAT, offsetof(Args, mouse_sensitivity)},
     {"-s", "--status-bar", OPT_FLAG, offsetof(Args, show_status_bar)},
     {"-S", "--sixel", OPT_FLAG, offsetof(Args, use_sixel)},
-    {"-K", "--kitty", OPT_FLAG, offsetof(Args, use_kitty_shm)},
+    {"-K", "--kitty", OPT_FLAG, offsetof(Args, use_kitty)},
     {NULL, "--kitty-direct", OPT_FLAG, offsetof(Args, use_kitty)},
     {"-T", "--truecolor-characters", OPT_FLAG, offsetof(Args, use_truecolor_characters)},
     {"-P", "--palette-characters", OPT_FLAG, offsetof(Args, use_palette_characters)},
     {"-B", "--block-characters", OPT_FLAG, offsetof(Args, use_block_characters)},
-    {NULL, "--hash-characters", OPT_FLAG, offsetof(Args, use_hash_characters)},
     {"-h", "--help", OPT_FLAG, offsetof(Args, show_help)},
     {"-V", "--version", OPT_FLAG, offsetof(Args, show_version)},
     {NULL, "--controls", OPT_FLAG, offsetof(Args, show_controls)}};
@@ -264,15 +262,12 @@ bool validate_args(const Args *args) {
         return false;
     }
 
-    // The six render-mode flags each select one output driver; enabling more than one
-    // leaves the choice to driver_factory precedence, which is almost certainly not
-    // what the user meant.
     const int render_modes = (int)args->use_sixel + (int)args->use_kitty +
-                             (int)args->use_kitty_shm + (int)args->use_truecolor_characters +
+                             (int)args->use_truecolor_characters +
                              (int)args->use_palette_characters + (int)args->use_block_characters;
     if (render_modes > 1) {
         fprintf(stderr, "Conflicting render modes: choose at most one of --sixel, --kitty, "
-                        "--kitty-direct, --truecolor-characters, --palette-characters, "
+                        "--truecolor-characters, --palette-characters, "
                         "--block-characters\n");
         return false;
     }

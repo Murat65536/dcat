@@ -3,7 +3,6 @@
 
 typedef struct TerminalSession {
     bool active;
-    bool mouse_orbit_enabled;
 } TerminalSession;
 
 void terminal_session_begin(TerminalSession *session, bool mouse_orbit);

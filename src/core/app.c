@@ -16,8 +16,6 @@
 #include "input/input_handler.h"
 #include "renderer/vulkan_renderer.h"
 #include "terminal/chafa_driver.h"
-#include "terminal/driver_factory.h"
-#include "terminal/output_driver.h"
 #include "terminal/session.h"
 #include "terminal/terminal.h"
 
@@ -61,12 +59,9 @@ static float compute_model_scale_factor(const CameraSetup *camera_setup, float m
     return model_scale_arg / camera_setup->model_scale;
 }
 
-static void calculate_output_dimensions(const Args *args, const OutputDriver *output_driver,
-                                        uint32_t *width, uint32_t *height) {
-    const bool use_hash_characters =
-        (args->use_hash_characters && output_driver->uses_character_cells) != 0;
-    const bool use_pixel_protocol = (!output_driver->uses_character_cells) != 0;
-    calculate_render_dimensions(args->width, args->height, use_pixel_protocol, use_hash_characters,
+static void calculate_output_dimensions(const Args *args, uint32_t *width, uint32_t *height) {
+    const bool use_pixel_protocol = (!chafa_driver_uses_character_cells()) != 0;
+    calculate_render_dimensions(args->width, args->height, use_pixel_protocol,
                                 args->show_status_bar, width, height);
 }
 
@@ -115,9 +110,9 @@ static void pace_frame(const double frame_start_time, const double target_frame_
     }
 }
 
-static bool resize_renderer_if_needed(const Args *args, const OutputDriver *output_driver,
-                                      VulkanRenderer *renderer, DcatMutex *shared_state_mutex,
-                                      Camera *camera, uint32_t *width, uint32_t *height, mat4 view,
+static bool resize_renderer_if_needed(const Args *args, VulkanRenderer *renderer,
+                                      DcatMutex *shared_state_mutex, Camera *camera,
+                                      uint32_t *width, uint32_t *height, mat4 view,
                                       mat4 projection) {
     if (!signals_is_resize_pending()) {
         return true;
@@ -127,7 +122,7 @@ static bool resize_renderer_if_needed(const Args *args, const OutputDriver *outp
 
     uint32_t new_width = 0;
     uint32_t new_height = 0;
-    calculate_output_dimensions(args, output_driver, &new_width, &new_height);
+    calculate_output_dimensions(args, &new_width, &new_height);
     if (new_width == *width && new_height == *height) {
         return true;
     }
@@ -259,8 +254,7 @@ static void process_input_devices(const KeyState *key_state, Camera *camera, con
 }
 
 static bool render_frame(RenderContext *ctx, const AnimationContext *anim_ctx, const Mesh *mesh,
-                         mat4 *view, mat4 *projection, const OutputDriver *output_driver,
-                         bool show_status_bar, bool use_hash_characters, uint32_t width,
+                         mat4 *view, mat4 *projection, bool show_status_bar, uint32_t width,
                          uint32_t height, float fps, float move_speed, const vec3 camera_position,
                          int current_animation_index) {
     mat4 mvp;
@@ -284,17 +278,17 @@ static bool render_frame(RenderContext *ctx, const AnimationContext *anim_ctx, c
     }
 
     if (framebuffer) {
-        const bool use_hash = (use_hash_characters && output_driver->uses_character_cells) != 0;
-        if (output_driver->uses_character_cells) {
+        const bool uses_character_cells = chafa_driver_uses_character_cells();
+        if (uses_character_cells) {
             safe_write("\x1b[?2026h", 8);
         }
-        output_driver->render_frame(framebuffer, width, height, use_hash);
+        chafa_driver_render(framebuffer, width, height);
 
         if (show_status_bar) {
             draw_status_bar(fps, move_speed, camera_position,
                             get_animation_name(anim_ctx, mesh, current_animation_index));
         }
-        if (output_driver->uses_character_cells) {
+        if (uses_character_cells) {
             safe_write("\x1b[?2026l", 8);
         }
     }
@@ -304,7 +298,6 @@ static bool render_frame(RenderContext *ctx, const AnimationContext *anim_ctx, c
 
 typedef struct AppContext {
     Args args;
-    const OutputDriver *output_driver;
     uint32_t width;
     uint32_t height;
 
@@ -413,11 +406,11 @@ bool app_init(AppContext *app, const Args *args, const char *prog_name) {
         return false;
     }
 
-    app->output_driver = driver_factory_get(&app->args);
+    chafa_driver_configure(&app->args);
 
     signals_init();
 
-    calculate_output_dimensions(&app->args, app->output_driver, &app->width, &app->height);
+    calculate_output_dimensions(&app->args, &app->width, &app->height);
 
     mesh_init(&app->mesh);
     mesh_init(&app->skydome_mesh);
@@ -552,9 +545,8 @@ int app_run_loop(AppContext *app) {
     double last_frame_time = get_time_seconds();
 
     while (!signals_should_quit()) {
-        if (!resize_renderer_if_needed(&app->args, app->output_driver, app->renderer,
-                                       &app->shared_state_mutex, &app->camera, &app->width,
-                                       &app->height, view, projection)) {
+        if (!resize_renderer_if_needed(&app->args, app->renderer, &app->shared_state_mutex,
+                                       &app->camera, &app->width, &app->height, view, projection)) {
             const char *renderer_error = vulkan_renderer_get_last_error(app->renderer);
             record_fatal_report(&app->fatal_report, "%s",
                                 renderer_error ? renderer_error
@@ -594,8 +586,7 @@ int app_run_loop(AppContext *app) {
         dcat_mutex_unlock(&app->shared_state_mutex);
 
         if (!render_frame(&render_ctx, &anim_ctx, &app->mesh, &view, &projection,
-                          app->output_driver, app->args.show_status_bar,
-                          app->args.use_hash_characters, app->width, app->height, display_fps,
+                          app->args.show_status_bar, app->width, app->height, display_fps,
                           app->move_speed, camera_position_snapshot,
                           current_animation_index_snapshot)) {
             const char *renderer_error = vulkan_renderer_get_last_error(app->renderer);

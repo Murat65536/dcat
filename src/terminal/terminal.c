@@ -1,5 +1,6 @@
 #include "terminal.h"
 #include "platform/io.h"
+#include "terminal/chafa_driver.h"
 #include <chafa.h>
 #include <errno.h>
 #include <signal.h>
@@ -26,20 +27,20 @@
 #endif
 #endif
 
-static const char TERMINAL_RECOVERY_SEQUENCE[] = "\x1b[?2026l"
-                                                 "\x1b[<u"
-                                                 "\x1b[?9001l"
-                                                 "\x1b[?1000l"
-                                                 "\x1b[?1002l"
-                                                 "\x1b[?1003l"
-                                                 "\x1b[?1004l"
-                                                 "\x1b[?1005l"
-                                                 "\x1b[?1006l"
-                                                 "\x1b[?1015l"
-                                                 "\x1b[?1016l"
-                                                 "\x1b[0m"
-                                                 "\x1b[?25h"
-                                                 "\x1b[?1049l";
+static const char TERMINAL_RECOVERY_LITERAL[] = "\x1b[?2026l"
+                                                "\x1b[<u"
+                                                "\x1b[?9001l"
+                                                "\x1b[?1000l"
+                                                "\x1b[?1002l"
+                                                "\x1b[?1003l"
+                                                "\x1b[?1004l"
+                                                "\x1b[?1005l"
+                                                "\x1b[?1006l"
+                                                "\x1b[?1015l"
+                                                "\x1b[?1016l";
+static char terminal_recovery_sequence[sizeof(TERMINAL_RECOVERY_LITERAL) - 1U +
+                                       CHAFA_TERM_SEQ_LENGTH_MAX * 4U];
+static size_t terminal_recovery_sequence_length;
 
 #ifndef _WIN32
 static bool get_winsize(struct winsize *ws) {
@@ -90,7 +91,7 @@ void get_terminal_size_pixels(uint32_t *width, uint32_t *height) {
     if (dcat_isatty(STDOUT_FILENO) && dcat_isatty(STDIN_FILENO)) {
         TermiosState ts;
         if (terminal_begin_query_mode(&ts)) {
-            ChafaTermInfo *term_info = chafa_term_db_get_fallback_info(chafa_term_db_get_default());
+            ChafaTermInfo *term_info = chafa_driver_get_term_info();
             char query[CHAFA_TERM_SEQ_LENGTH_MAX];
             const char *query_end = chafa_term_info_emit_query_text_area_size_px(term_info, query);
             safe_write(query, (size_t)(query_end - query));
@@ -109,11 +110,9 @@ void get_terminal_size_pixels(uint32_t *width, uint32_t *height) {
                     cached_rows = rows;
                     cached_pixel_width = *width;
                     cached_pixel_height = *height;
-                    chafa_term_info_unref(term_info);
                     return;
                 }
             }
-            chafa_term_info_unref(term_info);
         }
     }
 
@@ -139,8 +138,8 @@ void get_terminal_size_pixels(uint32_t *width, uint32_t *height) {
 }
 
 void calculate_render_dimensions(int explicit_width, int explicit_height, bool use_pixel_protocol,
-                                 bool use_hash_characters, bool reserve_bottom_line,
-                                 uint32_t *out_width, uint32_t *out_height) {
+                                 bool reserve_bottom_line, uint32_t *out_width,
+                                 uint32_t *out_height) {
     if (explicit_width > 0 && explicit_height > 0) {
         *out_width = (uint32_t)explicit_width;
         *out_height = (uint32_t)explicit_height;
@@ -169,8 +168,8 @@ void calculate_render_dimensions(int explicit_width, int explicit_height, bool u
     if (reserve_bottom_line && rows > 0) {
         rows--;
     }
-    *out_width = use_hash_characters ? cols : cols * SYMBOL_CELL_SOURCE_WIDTH;
-    *out_height = use_hash_characters ? rows : rows * SYMBOL_CELL_SOURCE_HEIGHT;
+    *out_width = cols * SYMBOL_CELL_SOURCE_WIDTH;
+    *out_height = rows * SYMBOL_CELL_SOURCE_HEIGHT;
 }
 
 static TermiosState raw_mode_state;
@@ -222,7 +221,7 @@ static int choose_terminal_recovery_fd(void) {
 
 static void terminal_recovery_callback(void) {
     if (terminal_recovery_armed) {
-        terminal_restore_after_crash();
+        terminal_restore_default_state();
     }
 }
 
@@ -264,36 +263,6 @@ void safe_write(const char *data, size_t size) {
     terminal_write_fd(STDOUT_FILENO, data, size);
 }
 
-int terminal_base64_encode(const char *src, const int len, char *dst) {
-    static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    int i = 0;
-    int j = 0;
-    for (; i + 2 < len; i += 3) {
-        const unsigned char a = (unsigned char)src[i];
-        const unsigned char b = (unsigned char)src[i + 1];
-        const unsigned char c = (unsigned char)src[i + 2];
-        dst[j++] = b64[a >> 2];
-        dst[j++] = b64[((a & 3) << 4) | (b >> 4)];
-        dst[j++] = b64[((b & 0xf) << 2) | (c >> 6)];
-        dst[j++] = b64[c & 0x3f];
-    }
-    if (i < len) {
-        const unsigned char a = (unsigned char)src[i];
-        dst[j++] = b64[a >> 2];
-        if (i + 1 < len) {
-            const unsigned char b = (unsigned char)src[i + 1];
-            dst[j++] = b64[((a & 3) << 4) | (b >> 4)];
-            dst[j++] = b64[(b & 0xf) << 2];
-        } else {
-            dst[j++] = b64[(a & 3) << 4];
-            dst[j++] = '=';
-        }
-        dst[j++] = '=';
-    }
-    dst[j] = '\0';
-    return j;
-}
-
 void draw_status_bar(const float fps, const float speed, const float *pos,
                      const char *animation_name) {
     uint32_t cols;
@@ -303,16 +272,23 @@ void draw_status_bar(const float fps, const float speed, const float *pos,
         return;
     }
 
+    ChafaTermInfo *term_info = chafa_driver_get_term_info();
+    char sequence[CHAFA_TERM_SEQ_LENGTH_MAX * 2U];
+    char *sequence_end = chafa_term_info_emit_cursor_to_pos(term_info, sequence, 0, rows - 1U);
+    safe_write(sequence, (size_t)(sequence_end - sequence));
+    safe_write("\x1b[2K", 4);
+    sequence_end = chafa_term_info_emit_invert_colors(term_info, sequence);
+    safe_write(sequence, (size_t)(sequence_end - sequence));
+
     char buffer[512];
     char anim_part[128] = "";
     if (animation_name && animation_name[0]) {
         snprintf(anim_part, sizeof(anim_part), " | ANIM: %s", animation_name);
     }
 
-    const int len = snprintf(buffer, sizeof(buffer),
-                             "\x1b[%u;1H\x1b[2K\x1b[7m FPS: %.1f | SPEED: "
-                             "%.2f | POS: %.2f, %.2f, %.2f%s \x1b[0m\x1b[H",
-                             rows, fps, speed, pos[0], pos[1], pos[2], anim_part);
+    const int len =
+        snprintf(buffer, sizeof(buffer), " FPS: %.1f | SPEED: %.2f | POS: %.2f, %.2f, %.2f%s ", fps,
+                 speed, pos[0], pos[1], pos[2], anim_part);
     if (len > 0) {
         size_t written = (size_t)len;
         if (written >= sizeof(buffer)) {
@@ -320,6 +296,10 @@ void draw_status_bar(const float fps, const float speed, const float *pos,
         }
         safe_write(buffer, written);
     }
+
+    sequence_end = chafa_term_info_emit_reset_attributes(term_info, sequence);
+    sequence_end = chafa_term_info_emit_cursor_to_top_left(term_info, sequence_end);
+    safe_write(sequence, (size_t)(sequence_end - sequence));
 }
 
 bool termios_state_init(TermiosState *state, int fd) {
@@ -492,7 +472,16 @@ void disable_raw_mode(void) {
     raw_mode_enabled = false;
 }
 
-void terminal_arm_recovery(void) {
+void terminal_arm_recovery(ChafaTermInfo *term_info) {
+    memcpy(terminal_recovery_sequence, TERMINAL_RECOVERY_LITERAL,
+           sizeof(TERMINAL_RECOVERY_LITERAL) - 1U);
+    char *end = terminal_recovery_sequence + sizeof(TERMINAL_RECOVERY_LITERAL) - 1U;
+    end = chafa_term_info_emit_enable_sixel_scrolling(term_info, end);
+    end = chafa_term_info_emit_reset_attributes(term_info, end);
+    end = chafa_term_info_emit_enable_cursor(term_info, end);
+    end = chafa_term_info_emit_disable_alt_screen(term_info, end);
+    terminal_recovery_sequence_length = (size_t)(end - terminal_recovery_sequence);
+
     terminal_recovery_fd = choose_terminal_recovery_fd();
     terminal_recovery_armed = 1;
 #if HAVE_SANITIZER_DEATH_CALLBACK
@@ -509,22 +498,18 @@ void terminal_arm_recovery(void) {
     }
 }
 
-void terminal_disarm_recovery(void) {
+static void terminal_disarm_recovery(void) {
     terminal_recovery_armed = 0;
 }
 
-void write_terminal_recovery_sequence(const int fd) {
-    terminal_write_fd(fd, TERMINAL_RECOVERY_SEQUENCE, sizeof(TERMINAL_RECOVERY_SEQUENCE) - 1);
+static void write_terminal_recovery_sequence(const int fd) {
+    terminal_write_fd(fd, terminal_recovery_sequence, terminal_recovery_sequence_length);
 }
 
 void terminal_restore_default_state(void) {
     terminal_disarm_recovery();
     write_terminal_recovery_sequence(terminal_recovery_fd);
     disable_raw_mode();
-}
-
-void terminal_restore_after_crash(void) {
-    terminal_restore_default_state();
 }
 
 ssize_t terminal_read_query(char *buffer, size_t size, char terminator) {

@@ -22,11 +22,9 @@ typedef struct Args {
     bool show_controls;
     bool use_sixel;
     bool use_kitty;
-    bool use_kitty_shm;
     bool use_truecolor_characters;
     bool use_palette_characters;
     bool use_block_characters;
-    bool use_hash_characters;
 } Args;
 
 // Result of parsing the command line. The caller decides the process exit code,

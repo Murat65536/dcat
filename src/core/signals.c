@@ -85,7 +85,7 @@ static void fatal_signal_handler(const int sig) {
     static const char suffix[] = " while rendering. Terminal recovery was attempted.\r\n";
 
     if (g_terminal_session_active) {
-        terminal_restore_after_crash();
+        terminal_restore_default_state();
         g_terminal_session_active = 0;
     }
 

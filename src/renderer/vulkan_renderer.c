@@ -548,22 +548,12 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
     glm_mat4_copy(*model, push_constants.model);
 
     // Prepare vertex uniform buffer (bone matrices — shared across all materials)
-    Uniforms uniforms = {0};
-    uniforms.has_animation = (bone_matrices != NULL) ? 1 : 0;
-
-    if (bone_matrices && bone_count > 0) {
-        uint32_t num_bones = bone_count < MAX_BONES ? bone_count : MAX_BONES;
-        memcpy(uniforms.bone_matrices, bone_matrices, num_bones * sizeof(mat4));
-        for (uint32_t i = num_bones; i < MAX_BONES; i++) {
-            glm_mat4_identity(uniforms.bone_matrices[i]);
-        }
-    } else {
-        for (uint32_t i = 0; i < MAX_BONES; i++) {
-            glm_mat4_identity(uniforms.bone_matrices[i]);
-        }
+    Uniforms *uniforms = r->uniform_buffer_allocs[r->current_frame].mapped;
+    uniforms->has_animation = (bone_matrices != NULL && bone_count > 0) ? 1 : 0;
+    if (uniforms->has_animation) {
+        const uint32_t num_bones = bone_count < MAX_BONES ? bone_count : MAX_BONES;
+        memcpy(uniforms->bone_matrices, bone_matrices, num_bones * sizeof(mat4));
     }
-
-    memcpy(r->uniform_buffer_allocs[r->current_frame].mapped, &uniforms, sizeof(Uniforms));
 
     // Prepare per-material fragment uniforms
     for (uint32_t m = 0; m < material_count; m++) {
