@@ -125,7 +125,7 @@ bool create_framebuffer(VulkanRenderer *r) {
 }
 
 bool create_staging_buffers(VulkanRenderer *r) {
-    VkDeviceSize buffer_size = (VkDeviceSize)(r->width * r->height * 4);
+    VkDeviceSize buffer_size = (VkDeviceSize)r->width * r->height * 4U;
     buffer_size = align_up(buffer_size, r->non_coherent_atom_size);
 
     for (int i = 0; i < NUM_STAGING_BUFFERS; i++) {

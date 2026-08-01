@@ -846,10 +846,9 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
         if (mats[i].alpha_mode == ALPHA_MODE_OPAQUE) {
             float opacity = 1.0F;
             if (aiGetMaterialFloatArray(material, AI_MATKEY_OPACITY, &opacity, NULL) ==
-                aiReturn_SUCCESS) {
-                if (opacity < 1.0F) {
-                    mats[i].alpha_mode = ALPHA_MODE_BLEND;
-                }
+                    aiReturn_SUCCESS &&
+                opacity < 1.0F) {
+                mats[i].alpha_mode = ALPHA_MODE_BLEND;
             }
         }
 

@@ -108,10 +108,12 @@ InputCsiResult mouse_parse_csi(const InputThreadData *data, const char *buf, con
 }
 
 // Kitty keyboard protocol key codes for modifier keys
-#define KITTY_LEFT_SHIFT 57441
-#define KITTY_RIGHT_SHIFT 57447
-#define KITTY_LEFT_CTRL 57442
-#define KITTY_RIGHT_CTRL 57448
+enum {
+    KITTY_LEFT_SHIFT = 57441,
+    KITTY_RIGHT_SHIFT = 57447,
+    KITTY_LEFT_CTRL = 57442,
+    KITTY_RIGHT_CTRL = 57448,
+};
 
 static bool parse_win32_key(const char *buf, const size_t len, int *key_code, int *event_type) {
     unsigned int fields[6] = {0, 0, 0, 0, 0, 1};
@@ -130,9 +132,10 @@ static bool parse_win32_key(const char *buf, const size_t len, int *key_code, in
             p++;
         }
         if (field < 5) {
-            if (p >= len || buf[p++] != ';') {
+            if (p >= len || buf[p] != ';') {
                 return false;
             }
+            p++;
         }
     }
     if (p + 1 != len || buf[p] != '_') {

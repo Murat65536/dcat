@@ -99,7 +99,7 @@ void camera_rotate(Camera *cam, const float yaw_delta, const float pitch_delta) 
     cam->yaw += yaw_delta;
     cam->pitch += pitch_delta;
 
-    const float max_pitch = (GLM_PI / 2.0F) - 0.01F;
+    const float max_pitch = ((float)GLM_PI / 2.0F) - 0.01F;
     cam->pitch = clampf(cam->pitch, -max_pitch, max_pitch);
 
     camera_update_direction(cam);
@@ -118,7 +118,7 @@ void camera_orbit(Camera *cam, const float yaw_delta, const float pitch_delta) {
     cam->yaw += yaw_delta;
     cam->pitch += pitch_delta;
 
-    const float max_pitch = (GLM_PI / 2.0F) - 0.01F;
+    const float max_pitch = ((float)GLM_PI / 2.0F) - 0.01F;
     cam->pitch = clampf(cam->pitch, -max_pitch, max_pitch);
 
     camera_set_orbit_position(cam, glm_vec3_distance(cam->position, cam->target));

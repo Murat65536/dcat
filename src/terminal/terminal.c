@@ -272,7 +272,7 @@ static void terminal_recovery_callback(void) {
 static void terminal_write_fd(const int fd, const char *data, const size_t size) {
 #ifdef _WIN32
     if (fd == STDOUT_FILENO) {
-        const HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
         if (hOut != INVALID_HANDLE_VALUE && hOut != NULL) {
             DWORD written;
             size_t remaining = size;
@@ -600,7 +600,7 @@ void enable_raw_mode(void) {
 
 void terminal_set_mouse_input_enabled(const bool enabled) {
 #ifdef _WIN32
-    const HANDLE input_handle = GetStdHandle(STD_INPUT_HANDLE);
+    HANDLE input_handle = GetStdHandle(STD_INPUT_HANDLE);
     if (input_handle == INVALID_HANDLE_VALUE || input_handle == NULL) {
         return;
     }

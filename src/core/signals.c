@@ -122,7 +122,7 @@ void signals_init(void) {
 }
 
 bool signals_should_quit(void) {
-    return !g_running;
+    return (bool)!g_running;
 }
 
 void signals_request_quit(void) {
@@ -142,5 +142,5 @@ void signals_request_resize(void) {
 }
 
 void signals_set_terminal_session_active(const bool active) {
-    g_terminal_session_active = active;
+    g_terminal_session_active = (sig_atomic_t)active;
 }

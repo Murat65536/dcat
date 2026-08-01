@@ -1,4 +1,4 @@
-set windows-shell := ["C:/msys64/usr/bin/sh.exe", "-cu", 'PATH="${MINGW_PREFIX:-/clang64}/bin:/usr/bin:$PATH"; eval "$0"']
+set windows-shell := ["C:/msys64/usr/bin/env.exe", "MSYSTEM=CLANG64", "MSYS2_PATH_TYPE=minimal", "CHERE_INVOKING=1", "C:/msys64/usr/bin/bash.exe", "-lc", 'export CC="${CC:-cc}" CXX="${CXX:-c++}"; if [ -n "$VULKAN_SDK" ]; then PATH="$(cygpath -u "$VULKAN_SDK")/Bin:$PATH"; fi; eval "$0"']
 
 builddir := "build"
 
