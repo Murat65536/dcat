@@ -11,14 +11,6 @@
 #include <string.h>
 #include <vulkan/vk_enum_string_helper.h>
 
-static void set_wireframe_mode(atomic_bool *wireframe_mode, bool enabled) {
-    *wireframe_mode = enabled;
-}
-
-static bool get_wireframe_mode(const atomic_bool *wireframe_mode) {
-    return *wireframe_mode;
-}
-
 static bool wait_for_in_flight_frames(VulkanRenderer *r, const char *detail) {
     VkFence pending_fences[MAX_FRAMES_IN_FLIGHT] = {VK_NULL_HANDLE};
     uint32_t pending_count = 0;
@@ -43,12 +35,11 @@ static bool wait_for_in_flight_frames(VulkanRenderer *r, const char *detail) {
     return true;
 }
 
-void vulkan_renderer_clear_error(VulkanRenderer *r) {
+static void vulkan_renderer_clear_error(VulkanRenderer *r) {
     if (!r) {
         return;
     }
 
-    r->last_error_code = VK_SUCCESS;
     r->last_error_message[0] = '\0';
 }
 
@@ -57,8 +48,6 @@ void vulkan_renderer_set_error(VulkanRenderer *r, const VkResult result, const c
     if (!r || r->last_error_message[0] != '\0') {
         return;
     }
-
-    r->last_error_code = result;
 
     char detail[160] = "";
     va_list args;
@@ -72,10 +61,6 @@ void vulkan_renderer_set_error(VulkanRenderer *r, const VkResult result, const c
 
 const char *vulkan_renderer_get_last_error(const VulkanRenderer *r) {
     return (r && r->last_error_message[0] != '\0') ? r->last_error_message : NULL;
-}
-
-VkResult vulkan_renderer_get_last_error_code(const VulkanRenderer *r) {
-    return r ? r->last_error_code : VK_SUCCESS;
 }
 
 VulkanRenderer *vulkan_renderer_create(uint32_t width, uint32_t height) {
@@ -166,11 +151,11 @@ void vulkan_renderer_set_light_direction(VulkanRenderer *r, const float *directi
 }
 
 void vulkan_renderer_set_wireframe_mode(VulkanRenderer *r, bool enabled) {
-    set_wireframe_mode(&r->wireframe_mode, enabled);
+    r->wireframe_mode = enabled;
 }
 
 bool vulkan_renderer_get_wireframe_mode(const VulkanRenderer *r) {
-    return get_wireframe_mode(&r->wireframe_mode);
+    return r->wireframe_mode;
 }
 
 bool vulkan_renderer_resize(VulkanRenderer *r, uint32_t width, uint32_t height) {
@@ -668,8 +653,7 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
     }
 
     // Render main model
-    VkPipeline active_pipeline =
-        (int)get_wireframe_mode(&r->wireframe_mode) ? r->wireframe_pipeline : r->graphics_pipeline;
+    VkPipeline active_pipeline = r->wireframe_mode ? r->wireframe_pipeline : r->graphics_pipeline;
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline);
     vkCmdPushConstants(cmd, r->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                        sizeof(PushConstants), &push_constants);

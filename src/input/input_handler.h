@@ -26,10 +26,7 @@ typedef struct KeyState {
     bool shift;
     bool ctrl;
     bool q;
-    bool m;
     bool v, b;
-    int mouse_dx;
-    int mouse_dy;
 } KeyState;
 
 typedef struct InputThreadData {

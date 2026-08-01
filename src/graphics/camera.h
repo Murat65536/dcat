@@ -22,9 +22,6 @@ void camera_init(Camera *cam, uint32_t width, uint32_t height, vec3 pos, vec3 tg
 void camera_view_matrix(const Camera *cam, mat4 out);
 void camera_projection_matrix(const Camera *cam, mat4 out);
 
-// Update camera direction from yaw/pitch angles
-void camera_update_direction(Camera *cam);
-
 // Camera movement in world space
 void camera_move_forward(Camera *cam, float distance);
 void camera_move_backward(Camera *cam, float distance);

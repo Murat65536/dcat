@@ -4,9 +4,8 @@
 #include <errno.h>
 #include <signal.h>
 #include <stdatomic.h>
-#ifndef _WIN32
 #include <unistd.h>
-#else
+#ifdef _WIN32
 #include <io.h>
 #include <windows.h>
 #endif
@@ -16,17 +15,9 @@ static atomic_bool g_running = true;
 static volatile sig_atomic_t g_resize_pending = 1;
 static volatile sig_atomic_t g_terminal_session_active = 0;
 
-static void set_atomic_flag(atomic_bool *flag, const bool value) {
-    *flag = value;
-}
-
-static bool get_atomic_flag(const atomic_bool *flag) {
-    return *flag;
-}
-
 static void signal_handler(const int sig) {
     (void)sig;
-    set_atomic_flag(&g_running, false);
+    g_running = false;
 }
 
 #ifdef SIGWINCH
@@ -96,7 +87,7 @@ static void fatal_signal_handler(const int sig) {
 }
 
 void signals_init(void) {
-    set_atomic_flag(&g_running, true);
+    g_running = true;
     g_resize_pending = 0;
 
     signal(SIGINT, signal_handler);
@@ -131,11 +122,11 @@ void signals_init(void) {
 }
 
 bool signals_should_quit(void) {
-    return (!get_atomic_flag(&g_running)) != 0;
+    return !g_running;
 }
 
 void signals_request_quit(void) {
-    set_atomic_flag(&g_running, false);
+    g_running = false;
 }
 
 bool signals_is_resize_pending(void) {
@@ -151,9 +142,5 @@ void signals_request_resize(void) {
 }
 
 void signals_set_terminal_session_active(const bool active) {
-    g_terminal_session_active = (int)active ? 1 : 0;
-}
-
-bool signals_is_terminal_session_active(void) {
-    return g_terminal_session_active != 0;
+    g_terminal_session_active = active;
 }

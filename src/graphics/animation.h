@@ -42,11 +42,8 @@ typedef struct BoneMap {
     size_t capacity;
 } BoneMap;
 
-typedef BoneMap BoneAnimationMap;
-
 // Animation for a single bone
 typedef struct BoneAnimation {
-    char *bone_name;
     VectorKeyArray position_keys;
     VectorKeyArray scale_keys;
     QuaternionKeyArray rotation_keys;
@@ -64,8 +61,8 @@ typedef struct Animation {
     float duration;
     float ticks_per_second;
     BoneAnimationArray bone_animations;
-    BoneAnimationMap bone_anim_map; // name -> index in bone_animations
-    int *bone_node_to_anim;         // Mapping from BoneNode index to index in bone_animations
+    BoneMap bone_anim_map;  // name -> index in bone_animations
+    int *bone_node_to_anim; // Mapping from BoneNode index to index in bone_animations
 } Animation;
 
 typedef struct AnimationArray {
@@ -76,9 +73,7 @@ typedef struct AnimationArray {
 
 // Bone information
 typedef struct BoneInfo {
-    char *name;
     mat4 offset_matrix; // Mesh space to bone space transform
-    int index;
 } BoneInfo;
 
 typedef struct BoneInfoArray {
@@ -131,28 +126,12 @@ void animation_state_init(AnimationState *state);
 void update_animation(const struct Mesh *mesh, AnimationState *state, float delta_time,
                       mat4 *bone_matrices);
 
-// Helper functions for interpolation
-void interpolate_position(const VectorKeyArray *keys, float time, vec3 out);
-void interpolate_scale(const VectorKeyArray *keys, float time, vec3 out);
-void interpolate_rotation(const QuaternionKeyArray *keys, float time, versor out);
-
-// Bone matrix computation
-void compute_bone_matrices(const Skeleton *skeleton, const Animation *animation, float time,
-                           mat4 *bone_matrices);
-
 // Bone map functions
 void bone_map_init(BoneMap *map);
 void bone_map_free(BoneMap *map);
 int bone_map_find(const BoneMap *map, const char *name);
 void bone_map_insert(BoneMap *map, const char *name, int index);
 
-// Bone animation map functions (reuse same structure)
-void bone_anim_map_init(BoneAnimationMap *map);
-void bone_anim_map_free(BoneAnimationMap *map);
-int bone_anim_map_find(const BoneAnimationMap *map, const char *name);
-void bone_anim_map_insert(BoneAnimationMap *map, const char *name, int index);
-
 // Cleanup functions
 void skeleton_free(Skeleton *skeleton);
-void animation_free(Animation *animation);
 void animation_array_free(AnimationArray *arr);

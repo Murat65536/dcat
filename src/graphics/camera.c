@@ -33,7 +33,7 @@ void camera_projection_matrix(const Camera *cam, mat4 out) {
     out[1][1] *= -1.0F;
 }
 
-void camera_update_direction(Camera *cam) {
+static void camera_update_direction(Camera *cam) {
     float dist = glm_vec3_distance(cam->position, cam->target);
     if (dist < 0.001F) {
         dist = 1.0F;

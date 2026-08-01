@@ -181,7 +181,6 @@ typedef struct VulkanRenderer {
     // Cache
     uint64_t cached_mesh_generation;
 
-    VkResult last_error_code;
     char last_error_message[256];
     uint32_t current_frame;
 } VulkanRenderer;
@@ -201,11 +200,9 @@ void vulkan_renderer_destroy(VulkanRenderer *r);
 
 // Initialize
 bool vulkan_renderer_initialize(VulkanRenderer *r);
-void vulkan_renderer_clear_error(VulkanRenderer *r);
 void vulkan_renderer_set_error(VulkanRenderer *r, VkResult result, const char *operation,
                                const char *format, ...);
 const char *vulkan_renderer_get_last_error(const VulkanRenderer *r);
-VkResult vulkan_renderer_get_last_error_code(const VulkanRenderer *r);
 
 // Resize
 bool vulkan_renderer_resize(VulkanRenderer *r, uint32_t width, uint32_t height);

@@ -8,13 +8,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef _WIN32
-#include <fcntl.h>
-#include <sys/ioctl.h>
-#endif
+#include <unistd.h>
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <io.h>
 #include <limits.h>
+#include <windows.h>
 #define isatty _isatty
 #ifndef ENABLE_VIRTUAL_TERMINAL_INPUT
 #define ENABLE_VIRTUAL_TERMINAL_INPUT 0x0200
@@ -28,6 +30,32 @@
 #ifndef ENABLE_MOUSE_INPUT
 #define ENABLE_MOUSE_INPUT 0x0010
 #endif
+#else
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <termios.h>
+#endif
+
+typedef struct {
+#ifdef _WIN32
+    HANDLE handle;
+    DWORD saved_mode;
+    DWORD mode;
+    HANDLE output_handle;
+    DWORD saved_output_mode;
+    bool output_valid;
+    bool valid;
+#else
+    int fd;
+    struct termios saved;
+    struct termios settings;
+#endif
+} TermiosState;
+
+#ifdef _WIN32
+static bool terminal_begin_query_mode(TermiosState *state);
+static void terminal_end_query_mode(TermiosState *state);
+static ssize_t terminal_read_query(char *buffer, size_t size, char terminator);
 #endif
 
 static const char TERMINAL_RECOVERY_LITERAL[] = "\x1b[?2026l"
@@ -449,7 +477,7 @@ void draw_status_bar(const float fps, const float speed, const float *pos,
     safe_write(sequence, (size_t)(sequence_end - sequence));
 }
 
-bool termios_state_init(TermiosState *state, int fd) {
+static bool termios_state_init(TermiosState *state, int fd) {
 #ifdef _WIN32
     (void)fd;
     memset(state, 0, sizeof(*state));
@@ -472,7 +500,7 @@ bool termios_state_init(TermiosState *state, int fd) {
 #endif
 }
 
-bool termios_state_apply(TermiosState *state) {
+static bool termios_state_apply(TermiosState *state) {
 #ifdef _WIN32
     if (!state->valid) {
         return false;
@@ -483,7 +511,7 @@ bool termios_state_apply(TermiosState *state) {
 #endif
 }
 
-void termios_state_restore(TermiosState *state) {
+static void termios_state_restore(TermiosState *state) {
 #ifdef _WIN32
     if (!state->valid) {
         return;
@@ -497,11 +525,11 @@ void termios_state_restore(TermiosState *state) {
 #endif
 }
 
-bool terminal_begin_query_mode(TermiosState *state) {
+#ifdef _WIN32
+static bool terminal_begin_query_mode(TermiosState *state) {
     if (!termios_state_init(state, STDIN_FILENO)) {
         return false;
     }
-#ifdef _WIN32
     state->mode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
     state->mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
     state->output_handle = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -511,11 +539,6 @@ bool terminal_begin_query_mode(TermiosState *state) {
             SetConsoleMode(state->output_handle,
                            state->saved_output_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0;
     }
-#else
-    state->settings.c_lflag &= ~(ICANON | ECHO);
-    state->settings.c_cc[VMIN] = 0;
-    state->settings.c_cc[VTIME] = 1;
-#endif
     if (termios_state_apply(state)) {
         return true;
     }
@@ -523,9 +546,10 @@ bool terminal_begin_query_mode(TermiosState *state) {
     return false;
 }
 
-void terminal_end_query_mode(TermiosState *state) {
+static void terminal_end_query_mode(TermiosState *state) {
     termios_state_restore(state);
 }
+#endif
 
 void enable_raw_mode(void) {
     if (raw_mode_enabled) {
@@ -599,7 +623,7 @@ void terminal_set_mouse_input_enabled(const bool enabled) {
 #endif
 }
 
-void disable_raw_mode(void) {
+static void disable_raw_mode(void) {
     if (!raw_mode_enabled) {
         return;
     }
@@ -659,8 +683,8 @@ void terminal_restore_default_state(void) {
     disable_raw_mode();
 }
 
-ssize_t terminal_read_query(char *buffer, size_t size, char terminator) {
 #ifdef _WIN32
+static ssize_t terminal_read_query(char *buffer, size_t size, char terminator) {
     HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
     if (hIn == INVALID_HANDLE_VALUE || hIn == NULL) {
         return -1;
@@ -699,23 +723,8 @@ ssize_t terminal_read_query(char *buffer, size_t size, char terminator) {
         }
     }
     return (ssize_t)total_read;
-#else
-    size_t total_read = 0;
-    while (total_read < size) {
-        char ch;
-        ssize_t r = read(STDIN_FILENO, &ch, 1);
-        if (r > 0) {
-            buffer[total_read++] = ch;
-            if (terminator != 0 && ch == terminator) {
-                break;
-            }
-        } else {
-            break;
-        }
-    }
-    return (ssize_t)total_read;
-#endif
 }
+#endif
 
 bool terminal_parse_sequence(ChafaTermInfo *term_info, const int sequence, const char *response,
                              const size_t response_length, guint *args_out, gint *n_args_out) {

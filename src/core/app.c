@@ -236,13 +236,6 @@ static void process_input_devices(const KeyState *key_state, Camera *camera, con
         camera_move_down(camera, speed);
     }
 
-    if (key_state->mouse_dx != 0 || key_state->mouse_dy != 0) {
-        const float ROTATION_SENSITIVITY = 2.0F;
-        const float sensitivity = ROTATION_SENSITIVITY * 0.001F;
-        camera_rotate(camera, key_state->mouse_dx * sensitivity,
-                      -key_state->mouse_dy * sensitivity);
-    }
-
     float rot_speed = 2.0F * delta_time;
     if (key_state->i) {
         camera_rotate(camera, 0.0F, rot_speed);

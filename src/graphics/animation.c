@@ -94,23 +94,6 @@ void bone_map_insert(BoneMap *map, const char *name, const int index) {
     map->count++;
 }
 
-// Bone animation map functions (same implementation as bone map)
-void bone_anim_map_init(BoneAnimationMap *map) {
-    bone_map_init(map);
-}
-
-void bone_anim_map_free(BoneAnimationMap *map) {
-    bone_map_free(map);
-}
-
-int bone_anim_map_find(const BoneAnimationMap *map, const char *name) {
-    return bone_map_find(map, name);
-}
-
-void bone_anim_map_insert(BoneAnimationMap *map, const char *name, const int index) {
-    bone_map_insert(map, name, index);
-}
-
 // Binary search for the last key whose time <= the given time.
 // 'data' points to the first element of a key array; each element begins with float time.
 static int find_key_index(const void *data, const size_t count, const size_t stride,
@@ -170,15 +153,15 @@ static void interpolate_vec3_keys(const VectorKeyArray *keys, float time, const 
     glm_vec3_lerp(keys->data[index].value, keys->data[next_index].value, factor, out);
 }
 
-void interpolate_position(const VectorKeyArray *keys, const float time, vec3 out) {
+static void interpolate_position(const VectorKeyArray *keys, const float time, vec3 out) {
     interpolate_vec3_keys(keys, time, (vec3){0.0F, 0.0F, 0.0F}, out);
 }
 
-void interpolate_scale(const VectorKeyArray *keys, const float time, vec3 out) {
+static void interpolate_scale(const VectorKeyArray *keys, const float time, vec3 out) {
     interpolate_vec3_keys(keys, time, (vec3){1.0F, 1.0F, 1.0F}, out);
 }
 
-void interpolate_rotation(const QuaternionKeyArray *keys, const float time, versor out) {
+static void interpolate_rotation(const QuaternionKeyArray *keys, const float time, versor out) {
     if (keys->count == 0) {
         glm_quat_identity(out);
         return;
@@ -226,7 +209,7 @@ static void compute_bone_transform(const Skeleton *skeleton, const Animation *an
     // Fast O(1) lookup using hash map instead of O(n) linear search
     const BoneAnimation *bone_anim = NULL;
     if (animation->bone_anim_map.count > 0) {
-        const int anim_idx = bone_anim_map_find(&animation->bone_anim_map, node->name);
+        const int anim_idx = bone_map_find(&animation->bone_anim_map, node->name);
         if (anim_idx >= 0 && anim_idx < (int)animation->bone_animations.count) {
             bone_anim = &animation->bone_animations.data[anim_idx];
         }
@@ -282,8 +265,8 @@ static void compute_bone_transform(const Skeleton *skeleton, const Animation *an
     }
 }
 
-void compute_bone_matrices(const Skeleton *skeleton, const Animation *animation, float time,
-                           mat4 *bone_matrices) {
+static void compute_bone_matrices(const Skeleton *skeleton, const Animation *animation, float time,
+                                  mat4 *bone_matrices) {
     if (skeleton->bone_hierarchy.count == 0) {
         return;
     }
@@ -339,9 +322,6 @@ void update_animation(const Mesh *mesh, AnimationState *state, float delta_time,
 }
 
 void skeleton_free(Skeleton *skeleton) {
-    for (size_t i = 0; i < skeleton->bones.count; i++) {
-        free(skeleton->bones.data[i].name);
-    }
     aligned_free(skeleton->bones.data);
 
     for (size_t i = 0; i < skeleton->bone_hierarchy.count; i++) {
@@ -355,16 +335,15 @@ void skeleton_free(Skeleton *skeleton) {
     memset(skeleton, 0, sizeof(Skeleton));
 }
 
-void animation_free(Animation *animation) {
+static void animation_free(Animation *animation) {
     free(animation->name);
     for (size_t i = 0; i < animation->bone_animations.count; i++) {
-        free(animation->bone_animations.data[i].bone_name);
         aligned_free(animation->bone_animations.data[i].position_keys.data);
         aligned_free(animation->bone_animations.data[i].scale_keys.data);
         aligned_free(animation->bone_animations.data[i].rotation_keys.data);
     }
     aligned_free(animation->bone_animations.data);
-    bone_anim_map_free(&animation->bone_anim_map);
+    bone_map_free(&animation->bone_anim_map);
     free(animation->bone_node_to_anim);
 }
 

@@ -91,23 +91,6 @@ static inline void aligned_free(void *ptr) {
         (arr).capacity = 0;                                                                        \
     } while (0)
 
-#define ARRAY_RESERVE(arr, cap)                                                                    \
-    do {                                                                                           \
-        if ((cap) > (arr).capacity) {                                                              \
-            size_t _old_cap = (arr).capacity;                                                      \
-            size_t _new_cap = (cap);                                                               \
-            size_t _elem_size = sizeof(*(arr).data);                                               \
-            if (_new_cap > (SIZE_MAX / _elem_size)) {                                              \
-                fputs("Fatal: dynamic array size overflow\n", stderr);                             \
-                abort();                                                                           \
-            }                                                                                      \
-            void *_new_data =                                                                      \
-                aligned_realloc_checked((arr).data, _old_cap * _elem_size, _new_cap * _elem_size); \
-            (arr).data = _new_data;                                                                \
-            (arr).capacity = _new_cap;                                                             \
-        }                                                                                          \
-    } while (0)
-
 #define ARRAY_PUSH(arr, item)                                                                      \
     do {                                                                                           \
         if ((arr).count >= (arr).capacity) {                                                       \
@@ -128,12 +111,6 @@ static inline void aligned_free(void *ptr) {
             (arr).capacity = _new_cap;                                                             \
         }                                                                                          \
         (arr).data[(arr).count++] = (item);                                                        \
-    } while (0)
-
-#define ARRAY_FREE(arr)                                                                            \
-    do {                                                                                           \
-        aligned_free((arr).data);                                                                  \
-        ARRAY_INIT(arr);                                                                           \
     } while (0)
 
 // Vertex structure with bone weights for skeletal animation
@@ -166,12 +143,6 @@ typedef struct IntArray {
     size_t capacity;
 } IntArray;
 
-typedef struct Mat4Array {
-    mat4 *data;
-    size_t count;
-    size_t capacity;
-} Mat4Array;
-
 // Sub-mesh: a range of indices sharing one material
 typedef struct SubMesh {
     uint32_t index_offset;
@@ -196,7 +167,6 @@ typedef struct MaterialInfo {
     float specular_strength;
     float shininess;
     float base_color[4];             // RGBA base/diffuse color factor
-    unsigned int uv_channel;         // which UV set the diffuse texture uses
     unsigned char *embedded_diffuse; // raw bytes of embedded diffuse texture (or NULL)
     size_t embedded_diffuse_size;    // byte count of embedded_diffuse
     unsigned char *embedded_normal;  // raw bytes of embedded normal map texture (or NULL)

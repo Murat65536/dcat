@@ -24,17 +24,7 @@ void mesh_free(Mesh *mesh) {
     mesh_init(mesh);
 }
 
-void materials_free(MaterialInfo *materials, const size_t count) {
-    if (!materials) {
-        return;
-    }
-    for (size_t i = 0; i < count; i++) {
-        material_info_free(&materials[i]);
-    }
-    free(materials);
-}
-
-void material_info_init(MaterialInfo *info) {
+static void material_info_init(MaterialInfo *info) {
     info->diffuse_path = NULL;
     info->normal_path = NULL;
     info->alpha_mode = ALPHA_MODE_OPAQUE;
@@ -44,19 +34,27 @@ void material_info_init(MaterialInfo *info) {
     info->base_color[1] = 1.0F;
     info->base_color[2] = 1.0F;
     info->base_color[3] = 1.0F;
-    info->uv_channel = 0;
     info->embedded_diffuse = NULL;
     info->embedded_diffuse_size = 0;
     info->embedded_normal = NULL;
     info->embedded_normal_size = 0;
 }
 
-void material_info_free(MaterialInfo *info) {
+static void material_info_free(MaterialInfo *info) {
     free(info->diffuse_path);
     free(info->normal_path);
     free(info->embedded_diffuse);
     free(info->embedded_normal);
-    material_info_init(info);
+}
+
+void materials_free(MaterialInfo *materials, const size_t count) {
+    if (!materials) {
+        return;
+    }
+    for (size_t i = 0; i < count; i++) {
+        material_info_free(&materials[i]);
+    }
+    free(materials);
 }
 
 void calculate_camera_setup(const VertexArray *vertices, CameraSetup *setup) {
@@ -291,12 +289,7 @@ static void process_node_animated(const struct aiNode *node, const struct aiScen
                 if (bone_index < 0) {
                     bone_index = (int)skeleton->bones.count;
                     BoneInfo bone_info;
-                    bone_info.name = str_dup(bone_name);
-                    if (!bone_info.name) {
-                        continue;
-                    }
                     ai_matrix_to_glm(&bone->mOffsetMatrix, bone_info.offset_matrix);
-                    bone_info.index = bone_index;
                     ARRAY_PUSH(skeleton->bones, bone_info);
                     bone_map_insert(&skeleton->bone_map, bone_name, bone_index);
                 }
@@ -332,12 +325,7 @@ static void process_node_animated(const struct aiNode *node, const struct aiScen
                     if (node_bone_index < 0) {
                         node_bone_index = (int)skeleton->bones.count;
                         BoneInfo bone_info;
-                        bone_info.name = str_dup(node_name);
-                        if (!bone_info.name) {
-                            break;
-                        }
                         glm_mat4_identity(bone_info.offset_matrix);
-                        bone_info.index = node_bone_index;
                         ARRAY_PUSH(skeleton->bones, bone_info);
                         bone_map_insert(&skeleton->bone_map, node_name, node_bone_index);
                     }
@@ -484,16 +472,12 @@ static void load_animations(const struct aiScene *scene, AnimationArray *animati
         animation.duration = (float)ai_anim->mDuration;
         animation.ticks_per_second = (float)ai_anim->mTicksPerSecond;
         ARRAY_INIT(animation.bone_animations);
-        bone_anim_map_init(&animation.bone_anim_map);
+        bone_map_init(&animation.bone_anim_map);
 
         for (unsigned int j = 0; j < ai_anim->mNumChannels; j++) {
             const struct aiNodeAnim *channel = ai_anim->mChannels[j];
 
             BoneAnimation bone_anim = {0};
-            bone_anim.bone_name = str_dup(channel->mNodeName.data);
-            if (!bone_anim.bone_name) {
-                continue;
-            }
             ARRAY_INIT(bone_anim.position_keys);
             ARRAY_INIT(bone_anim.scale_keys);
             ARRAY_INIT(bone_anim.rotation_keys);
@@ -522,13 +506,9 @@ static void load_animations(const struct aiScene *scene, AnimationArray *animati
                 ARRAY_PUSH(bone_anim.scale_keys, key);
             }
 
+            const int bone_anim_index = (int)animation.bone_animations.count;
             ARRAY_PUSH(animation.bone_animations, bone_anim);
-        }
-
-        // Build bone animation hash map for fast lookups
-        for (size_t j = 0; j < animation.bone_animations.count; j++) {
-            const char *bone_name = animation.bone_animations.data[j].bone_name;
-            bone_anim_map_insert(&animation.bone_anim_map, bone_name, (int)j);
+            bone_map_insert(&animation.bone_anim_map, channel->mNodeName.data, bone_anim_index);
         }
 
         // Calculate actual duration from keyframes
@@ -782,8 +762,7 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
             if (anim->bone_node_to_anim) {
                 for (size_t j = 0; j < mesh->skeleton.bone_hierarchy.count; j++) {
                     const char *node_name = mesh->skeleton.bone_hierarchy.data[j].name;
-                    anim->bone_node_to_anim[j] =
-                        bone_anim_map_find(&anim->bone_anim_map, node_name);
+                    anim->bone_node_to_anim[j] = bone_map_find(&anim->bone_anim_map, node_name);
                 }
             }
         }
@@ -820,7 +799,6 @@ bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **
     }
     for (size_t i = 0; i < mat_count; i++) {
         material_info_init(&mats[i]);
-        mats[i].uv_channel = uv_channel;
     }
 
     for (unsigned int i = 0; i < scene->mNumMaterials; i++) {

@@ -29,7 +29,4 @@ void calculate_camera_setup(const VertexArray *vertices, CameraSetup *setup);
 bool load_model(const char *path, Mesh *mesh, bool *out_has_uvs, MaterialInfo **out_materials,
                 size_t *out_material_count);
 
-// Material info management
-void material_info_init(MaterialInfo *info);
-void material_info_free(MaterialInfo *info);
 void materials_free(MaterialInfo *materials, size_t count);
