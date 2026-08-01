@@ -1,8 +1,8 @@
 #include "../core/signals.h"
 #include "input_handler.h"
-#include "platform/io.h"
 #include <poll.h>
 #include <string.h>
+#include <unistd.h>
 
 void *input_thread_func(void *arg) {
     InputThreadData *data = (InputThreadData *)arg;
@@ -17,7 +17,7 @@ void *input_thread_func(void *arg) {
         }
 
         const size_t available = sizeof(buffer) - (size_t)carry;
-        ssize_t n = dcat_read(STDIN_FILENO, buffer + carry, available);
+        ssize_t n = read(STDIN_FILENO, buffer + carry, available);
         if (n <= 0) {
             continue;
         }

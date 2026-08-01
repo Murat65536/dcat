@@ -1,6 +1,5 @@
 #include "terminal.h"
 #include "core/profiling.h"
-#include "platform/io.h"
 #include "terminal/chafa_driver.h"
 #include <assert.h>
 #include <chafa.h>
@@ -15,6 +14,8 @@
 #endif
 
 #ifdef _WIN32
+#include <limits.h>
+#define isatty _isatty
 #ifndef ENABLE_VIRTUAL_TERMINAL_INPUT
 #define ENABLE_VIRTUAL_TERMINAL_INPUT 0x0200
 #endif
@@ -90,7 +91,7 @@ void get_terminal_size_pixels(uint32_t *width, uint32_t *height) {
         return;
     }
 
-    if (dcat_isatty(STDOUT_FILENO)) {
+    if (isatty(STDOUT_FILENO)) {
         TermiosState ts;
         if (terminal_begin_query_mode(&ts)) {
             ChafaTermInfo *term_info = chafa_driver_get_term_info();
@@ -214,10 +215,10 @@ static int choose_terminal_recovery_fd(void) {
 #ifdef _WIN32
     return STDOUT_FILENO;
 #else
-    if (dcat_isatty(STDOUT_FILENO)) {
+    if (isatty(STDOUT_FILENO)) {
         return STDOUT_FILENO;
     }
-    if (dcat_isatty(STDERR_FILENO)) {
+    if (isatty(STDERR_FILENO)) {
         return STDERR_FILENO;
     }
 
@@ -262,11 +263,19 @@ static void terminal_write_fd(const int fd, const char *data, const size_t size)
 #endif
     size_t remaining = size;
     while (remaining > 0) {
-        const ssize_t written = dcat_write(fd, data, remaining);
+#ifdef _WIN32
+        const int written =
+            _write(fd, data, remaining > UINT_MAX ? UINT_MAX : (unsigned int)remaining);
+#else
+        const ssize_t written = write(fd, data, remaining);
+#endif
         if (written < 0) {
             if (errno == EINTR) {
                 continue;
             }
+            break;
+        }
+        if (written == 0) {
             break;
         }
         data += written;
@@ -552,7 +561,7 @@ void enable_raw_mode(void) {
         }
     }
 
-    if (dcat_isatty(STDIN_FILENO) && dcat_isatty(STDOUT_FILENO)) {
+    if (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)) {
         raw_mode_input_code_page = GetConsoleCP();
         raw_mode_output_code_page = GetConsoleOutputCP();
         if (raw_mode_input_code_page != 0 && raw_mode_output_code_page != 0) {
@@ -694,7 +703,7 @@ ssize_t terminal_read_query(char *buffer, size_t size, char terminator) {
     size_t total_read = 0;
     while (total_read < size) {
         char ch;
-        ssize_t r = dcat_read(STDIN_FILENO, &ch, 1);
+        ssize_t r = read(STDIN_FILENO, &ch, 1);
         if (r > 0) {
             buffer[total_read++] = ch;
             if (terminator != 0 && ch == terminator) {

@@ -1,8 +1,8 @@
 #pragma once
-#include "platform/io.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <unistd.h>
 
 struct ChafaTermInfo;
 #ifdef _WIN32

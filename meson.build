@@ -128,7 +128,6 @@ endif
 subdir('shaders')
 
 dcat_core_sources = [
-  'src/platform/io.c',
   'src/core/app.c',
   'src/core/args.c',
   'src/core/signals.c',
