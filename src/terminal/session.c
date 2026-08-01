@@ -31,6 +31,7 @@ void terminal_session_end(TerminalSession *session) {
         return;
     }
 
+    terminal_frame_writer_shutdown();
     terminal_restore_default_state();
     signals_set_terminal_session_active(false);
     session->active = false;

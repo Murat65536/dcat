@@ -4,7 +4,6 @@ project('dcat', 'c',
   default_options: [
     'c_std=c17',
     'cpp_std=c++17',
-    'warning_level=3',
     'werror=false',
     'b_ndebug=if-release',
   ]
@@ -41,17 +40,31 @@ if host_machine.system() == 'windows'
   endif
 endif
 
-# Dependencies
-vulkan_dep = dependency('vulkan', required: true)
+quiet_subproject = [
+  'warning_level=0',
+  'werror=false',
+]
 
-# Pin to pkg-config: CMake's find_package probes prefixes adjacent to PATH, so
-# under WSL (Windows MSYS2 dirs on PATH) it returns Windows .dll.a/.a libs that
-# cannot link on Linux. pkg-config does not search those prefixes. Fallbacks below
-# still cover systems without a system install.
-assimp_dep = dependency('assimp', method: 'pkg-config', fallback: ['assimp', 'assimp_dep'])
-cglm_dep = dependency('cglm', method: 'pkg-config', fallback: ['cglm', 'cglm_dep'])
-vips_dep = dependency('vips', fallback: ['vips', 'vips_dep'])
-chafa_dep = dependency('chafa', version: '>=1.16', required: true)
+vulkan_dep = dependency('vulkan', required: true).as_system()
+
+assimp_dep = dependency(
+  'assimp',
+  method: 'pkg-config',
+  fallback: ['assimp', 'assimp_dep'],
+  default_options: quiet_subproject,
+).as_system()
+cglm_dep = dependency(
+  'cglm',
+  method: 'pkg-config',
+  fallback: ['cglm', 'cglm_dep'],
+  default_options: quiet_subproject,
+).as_system()
+vips_dep = dependency(
+  'vips',
+  fallback: ['vips', 'vips_dep'],
+  default_options: quiet_subproject,
+).as_system()
+chafa_dep = dependency('chafa', version: '>=1.16', required: true).as_system()
 
 threads_dep = dependency('threads')
 m_dep = cc.find_library('m', required: false)
@@ -69,7 +82,7 @@ if m_dep.found()
   dcat_deps += m_dep
 endif
 
-add_project_arguments('-DCGLM_FORCE_DEPTH_ZERO_TO_ONE', language: ['c', 'cpp'])
+add_project_arguments('-DCGLM_FORCE_DEPTH_ZERO_TO_ONE', '-Wno-unsafe-buffer-usage', '-Wno-implicit-void-ptr-cast', language: ['c', 'cpp'])
 
 if get_option('buildtype') == 'debug'
   add_project_arguments('-DDEBUG_BUILD=1', '-DVK_ENABLE_VALIDATION=1', language: ['c', 'cpp'])
@@ -87,21 +100,23 @@ else
 endif
 
 if get_option('tracy')
-  add_languages('cpp')
+  add_languages('cpp', native: false)
 
   tracy_project = subproject(
     'tracy',
-    default_options: [
+    default_options: quiet_subproject + [
       'default_library=static',
       'tracy_enable=true',
+      'delayed_init=true',
+      'manual_lifetime=true',
       'on_demand=true',
       'only_localhost=true',
       'no_sampling=true',
       'no_system_tracing=true',
-    ],
+    ]
   )
 
-  dcat_deps += tracy_project.get_variable('tracy_dep')
+  dcat_deps += tracy_project.get_variable('tracy_dep').as_system()
   if host_machine.system() == 'windows'
     dcat_deps += [
       cc.find_library('ws2_32'),
@@ -191,9 +206,9 @@ executable('dcat',
 # --wrap-mode=nofallback only blocks dependency() fallbacks, not this.
 unity_subp = subproject('unity',
   required: get_option('tests'),
-  default_options: ['default_library=static'],
+  default_options: quiet_subproject + ['default_library=static'],
 )
 if unity_subp.found()
-  unity_dep = unity_subp.get_variable('unity_dep')
+  unity_dep = unity_subp.get_variable('unity_dep').as_system()
   subdir('tests')
 endif

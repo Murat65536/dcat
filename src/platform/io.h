@@ -31,5 +31,4 @@ typedef SSIZE_T ssize_t;
 int dcat_isatty(int fd);
 ssize_t dcat_read(int fd, void *buffer, size_t size);
 ssize_t dcat_write(int fd, const void *buffer, size_t size);
-int dcat_close(int fd);
 int dcat_getpid(void);

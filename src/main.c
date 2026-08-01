@@ -1,5 +1,6 @@
 #include "core/app.h"
 #include "core/args.h"
+#include "core/profiling.h"
 
 int main(const int argc, char *argv[]) {
     Args args = {0};
@@ -28,6 +29,7 @@ int main(const int argc, char *argv[]) {
         return 1;
     }
 
+    DCAT_PROFILE_START();
     int exit_code = 1;
     if (app_init(app, &args, argv[0])) {
         exit_code = app_run_loop(app);
@@ -35,5 +37,6 @@ int main(const int argc, char *argv[]) {
 
     app_cleanup(app);
     app_destroy(app);
+    DCAT_PROFILE_STOP();
     return exit_code;
 }

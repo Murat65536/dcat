@@ -1,5 +1,7 @@
 #include "terminal/chafa_driver.h"
 #include "chafa.h"
+#include "core/profiling.h"
+#include "glib.h"
 #include "terminal/terminal.h"
 
 #include <string.h>
@@ -19,6 +21,8 @@ typedef struct {
 static ChafaDriverState g_state;
 
 static void initialize(void) {
+    chafa_set_n_threads(0);
+
     if (g_state.term_info) {
         return;
     }
@@ -66,6 +70,10 @@ void chafa_driver_configure(const Args *args) {
     }
 }
 
+void chafa_driver_invalidate_canvas(void) {
+    g_clear_pointer(&g_state.canvas, chafa_canvas_unref);
+}
+
 ChafaTermInfo *chafa_driver_get_term_info(void) {
     initialize();
     return g_state.term_info;
@@ -91,8 +99,7 @@ static ChafaCanvas *create_canvas(const uint32_t width, const uint32_t height) {
         } else {
             const ChafaSymbolTags safe_graphics =
                 chafa_term_info_get_safe_symbol_tags(g_state.term_info) &
-                (CHAFA_SYMBOL_TAG_SPACE | CHAFA_SYMBOL_TAG_BLOCK | CHAFA_SYMBOL_TAG_BORDER |
-                 CHAFA_SYMBOL_TAG_BRAILLE);
+                (CHAFA_SYMBOL_TAG_BLOCK | CHAFA_SYMBOL_TAG_BORDER | CHAFA_SYMBOL_TAG_BRAILLE);
             chafa_symbol_map_add_by_tags(symbols, CHAFA_SYMBOL_TAG_SPACE | CHAFA_SYMBOL_TAG_SOLID |
                                                       safe_graphics);
             chafa_symbol_map_remove_by_tags(symbols, CHAFA_SYMBOL_TAG_WIDE);
@@ -126,7 +133,7 @@ static ChafaCanvas *create_canvas(const uint32_t width, const uint32_t height) {
     chafa_canvas_config_set_pixel_mode(config, g_state.pixel_mode);
     chafa_canvas_config_set_canvas_mode(config, g_state.canvas_mode);
     chafa_canvas_config_set_work_factor(config, 0.0F);
-    chafa_canvas_config_set_optimizations(config, CHAFA_OPTIMIZATION_ALL);
+    chafa_canvas_config_set_preprocessing_enabled(config, FALSE);
 
     ChafaCanvas *canvas = chafa_canvas_new(config);
     chafa_canvas_config_unref(config);
@@ -137,17 +144,21 @@ static GString *build_frame(const uint8_t *framebuffer, const uint32_t width,
                             const uint32_t height) {
     initialize();
     if (!g_state.canvas || g_state.source_width != width || g_state.source_height != height) {
-        if (g_state.canvas) {
-            chafa_canvas_unref(g_state.canvas);
-        }
+        chafa_driver_invalidate_canvas();
         g_state.canvas = create_canvas(width, height);
         g_state.source_width = width;
         g_state.source_height = height;
     }
 
+    DCAT_PROFILE_ZONE(draw_zone, "Chafa draw pixels");
     chafa_canvas_draw_all_pixels(g_state.canvas, CHAFA_PIXEL_RGBA8_UNASSOCIATED, framebuffer,
                                  (int)width, (int)height, (int)(width * 4U));
-    return chafa_canvas_print(g_state.canvas, g_state.term_info);
+    DCAT_PROFILE_ZONE_END(draw_zone);
+
+    DCAT_PROFILE_ZONE(print_zone, "Chafa print");
+    GString *output = chafa_canvas_print(g_state.canvas, g_state.term_info);
+    DCAT_PROFILE_ZONE_END(print_zone);
+    return output;
 }
 
 void chafa_driver_render(const uint8_t *framebuffer, const uint32_t width, const uint32_t height) {
@@ -162,6 +173,7 @@ void chafa_driver_render(const uint8_t *framebuffer, const uint32_t width, const
     if (!output) {
         return;
     }
+    DCAT_PROFILE_PLOT_INT("Chafa output bytes", output->len);
 
     const char *end = chafa_term_info_emit_cursor_to_top_left(g_state.term_info, sequence);
     safe_write(sequence, (size_t)(end - sequence));

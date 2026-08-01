@@ -26,6 +26,9 @@ void calculate_render_dimensions(int explicit_width, int explicit_height, bool u
                                  uint32_t *out_height);
 
 void safe_write(const char *data, size_t size);
+void terminal_frame_begin(void);
+void terminal_frame_end(void);
+void terminal_frame_writer_shutdown(void);
 
 void draw_status_bar(float fps, float speed, const float *pos, const char *animation_name);
 

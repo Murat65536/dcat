@@ -36,6 +36,16 @@ ubsan:
 build *args:
     meson compile -C {{builddir}} {{args}}
 
+# Build an on-demand, localhost-only Tracy-instrumented release.
+tracy:
+    meson setup {{builddir}} --buildtype=release -Dtracy=true -Dtracy:delayed_init=true -Dtracy:manual_lifetime=true --reconfigure
+    meson compile -C {{builddir}}
+
+# Enable call-stack sampling and system tracing for diagnosing scheduler stalls.
+tracy-deep:
+    meson setup {{builddir}} --buildtype=release -Dtracy=true -Dtracy:delayed_init=true -Dtracy:manual_lifetime=true -Dtracy:no_sampling=false -Dtracy:no_system_tracing=false --reconfigure
+    meson compile -C {{builddir}}
+
 # Run the unit tests (built by default when the Unity wrap is available).
 test:
     meson test -C {{builddir}} --print-errorlogs

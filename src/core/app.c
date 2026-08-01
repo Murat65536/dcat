@@ -7,6 +7,7 @@
 
 #include "core/app.h"
 #include "core/args.h"
+#include "core/profiling.h"
 #include "core/signals.h"
 #include "core/threading.h"
 #include "core/time_utils.h"
@@ -24,22 +25,24 @@ typedef struct FatalReport {
     char message[512];
 } FatalReport;
 
-static void record_fatal_report(FatalReport *report, const char *format, ...) {
+__attribute__((format(printf, 2, 3))) static void record_fatal_report(FatalReport *report,
+                                                                      const char *format, ...) {
+    va_list args;
+
     if (report->active) {
         return;
     }
 
     report->active = true;
 
-    va_list args;
     va_start(args, format);
     vsnprintf(report->message, sizeof(report->message), format, args);
     va_end(args);
 }
 
 typedef struct RenderContext {
-    VulkanRenderer *renderer;
     mat4 model_matrix;
+    VulkanRenderer *renderer;
     RenderMaterial *materials;
     uint32_t material_count;
     bool enable_lighting;
@@ -71,7 +74,7 @@ static void refresh_camera_matrices(const Camera *camera, mat4 view, mat4 projec
 }
 
 static bool initialize_bone_matrices(mat4 **out_bone_matrices) {
-    *out_bone_matrices = aligned_malloc(MAX_BONES * sizeof(mat4));
+    *out_bone_matrices = (mat4 *)aligned_malloc(MAX_BONES * sizeof(mat4));
     if (!*out_bone_matrices) {
         return false;
     }
@@ -91,9 +94,8 @@ static void pace_frame(const double frame_start_time, const double target_frame_
         return;
     }
 
-    const double frame_deadline = frame_start_time + target_frame_time;
     for (;;) {
-        const double remaining = frame_deadline - get_time_seconds();
+        const double remaining = frame_start_time + target_frame_time - get_time_seconds();
         if (remaining <= 0.0) {
             return;
         }
@@ -114,14 +116,17 @@ static bool resize_renderer_if_needed(const Args *args, VulkanRenderer *renderer
                                       DcatMutex *shared_state_mutex, Camera *camera,
                                       uint32_t *width, uint32_t *height, mat4 view,
                                       mat4 projection) {
+
     if (!signals_is_resize_pending()) {
         return true;
     }
 
     signals_clear_resize_pending();
+    chafa_driver_invalidate_canvas();
 
     uint32_t new_width = 0;
     uint32_t new_height = 0;
+
     calculate_output_dimensions(args, &new_width, &new_height);
     if (new_width == *width && new_height == *height) {
         return true;
@@ -270,14 +275,19 @@ static bool render_frame(RenderContext *ctx, const AnimationContext *anim_ctx, c
         bone_count = (uint32_t)mesh->skeleton.bones.count;
     }
 
-    if (!vulkan_renderer_render(ctx->renderer, mesh, &mvp, &ctx->model_matrix, ctx->materials,
-                                ctx->material_count, ctx->enable_lighting, camera_position,
-                                ctx->use_triplanar_mapping, bone_matrix_ptr, bone_count, view,
-                                projection, &framebuffer)) {
+    DCAT_PROFILE_ZONE(vulkan_zone, "Vulkan render");
+    const bool rendered = vulkan_renderer_render(
+        ctx->renderer, mesh, &mvp, &ctx->model_matrix, ctx->materials, ctx->material_count,
+        ctx->enable_lighting, camera_position, ctx->use_triplanar_mapping, bone_matrix_ptr,
+        bone_count, view, projection, &framebuffer);
+    DCAT_PROFILE_ZONE_END(vulkan_zone);
+    if (!rendered) {
         return false;
     }
 
     if (framebuffer) {
+        DCAT_PROFILE_ZONE(chafa_zone, "Chafa render and queue");
+        terminal_frame_begin();
         const bool uses_character_cells = chafa_driver_uses_character_cells();
         if (uses_character_cells) {
             safe_write("\x1b[?2026h", 8);
@@ -291,6 +301,8 @@ static bool render_frame(RenderContext *ctx, const AnimationContext *anim_ctx, c
         if (uses_character_cells) {
             safe_write("\x1b[?2026l", 8);
         }
+        terminal_frame_end();
+        DCAT_PROFILE_ZONE_END(chafa_zone);
     }
 
     return true;
@@ -545,12 +557,14 @@ int app_run_loop(AppContext *app) {
     double last_frame_time = get_time_seconds();
 
     while (!signals_should_quit()) {
+        DCAT_PROFILE_ZONE(frame_zone, "Frame");
         if (!resize_renderer_if_needed(&app->args, app->renderer, &app->shared_state_mutex,
                                        &app->camera, &app->width, &app->height, view, projection)) {
             const char *renderer_error = vulkan_renderer_get_last_error(app->renderer);
             record_fatal_report(&app->fatal_report, "%s",
                                 renderer_error ? renderer_error
                                                : "Failed to resize Vulkan renderer");
+            DCAT_PROFILE_ZONE_END(frame_zone);
             return 1;
         }
 
@@ -592,10 +606,17 @@ int app_run_loop(AppContext *app) {
             const char *renderer_error = vulkan_renderer_get_last_error(app->renderer);
             record_fatal_report(&app->fatal_report, "%s",
                                 renderer_error ? renderer_error : "Rendering failed");
+            DCAT_PROFILE_ZONE_END(frame_zone);
             return 1;
         }
 
+        DCAT_PROFILE_ZONE(pacing_zone, "Frame pacing");
         pace_frame(frame_start, app->target_frame_time);
+        DCAT_PROFILE_ZONE_END(pacing_zone);
+        DCAT_PROFILE_PLOT_FLOAT("FPS", display_fps);
+        DCAT_PROFILE_PLOT_INT("Framebuffer pixels", (uint64_t)app->width * app->height);
+        DCAT_PROFILE_ZONE_END(frame_zone);
+        DCAT_PROFILE_FRAME_MARK();
     }
 
     return 0;

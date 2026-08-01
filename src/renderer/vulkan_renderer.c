@@ -1,4 +1,5 @@
 #include "vulkan_renderer.h"
+#include "core/profiling.h"
 #include "vk_device.h"
 #include "vk_memory.h"
 #include "vk_pipeline.h"
@@ -448,8 +449,10 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
         .use_diffuse_alpha_as_luster = false,
     };
 
+    DCAT_PROFILE_ZONE(fence_zone, "Vulkan fence wait");
     VkResult vk_result =
         vkWaitForFences(r->device, 1, &r->in_flight_fences[r->current_frame], VK_TRUE, UINT64_MAX);
+    DCAT_PROFILE_ZONE_END(fence_zone);
     if (vk_result != VK_SUCCESS) {
         vulkan_renderer_set_error(r, vk_result, "vkWaitForFences",
                                   "Failed to wait for in-flight fence");
@@ -461,11 +464,13 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
     uint32_t ready_staging_idx = r->frame_staging_buffers[r->current_frame];
 
     if (r->frame_ready[r->current_frame]) {
+        DCAT_PROFILE_ZONE(readback_zone, "Vulkan readback invalidate");
         VkMappedMemoryRange range = {.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
         range.memory = r->staging_buffer_allocs[ready_staging_idx].memory;
         range.offset = 0;
         range.size = VK_WHOLE_SIZE;
         vk_result = vkInvalidateMappedMemoryRanges(r->device, 1, &range);
+        DCAT_PROFILE_ZONE_END(readback_zone);
         if (vk_result != VK_SUCCESS) {
             vulkan_renderer_set_error(r, vk_result, "vkInvalidateMappedMemoryRanges",
                                       "Failed to invalidate staging buffer memory");
@@ -753,8 +758,10 @@ bool vulkan_renderer_render(VulkanRenderer *r, const Mesh *mesh, mat4 *mvp, mat4
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &cmd;
 
+    DCAT_PROFILE_ZONE(submit_zone, "Vulkan queue submit");
     vk_result =
         vkQueueSubmit(r->graphics_queue, 1, &submit_info, r->in_flight_fences[r->current_frame]);
+    DCAT_PROFILE_ZONE_END(submit_zone);
     if (vk_result != VK_SUCCESS) {
         vulkan_renderer_set_error(r, vk_result, "vkQueueSubmit",
                                   "Failed to submit render command buffer");

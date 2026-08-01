@@ -1,6 +1,8 @@
 #include "terminal.h"
+#include "core/profiling.h"
 #include "platform/io.h"
 #include "terminal/chafa_driver.h"
+#include <assert.h>
 #include <chafa.h>
 #include <errno.h>
 #include <signal.h>
@@ -88,7 +90,7 @@ void get_terminal_size_pixels(uint32_t *width, uint32_t *height) {
         return;
     }
 
-    if (dcat_isatty(STDOUT_FILENO) && dcat_isatty(STDIN_FILENO)) {
+    if (dcat_isatty(STDOUT_FILENO)) {
         TermiosState ts;
         if (terminal_begin_query_mode(&ts)) {
             ChafaTermInfo *term_info = chafa_driver_get_term_info();
@@ -188,6 +190,19 @@ static bool raw_mode_code_pages_saved = false;
 #endif
 static void terminal_write_fd(int fd, const char *data, size_t size);
 
+typedef struct {
+    GMutex mutex;
+    GCond ready;
+    GThread *thread;
+    GString *building;
+    GString *pending;
+    bool writing;
+    bool stopping;
+    bool disabled;
+} TerminalFrameWriter;
+
+static TerminalFrameWriter frame_writer;
+
 #if defined(__GNUC__) || defined(__clang__)
 extern void sanitizer_set_death_callback(void (*callback)(void)) __attribute__((weak));
 #define HAVE_SANITIZER_DEATH_CALLBACK 1
@@ -259,8 +274,131 @@ static void terminal_write_fd(const int fd, const char *data, const size_t size)
     }
 }
 
-void safe_write(const char *data, size_t size) {
+static void terminal_write_profiled(const char *data, const size_t size) {
+    DCAT_PROFILE_ZONE(write_zone, "Terminal write");
     terminal_write_fd(STDOUT_FILENO, data, size);
+    DCAT_PROFILE_ZONE_END(write_zone);
+}
+
+static gpointer terminal_frame_writer_main(gpointer user_data) {
+    (void)user_data;
+
+    for (;;) {
+        g_mutex_lock(&frame_writer.mutex);
+        while (!frame_writer.pending && !frame_writer.stopping) {
+            g_cond_wait(&frame_writer.ready, &frame_writer.mutex);
+        }
+        if (!frame_writer.pending && frame_writer.stopping) {
+            g_mutex_unlock(&frame_writer.mutex);
+            return NULL;
+        }
+
+        GString *frame = frame_writer.pending;
+        frame_writer.pending = NULL;
+        frame_writer.writing = true;
+        g_cond_broadcast(&frame_writer.ready);
+        g_mutex_unlock(&frame_writer.mutex);
+
+        terminal_write_profiled(frame->str, frame->len);
+        g_string_free(frame, true);
+
+        g_mutex_lock(&frame_writer.mutex);
+        frame_writer.writing = false;
+        g_cond_broadcast(&frame_writer.ready);
+        g_mutex_unlock(&frame_writer.mutex);
+    }
+}
+
+static bool terminal_frame_writer_start(void) {
+    if (frame_writer.thread || frame_writer.disabled) {
+        return frame_writer.thread != NULL;
+    }
+
+    g_mutex_init(&frame_writer.mutex);
+    g_cond_init(&frame_writer.ready);
+    GError *error = NULL;
+    frame_writer.thread =
+        g_thread_try_new("terminal-writer", terminal_frame_writer_main, NULL, &error);
+    if (!frame_writer.thread) {
+        g_clear_error(&error);
+        g_cond_clear(&frame_writer.ready);
+        g_mutex_clear(&frame_writer.mutex);
+        frame_writer.disabled = true;
+        return false;
+    }
+    return true;
+}
+
+static void terminal_frame_writer_flush(void) {
+    if (!frame_writer.thread) {
+        return;
+    }
+
+    g_mutex_lock(&frame_writer.mutex);
+    while (frame_writer.pending || frame_writer.writing) {
+        g_cond_wait(&frame_writer.ready, &frame_writer.mutex);
+    }
+    g_mutex_unlock(&frame_writer.mutex);
+}
+
+void terminal_frame_begin(void) {
+    assert(frame_writer.building == NULL);
+    terminal_frame_writer_start();
+    frame_writer.building = g_string_new(NULL);
+}
+
+void terminal_frame_end(void) {
+    GString *frame = frame_writer.building;
+    frame_writer.building = NULL;
+    if (!frame) {
+        return;
+    }
+
+    if (!frame_writer.thread) {
+        terminal_write_profiled(frame->str, frame->len);
+        g_string_free(frame, true);
+        return;
+    }
+
+    DCAT_PROFILE_ZONE(queue_zone, "Terminal queue wait");
+    g_mutex_lock(&frame_writer.mutex);
+    while (frame_writer.pending || frame_writer.writing) {
+        g_cond_wait(&frame_writer.ready, &frame_writer.mutex);
+    }
+    frame_writer.pending = frame;
+    g_cond_signal(&frame_writer.ready);
+    g_mutex_unlock(&frame_writer.mutex);
+    DCAT_PROFILE_ZONE_END(queue_zone);
+}
+
+void terminal_frame_writer_shutdown(void) {
+    if (frame_writer.building) {
+        terminal_frame_end();
+    }
+    if (!frame_writer.thread) {
+        frame_writer.disabled = false;
+        return;
+    }
+
+    terminal_frame_writer_flush();
+    g_mutex_lock(&frame_writer.mutex);
+    frame_writer.stopping = true;
+    g_cond_signal(&frame_writer.ready);
+    g_mutex_unlock(&frame_writer.mutex);
+    g_thread_join(frame_writer.thread);
+    g_cond_clear(&frame_writer.ready);
+    g_mutex_clear(&frame_writer.mutex);
+    memset(&frame_writer, 0, sizeof(frame_writer));
+}
+
+void safe_write(const char *data, const size_t size) {
+    if (frame_writer.building) {
+        g_string_append_len(frame_writer.building, data, (gssize)size);
+        return;
+    }
+
+    terminal_frame_writer_flush();
+    terminal_write_profiled(data, size);
 }
 
 void draw_status_bar(const float fps, const float speed, const float *pos,

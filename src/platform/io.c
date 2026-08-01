@@ -31,10 +31,6 @@ ssize_t dcat_write(const int fd, const void *buffer, const size_t size) {
     return (ssize_t)total_written;
 }
 
-int dcat_close(const int fd) {
-    return _close(fd);
-}
-
 int dcat_getpid(void) {
     return _getpid();
 }
@@ -51,10 +47,6 @@ ssize_t dcat_read(const int fd, void *buffer, const size_t size) {
 
 ssize_t dcat_write(const int fd, const void *buffer, const size_t size) {
     return write(fd, buffer, size);
-}
-
-int dcat_close(const int fd) {
-    return close(fd);
 }
 
 int dcat_getpid(void) {
