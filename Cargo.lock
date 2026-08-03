@@ -164,6 +164,8 @@ checksum = "3b8cbfc637bb470a2f620a5deb8e391cfd52486aedac4ad5d66fa2111206550f"
 dependencies = [
  "asset-importer-sys",
  "bitflags 2.13.1",
+ "bytemuck",
+ "glam",
  "thiserror 2.0.19",
 ]
 
@@ -660,7 +662,9 @@ name = "dcat"
 version = "1.3.0"
 dependencies = [
  "asset-importer",
+ "bytemuck",
  "clap",
+ "glam",
  "image",
  "pollster",
  "ratatui",
@@ -988,6 +992,12 @@ dependencies = [
  "log",
  "xml-rs",
 ]
+
+[[package]]
+name = "glam"
+version = "0.32.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
 
 [[package]]
 name = "glow"
