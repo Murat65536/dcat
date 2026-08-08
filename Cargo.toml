@@ -7,6 +7,7 @@ edition = "2024"
 asset-importer = { version = "0.8.0", features = ["bytemuck", "glam", "prebuilt"] }
 bytemuck = "1.25.2"
 clap = { version = "4.6.5", features = ["derive"] }
+crossterm = "0.29.0"
 glam = "0.32.1"
 image = "0.25.10"
 pollster = "1.0.1"

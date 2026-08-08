@@ -1,18 +1,17 @@
-use image::DynamicImage;
-use ratatui::crossterm::event;
-use ratatui_image::{Image, Resize, picker::Picker};
-
-pub fn draw(image: DynamicImage) {
-    ratatui::run(|terminal| {
-        let picker = Picker::from_query_stdio().expect("Expected to create picker");
-        println!("{:?}", picker.protocol_type());
-        let protocol = picker
-            .new_protocol(image, terminal.size().unwrap(), Resize::Scale(None))
-            .expect("Expected to create protocol");
-        let _ = terminal.draw(|frame| {
-            let image = Image::new(&protocol);
-            frame.render_widget(image, frame.area());
-        });
-        while !event::read().expect("Expected read").is_key_press() {}
-    });
+pub fn draw(pixels: Vec<u8>, width: u32, height: u32) {
+    for row in (0..height).step_by(2) {
+        for col in 0..width {
+            let start_top = (row as usize * width as usize + col as usize) * 3;
+            let start_bottom = ((row as usize + 1) * width as usize + col as usize) * 3;
+            print!(
+                "\x1b[38;2;{};{};{};48;2;{};{};{}m▀",
+                pixels[start_top],
+                pixels[start_top + 1],
+                pixels[start_top + 2],
+                pixels[start_bottom],
+                pixels[start_bottom + 1],
+                pixels[start_bottom + 2]
+            );
+        }
+    }
 }

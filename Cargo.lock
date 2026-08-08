@@ -664,6 +664,7 @@ dependencies = [
  "asset-importer",
  "bytemuck",
  "clap",
+ "crossterm",
  "glam",
  "image",
  "pollster",

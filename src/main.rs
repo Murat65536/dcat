@@ -2,7 +2,6 @@ use std::error::Error;
 
 use asset_importer::{Importer, postprocess::PostProcessSteps};
 use clap::Parser;
-use image::RgbaImage;
 use pollster::block_on;
 
 use crate::{cli::Args, renderer::Renderer};
@@ -22,9 +21,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         )
     })?;
 
-    let renderer = block_on(Renderer::new(&scene.mesh(0).unwrap()))?;
-    let pixels = RgbaImage::from_vec(64, 64, renderer.render()?).expect("Expected buffer");
-    terminal::draw(pixels.into());
+    let size = ratatui::crossterm::terminal::size()?;
+    let size = (size.0 as u32, (size.1 * 2) as u32);
+
+    let renderer = block_on(Renderer::new(&scene.mesh(0).unwrap(), size.0, size.1))?;
+    let pixels = renderer.render()?;
+    terminal::draw(pixels, size.0, size.1);
 
     Ok(())
 }

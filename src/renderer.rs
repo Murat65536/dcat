@@ -3,16 +3,16 @@ use std::{error::Error, sync::mpsc::channel};
 use asset_importer::mesh::Mesh;
 use glam::{Mat4, Vec3};
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferDescriptor, BufferUsages, Color,
-    CommandEncoderDescriptor, DepthBiasState, DepthStencilState, Device, DeviceDescriptor,
-    Extent3d, FragmentState, IndexFormat, Instance, InstanceDescriptor, LoadOp, MapMode,
-    MultisampleState, Operations, Origin3d, PollType, PrimitiveState, Queue,
-    RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
-    RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions, StencilState, StoreOp,
-    TexelCopyBufferInfo, TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureAspect,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView,
-    TextureViewDescriptor, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState,
-    VertexStepMode, include_wgsl,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferDescriptor, BufferUsages,
+    COPY_BYTES_PER_ROW_ALIGNMENT, Color, CommandEncoderDescriptor, DepthBiasState,
+    DepthStencilState, Device, DeviceDescriptor, Extent3d, FragmentState, IndexFormat, Instance,
+    InstanceDescriptor, LoadOp, MapMode, MultisampleState, Operations, Origin3d, PollType,
+    PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions,
+    StencilState, StoreOp, TexelCopyBufferInfo, TexelCopyBufferLayout, TexelCopyTextureInfo,
+    Texture, TextureAspect, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
+    TextureView, TextureViewDescriptor, VertexAttribute, VertexBufferLayout, VertexFormat,
+    VertexState, VertexStepMode, include_wgsl,
     util::{BufferInitDescriptor, DeviceExt},
 };
 pub struct Renderer {
@@ -27,14 +27,15 @@ pub struct Renderer {
     index_buffer: Buffer,
     index_count: u32,
     camera_bind_group: BindGroup,
+    width: u32,
+    height: u32,
+    padded_bytes_per_row: u32,
 }
 
-const WIDTH: u64 = 64;
-const HEIGHT: u64 = 64;
 const VIEW_MARGIN: f32 = 0.1;
 
 impl Renderer {
-    pub async fn new(mesh: &Mesh) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(mesh: &Mesh, width: u32, height: u32) -> Result<Self, Box<dyn Error>> {
         let instance = Instance::new(InstanceDescriptor::new_without_display_handle());
         let adapter = instance
             .request_adapter(&RequestAdapterOptions::default())
@@ -46,8 +47,8 @@ impl Renderer {
         let render_target = device.create_texture(&TextureDescriptor {
             label: Some("Render Target"),
             size: Extent3d {
-                width: WIDTH as u32,
-                height: HEIGHT as u32,
+                width,
+                height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -62,8 +63,8 @@ impl Renderer {
         let depth_texture = device.create_texture(&TextureDescriptor {
             label: Some("Depth Texture"),
             size: Extent3d {
-                width: WIDTH as u32,
-                height: HEIGHT as u32,
+                width,
+                height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -75,9 +76,10 @@ impl Renderer {
         });
         let depth_texture_view = depth_texture.create_view(&TextureViewDescriptor::default());
 
+        let padded_bytes_per_row = (width * 4).next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT);
         let output_staging_buffer = device.create_buffer(&BufferDescriptor {
             label: Some("Output Staging Buffer"),
-            size: WIDTH * HEIGHT * 4,
+            size: (padded_bytes_per_row * height) as u64,
             usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
@@ -95,7 +97,7 @@ impl Renderer {
             usage: BufferUsages::INDEX,
         });
 
-        let transform_matrix = Self::generate_matrix(mesh).to_cols_array_2d();
+        let transform_matrix = Self::generate_matrix(mesh, width, height).to_cols_array_2d();
         let camera_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Camera Buffer"),
             contents: bytemuck::bytes_of(&transform_matrix),
@@ -159,10 +161,13 @@ impl Renderer {
             index_buffer,
             index_count: indices.len() as u32,
             camera_bind_group,
+            width,
+            height,
+            padded_bytes_per_row,
         })
     }
 
-    fn generate_matrix(mesh: &Mesh) -> Mat4 {
+    fn generate_matrix(mesh: &Mesh, width: u32, height: u32) -> Mat4 {
         let aabb = mesh.aabb();
         let center: Vec3 = aabb.center().into();
         let translation_matrix = Mat4::from_translation(-center);
@@ -176,7 +181,7 @@ impl Renderer {
         let scale_matrix = Mat4::from_scale(Vec3::splat(scale));
 
         let projection_matrix =
-            Mat4::perspective_rh(45f32.to_radians(), WIDTH as f32 / HEIGHT as f32, 0.1, 100.0);
+            Mat4::perspective_rh(45f32.to_radians(), width as f32 / height as f32, 0.1, 100.0);
 
         let view_matrix = Mat4::look_at_rh(Vec3::new(0.0, 0.0, 3.0), Vec3::ZERO, Vec3::Y);
 
@@ -229,15 +234,13 @@ impl Renderer {
                 buffer: &self.output_staging_buffer,
                 layout: TexelCopyBufferLayout {
                     offset: 0,
-                    // This needs to be a multiple of 256. Normally we would need to pad it but here we
-                    // know it will work out.
-                    bytes_per_row: Some(WIDTH as u32 * 4),
-                    rows_per_image: Some(HEIGHT as u32),
+                    bytes_per_row: Some(self.padded_bytes_per_row),
+                    rows_per_image: Some(self.height),
                 },
             },
             Extent3d {
-                width: WIDTH as u32,
-                height: HEIGHT as u32,
+                width: self.width,
+                height: self.height,
                 depth_or_array_layers: 1,
             },
         );
@@ -248,8 +251,16 @@ impl Renderer {
         buffer_slice.map_async(MapMode::Read, move |r| sender.send(r).unwrap());
         self.device.poll(PollType::wait_indefinitely())?;
         receiver.recv()??;
-        let pixels = buffer_slice.get_mapped_range()?.to_vec();
+        let out = buffer_slice.get_mapped_range()?.to_vec();
         self.output_staging_buffer.unmap();
+        let rgba_row_bytes = self.width as usize * 4;
+        let padded_row_bytes = self.padded_bytes_per_row as usize;
+        let mut pixels = Vec::with_capacity(self.width as usize * self.height as usize * 3);
+        for row in out.chunks_exact(padded_row_bytes) {
+            for rgba in row[..rgba_row_bytes].chunks_exact(4) {
+                pixels.extend_from_slice(&rgba[..3]);
+            }
+        }
         Ok(pixels)
     }
 }
