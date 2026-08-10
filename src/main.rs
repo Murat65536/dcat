@@ -1,7 +1,8 @@
-use std::error::Error;
+use std::{error::Error, time::Duration};
 
 use asset_importer::{Importer, postprocess::PostProcessSteps};
 use clap::Parser;
+use crossterm::event::{self, Event, KeyEventKind};
 use pollster::block_on;
 
 use crate::{cli::Args, renderer::Renderer};
@@ -21,12 +22,21 @@ fn main() -> Result<(), Box<dyn Error>> {
         )
     })?;
 
-    let size = ratatui::crossterm::terminal::size()?;
+    let size = crossterm::terminal::size()?;
     let size = (size.0 as u32, (size.1 * 2) as u32);
 
     let renderer = block_on(Renderer::new(&scene.mesh(0).unwrap(), size.0, size.1))?;
-    let pixels = renderer.render()?;
-    terminal::draw(pixels, size.0, size.1);
+    let mut term = terminal::Terminal::new()?;
 
+    loop {
+        let screen = renderer.render()?;
+        term.draw(screen, size.0, size.1)?;
+        if event::poll(Duration::from_millis(10))?
+            && let Event::Key(key) = event::read()?
+            && key.kind == KeyEventKind::Press
+        {
+            break;
+        }
+    }
     Ok(())
 }

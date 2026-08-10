@@ -15,6 +15,7 @@ use wgpu::{
     VertexState, VertexStepMode, include_wgsl,
     util::{BufferInitDescriptor, DeviceExt},
 };
+
 pub struct Renderer {
     device: Device,
     queue: Queue,
@@ -33,9 +34,12 @@ pub struct Renderer {
 }
 
 const VIEW_MARGIN: f32 = 0.1;
+const COLOR_FORMAT: TextureFormat = TextureFormat::Rgba8UnormSrgb;
+const DEPTH_FORMAT: TextureFormat = TextureFormat::Depth32Float;
 
 impl Renderer {
     pub async fn new(mesh: &Mesh, width: u32, height: u32) -> Result<Self, Box<dyn Error>> {
+        // Acquire device
         let instance = Instance::new(InstanceDescriptor::new_without_display_handle());
         let adapter = instance
             .request_adapter(&RequestAdapterOptions::default())
@@ -54,9 +58,9 @@ impl Renderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba8UnormSrgb,
+            format: COLOR_FORMAT,
             usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::COPY_SRC,
-            view_formats: &[TextureFormat::Rgba8UnormSrgb],
+            view_formats: &[COLOR_FORMAT],
         });
         let render_target_view = render_target.create_view(&TextureViewDescriptor::default());
 
@@ -70,7 +74,7 @@ impl Renderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: TextureDimension::D2,
-            format: TextureFormat::Depth32Float,
+            format: DEPTH_FORMAT,
             usage: TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
@@ -90,10 +94,10 @@ impl Renderer {
             usage: BufferUsages::VERTEX,
         });
 
-        let indices = &mesh.triangle_indices_iter().collect::<Vec<u32>>();
+        let indices = mesh.triangle_indices_iter().collect::<Vec<u32>>();
         let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(indices),
+            contents: bytemuck::cast_slice(&indices),
             usage: BufferUsages::INDEX,
         });
 
@@ -125,11 +129,11 @@ impl Renderer {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
-                targets: &[Some(TextureFormat::Rgba8UnormSrgb.into())],
+                targets: &[Some(COLOR_FORMAT.into())],
             }),
             primitive: PrimitiveState::default(),
             depth_stencil: Some(DepthStencilState {
-                format: TextureFormat::Depth32Float,
+                format: DEPTH_FORMAT,
                 depth_write_enabled: Some(true),
                 depth_compare: Some(wgpu::CompareFunction::Less),
                 stencil: StencilState::default(),
@@ -194,7 +198,7 @@ impl Renderer {
             .create_command_encoder(&CommandEncoderDescriptor::default());
         {
             let mut render_pass = command_encoder.begin_render_pass(&RenderPassDescriptor {
-                label: None,
+                label: Some("Render Pass"),
                 color_attachments: &[Some(RenderPassColorAttachment {
                     view: &self.render_target_view,
                     depth_slice: None,
