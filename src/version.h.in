@@ -1,3 +1,0 @@
-#pragma once
-
-#define DCAT_VERSION "@VCS_TAG@"

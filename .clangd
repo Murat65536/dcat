@@ -1,5 +1,0 @@
-CompileFlags:
-  CompilationDatabase: build
-  Add:
-    - -isystem
-    - C:/msys64/clang64/include
