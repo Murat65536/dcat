@@ -22,13 +22,19 @@ use crate::model::{InstanceMatrix, Model};
 pub struct Renderer {
     device: Device,
     queue: Queue,
+    targets: Targets,
+    pipeline: RenderPipeline,
+    model: Model,
+    camera_buffer: Buffer,
+    camera_bind_group: BindGroup,
+}
+
+// Resources whose size follows the output resolution
+struct Targets {
     render_texture: Texture,
     render_texture_view: TextureView,
     depth_texture_view: TextureView,
     output_staging_buffer: Buffer,
-    pipeline: RenderPipeline,
-    model: Model,
-    camera_bind_group: BindGroup,
     width: u32,
     height: u32,
     padded_bytes_per_row: u32,
@@ -53,47 +59,7 @@ impl Renderer {
             .await?;
         let (device, queue) = adapter.request_device(&DeviceDescriptor::default()).await?;
 
-        // Color screen
-        let render_texture = device.create_texture(&TextureDescriptor {
-            label: Some("Render Texture"),
-            size: Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: TextureDimension::D2,
-            format: COLOR_FORMAT,
-            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::COPY_SRC,
-            view_formats: &[COLOR_FORMAT],
-        });
-        let render_texture_view = render_texture.create_view(&TextureViewDescriptor::default());
-
-        // Depth screen
-        let depth_texture = device.create_texture(&TextureDescriptor {
-            label: Some("Depth Texture"),
-            size: Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: TextureDimension::D2,
-            format: DEPTH_FORMAT,
-            usage: TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-        let depth_texture_view = depth_texture.create_view(&TextureViewDescriptor::default());
-
-        let padded_bytes_per_row = (width * 4).next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT);
-        let output_staging_buffer = device.create_buffer(&BufferDescriptor {
-            label: Some("Output Staging Buffer"),
-            size: (padded_bytes_per_row * height) as u64,
-            usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
+        let targets = Targets::new(&device, width, height);
 
         let shader = device.create_shader_module(include_wgsl!("shader.wgsl"));
 
@@ -147,7 +113,7 @@ impl Renderer {
         let camera_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Camera Buffer"),
             contents: bytemuck::bytes_of(&transform_matrix),
-            usage: BufferUsages::UNIFORM,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 
         let camera_bind_group = device.create_bind_group(&BindGroupDescriptor {
@@ -162,17 +128,28 @@ impl Renderer {
         Ok(Self {
             device,
             queue,
-            render_texture,
-            render_texture_view,
-            depth_texture_view,
-            output_staging_buffer,
+            targets,
             pipeline,
             model,
+            camera_buffer,
             camera_bind_group,
-            width,
-            height,
-            padded_bytes_per_row,
         })
+    }
+
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if (width, height) == (self.targets.width, self.targets.height) {
+            return;
+        }
+
+        self.targets = Targets::new(&self.device, width, height);
+
+        let transform_matrix =
+            Self::generate_matrix(&self.model.bounds(), width, height).to_cols_array_2d();
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::bytes_of(&transform_matrix),
+        );
     }
 
     fn generate_matrix(bounds: &AABB, width: u32, height: u32) -> Mat4 {
@@ -200,6 +177,7 @@ impl Renderer {
     }
 
     pub fn render(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+        let targets = &self.targets;
         let mut command_encoder = self
             .device
             .create_command_encoder(&CommandEncoderDescriptor::default());
@@ -207,7 +185,7 @@ impl Renderer {
             let mut render_pass = command_encoder.begin_render_pass(&RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(RenderPassColorAttachment {
-                    view: &self.render_texture_view,
+                    view: &targets.render_texture_view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: Operations {
@@ -216,7 +194,7 @@ impl Renderer {
                     },
                 })],
                 depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture_view,
+                    view: &targets.depth_texture_view,
                     depth_ops: Some(Operations {
                         load: LoadOp::Clear(1.0),
                         store: StoreOp::Discard,
@@ -234,42 +212,98 @@ impl Renderer {
 
         command_encoder.copy_texture_to_buffer(
             TexelCopyTextureInfo {
-                texture: &self.render_texture,
+                texture: &targets.render_texture,
                 mip_level: 0,
                 origin: Origin3d::ZERO,
                 aspect: TextureAspect::All,
             },
             TexelCopyBufferInfo {
-                buffer: &self.output_staging_buffer,
+                buffer: &targets.output_staging_buffer,
                 layout: TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(self.padded_bytes_per_row),
-                    rows_per_image: Some(self.height),
+                    bytes_per_row: Some(targets.padded_bytes_per_row),
+                    rows_per_image: Some(targets.height),
                 },
             },
             Extent3d {
-                width: self.width,
-                height: self.height,
+                width: targets.width,
+                height: targets.height,
                 depth_or_array_layers: 1,
             },
         );
         self.queue.submit(Some(command_encoder.finish()));
 
-        let buffer_slice = self.output_staging_buffer.slice(..);
+        let buffer_slice = targets.output_staging_buffer.slice(..);
         let (sender, receiver) = channel();
         buffer_slice.map_async(MapMode::Read, move |r| sender.send(r).unwrap());
         self.device.poll(PollType::wait_indefinitely())?;
         receiver.recv()??;
         let out = buffer_slice.get_mapped_range()?.to_vec();
-        self.output_staging_buffer.unmap();
-        let rgba_row_bytes = self.width as usize * 4;
-        let padded_row_bytes = self.padded_bytes_per_row as usize;
-        let mut pixels = Vec::with_capacity(self.width as usize * self.height as usize * 3);
+        targets.output_staging_buffer.unmap();
+        let rgba_row_bytes = targets.width as usize * 4;
+        let padded_row_bytes = targets.padded_bytes_per_row as usize;
+        let mut pixels = Vec::with_capacity(targets.width as usize * targets.height as usize * 3);
         for row in out.chunks_exact(padded_row_bytes) {
             for rgba in row[..rgba_row_bytes].as_chunks::<4>().0 {
                 pixels.extend_from_slice(&rgba[..3]);
             }
         }
         Ok(pixels)
+    }
+}
+
+impl Targets {
+    fn new(device: &Device, width: u32, height: u32) -> Self {
+        // Color screen
+        let render_texture = device.create_texture(&TextureDescriptor {
+            label: Some("Render Texture"),
+            size: Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: COLOR_FORMAT,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::COPY_SRC,
+            view_formats: &[COLOR_FORMAT],
+        });
+        let render_texture_view = render_texture.create_view(&TextureViewDescriptor::default());
+
+        // Depth screen
+        let depth_texture = device.create_texture(&TextureDescriptor {
+            label: Some("Depth Texture"),
+            size: Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: DEPTH_FORMAT,
+            usage: TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let depth_texture_view = depth_texture.create_view(&TextureViewDescriptor::default());
+
+        let padded_bytes_per_row = (width * 4).next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT);
+        let output_staging_buffer = device.create_buffer(&BufferDescriptor {
+            label: Some("Output Staging Buffer"),
+            size: (padded_bytes_per_row * height) as u64,
+            usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        Self {
+            render_texture,
+            render_texture_view,
+            depth_texture_view,
+            output_staging_buffer,
+            width,
+            height,
+            padded_bytes_per_row,
+        }
     }
 }

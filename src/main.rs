@@ -1,34 +1,41 @@
-use std::{error::Error, time::Duration};
+use std::process::ExitCode;
 
 use clap::Parser;
-use crossterm::event::{self, Event, KeyEventKind};
-use pollster::block_on;
 
-use crate::{cli::Args, renderer::Renderer};
+use crate::{
+    app::App,
+    cli::{Args, CONTROLS, OutputMode},
+};
 
+pub mod app;
 pub mod cli;
 pub mod model;
 pub mod renderer;
 pub mod terminal;
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> ExitCode {
     let args = Args::parse();
 
-    let size = crossterm::terminal::size()?;
-    let size = (size.0 as u32, (size.1 * 2) as u32);
+    if args.controls {
+        print!("{CONTROLS}");
+        return ExitCode::SUCCESS;
+    }
 
-    let renderer = block_on(Renderer::new(&args.model_path, size.0, size.1))?;
-    let mut term = terminal::Terminal::new()?;
+    // Only half-block truecolor output exists so far
+    if let Some(mode) = args.output_mode()
+        && mode != OutputMode::TruecolorCharacters
+    {
+        eprintln!("dcat: {mode:?} output is not supported yet");
+        return ExitCode::FAILURE;
+    }
 
-    loop {
-        let screen = renderer.render()?;
-        term.draw(screen, size.0, size.1)?;
-        if event::poll(Duration::from_millis(10))?
-            && let Event::Key(key) = event::read()?
-            && key.kind == KeyEventKind::Press
-        {
-            break;
+    // The terminal is restored when the app drops, so errors print on the normal screen
+    let result = App::new(args).and_then(|mut app| app.run());
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("dcat: {error}");
+            ExitCode::FAILURE
         }
     }
-    Ok(())
 }
