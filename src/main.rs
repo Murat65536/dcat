@@ -10,10 +10,12 @@ use crate::{
 pub mod app;
 pub mod camera;
 pub mod cli;
+pub mod gpu_model;
 pub mod input;
 pub mod model;
 pub mod renderer;
 pub mod terminal;
+pub mod texture;
 
 fn main() -> ExitCode {
     let args = Args::parse();

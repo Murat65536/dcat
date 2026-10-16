@@ -490,6 +490,7 @@ dependencies = [
  "crossterm",
  "glam",
  "image",
+ "naga",
  "pollster",
  "wgpu",
 ]

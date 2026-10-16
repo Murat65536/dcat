@@ -15,7 +15,8 @@ use crate::{
     camera::{Camera, Framing},
     cli::Args,
     input::{HeldKey, HeldKeys},
-    renderer::Renderer,
+    model::{ModelData, TextureOverrides},
+    renderer::{FrameParams, Renderer},
     terminal::{self, Terminal},
 };
 
@@ -58,12 +59,19 @@ impl App {
             .ok_or("No model file specified")?;
         let (width, height) = terminal::render_size(&args)?;
 
-        // Set up the GPU before taking over the terminal so errors print normally
-        let renderer = block_on(Renderer::new(model_path, width, height))?;
+        // Load everything before taking over the terminal so errors and
+        // warnings print normally
+        let model = ModelData::load(
+            model_path,
+            TextureOverrides {
+                diffuse: args.texture.as_deref(),
+                normal: args.normal_map.as_deref(),
+            },
+        )?;
+        let renderer = block_on(Renderer::new(&model, width, height))?;
 
-        let model = renderer.model();
-        let framing = Framing::from_bounds(&model.bounds());
-        let base_model_matrix = framing.model_matrix(model.coordinate_system(), args.model_scale);
+        let framing = Framing::from_bounds(&model.bounds);
+        let base_model_matrix = framing.model_matrix(model.coordinate_system, args.model_scale);
         let camera_position = framing.camera_position(args.model_scale, args.camera_distance);
         let camera = Camera::new(camera_position, Vec3::ZERO, width, height);
 
@@ -106,10 +114,14 @@ impl App {
                 self.spin_angle += self.args.spin * delta_time;
             }
 
-            let model_matrix = Mat4::from_rotation_y(self.spin_angle) * self.base_model_matrix;
-            let transform =
-                self.camera.projection_matrix() * self.camera.view_matrix() * model_matrix;
-            let pixels = self.renderer.render(transform)?;
+            let pixels = self.renderer.render(&FrameParams {
+                view_projection: self.camera.projection_matrix() * self.camera.view_matrix(),
+                model: Mat4::from_rotation_y(self.spin_angle) * self.base_model_matrix,
+                camera_position: self.camera.position,
+                // Light the model from the camera
+                light_direction: -self.camera.forward(),
+                lighting: !self.args.no_lighting,
+            })?;
 
             let status = self.args.status_bar.then(|| self.status_line(delta_time));
             self.terminal
@@ -160,6 +172,7 @@ impl App {
         match c.to_ascii_lowercase() {
             'q' => self.should_quit = true,
             'c' if key.modifiers.contains(KeyModifiers::CONTROL) => self.should_quit = true,
+            'm' => self.renderer.toggle_wireframe(),
             _ if self.args.keyboard_controls => {}
             'a' => self.camera.orbit(ROTATION_AMOUNT, 0.0),
             'd' => self.camera.orbit(-ROTATION_AMOUNT, 0.0),
