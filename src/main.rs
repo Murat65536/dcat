@@ -4,7 +4,7 @@ use clap::Parser;
 
 use crate::{
     app::App,
-    cli::{Args, CONTROLS, OutputMode},
+    cli::{Args, CONTROLS},
 };
 
 pub mod app;
@@ -13,6 +13,7 @@ pub mod cli;
 pub mod gpu_model;
 pub mod input;
 pub mod model;
+pub mod output;
 pub mod renderer;
 pub mod terminal;
 pub mod texture;
@@ -23,14 +24,6 @@ fn main() -> ExitCode {
     if args.controls {
         print!("{CONTROLS}");
         return ExitCode::SUCCESS;
-    }
-
-    // Only half-block truecolor output exists so far
-    if let Some(mode) = args.output_mode()
-        && mode != OutputMode::TruecolorCharacters
-    {
-        eprintln!("dcat: {mode:?} output is not supported yet");
-        return ExitCode::FAILURE;
     }
 
     // The terminal is restored when the app drops, so errors print on the normal screen

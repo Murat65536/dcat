@@ -5,9 +5,11 @@ edition = "2024"
 
 [dependencies]
 asset-importer = { version = "0.8.0", features = ["bytemuck", "glam", "prebuilt", "static-link"] }
+base64 = "0.23.1"
 bytemuck = { version = "1.25.2", features = ["derive"] }
 clap = { version = "4.6.5", features = ["derive"] }
 crossterm = "0.29.0"
+flate2 = "1.1.10"
 glam = "0.32.1"
 image = "0.25.10"
 pollster = "1.0.1"

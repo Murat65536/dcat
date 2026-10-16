@@ -13,9 +13,10 @@ use pollster::block_on;
 
 use crate::{
     camera::{Camera, Framing},
-    cli::Args,
+    cli::{Args, OutputMode},
     input::{HeldKey, HeldKeys},
     model::{ModelData, TextureOverrides},
+    output::{self, Frame},
     renderer::{FrameParams, Renderer},
     terminal::{self, Terminal},
 };
@@ -35,6 +36,7 @@ const PAN_FACTOR: f32 = 0.2;
 
 pub struct App {
     args: Args,
+    output_mode: OutputMode,
     renderer: Renderer,
     terminal: Terminal,
     width: u32,
@@ -57,7 +59,10 @@ impl App {
             .model_path
             .as_deref()
             .ok_or("No model file specified")?;
-        let (width, height) = terminal::render_size(&args)?;
+        let output_mode = args
+            .output_mode()
+            .unwrap_or_else(|| output::detect(|name| std::env::var(name).ok()));
+        let (width, height) = terminal::render_size(&args, output_mode)?;
 
         // Load everything before taking over the terminal so errors and
         // warnings print normally
@@ -75,12 +80,13 @@ impl App {
         let camera_position = framing.camera_position(args.model_scale, args.camera_distance);
         let camera = Camera::new(camera_position, Vec3::ZERO, width, height);
 
-        let terminal = Terminal::new(args.mouse_orbit, args.keyboard_controls)?;
+        let terminal = Terminal::new(output_mode, args.mouse_orbit, args.keyboard_controls)?;
         let held_keys = HeldKeys::new(terminal.reports_key_releases());
 
         Ok(Self {
             frame_time: Duration::from_secs_f64(1.0 / f64::from(args.fps)),
             args,
+            output_mode,
             renderer,
             terminal,
             width,
@@ -124,8 +130,12 @@ impl App {
             })?;
 
             let status = self.args.status_bar.then(|| self.status_line(delta_time));
-            self.terminal
-                .draw(&pixels, self.width, self.height, status.as_deref())?;
+            let frame = Frame {
+                width: self.width,
+                height: self.height,
+                pixels: &pixels,
+            };
+            self.terminal.draw(frame, status.as_deref())?;
 
             self.handle_events_until(frame_start + self.frame_time)?;
         }
@@ -249,7 +259,7 @@ impl App {
 
     fn resize(&mut self) -> Result<(), Box<dyn Error>> {
         self.resize_pending = false;
-        let (width, height) = terminal::render_size(&self.args)?;
+        let (width, height) = terminal::render_size(&self.args, self.output_mode)?;
         if (width, height) != (self.width, self.height) {
             self.width = width;
             self.height = height;
