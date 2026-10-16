@@ -4,7 +4,7 @@ version = "1.3.0"
 edition = "2024"
 
 [dependencies]
-asset-importer = { version = "0.8.0", features = ["bytemuck", "glam", "prebuilt"] }
+asset-importer = { version = "0.8.0", features = ["bytemuck", "glam", "prebuilt", "static-link"] }
 bytemuck = "1.25.2"
 clap = { version = "4.6.5", features = ["derive"] }
 crossterm = "0.29.0"

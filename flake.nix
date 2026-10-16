@@ -25,6 +25,8 @@
               gnumake
               clang
               vulkan-tools
+              # Statically linked Assimp needs zlib at link time
+              zlib
             ];
 
             # wgpu and native dependencies (such as asset-importer) require these at runtime.
