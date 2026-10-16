@@ -1,11 +1,11 @@
-use std::{error::Error, sync::mpsc::channel};
+use std::{error::Error, mem, path::Path, sync::mpsc::channel};
 
-use asset_importer::mesh::Mesh;
+use asset_importer::AABB;
 use glam::{Mat4, Vec3};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferDescriptor, BufferUsages,
-    COPY_BYTES_PER_ROW_ALIGNMENT, Color, CommandEncoderDescriptor, DepthBiasState,
-    DepthStencilState, Device, DeviceDescriptor, Extent3d, FragmentState, IndexFormat, Instance,
+    COPY_BYTES_PER_ROW_ALIGNMENT, Color, CommandEncoderDescriptor, CompareFunction, DepthBiasState,
+    DepthStencilState, Device, DeviceDescriptor, Extent3d, FragmentState, Instance,
     InstanceDescriptor, LoadOp, MapMode, MultisampleState, Operations, Origin3d, PollType,
     PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
     RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions,
@@ -14,19 +14,20 @@ use wgpu::{
     TextureView, TextureViewDescriptor, VertexAttribute, VertexBufferLayout, VertexFormat,
     VertexState, VertexStepMode, include_wgsl,
     util::{BufferInitDescriptor, DeviceExt},
+    vertex_attr_array,
 };
+
+use crate::model::{InstanceMatrix, Model};
 
 pub struct Renderer {
     device: Device,
     queue: Queue,
-    render_target: Texture,
-    render_target_view: TextureView,
+    render_texture: Texture,
+    render_texture_view: TextureView,
     depth_texture_view: TextureView,
     output_staging_buffer: Buffer,
     pipeline: RenderPipeline,
-    vertex_buffer: Buffer,
-    index_buffer: Buffer,
-    index_count: u32,
+    model: Model,
     camera_bind_group: BindGroup,
     width: u32,
     height: u32,
@@ -36,9 +37,15 @@ pub struct Renderer {
 const VIEW_MARGIN: f32 = 0.1;
 const COLOR_FORMAT: TextureFormat = TextureFormat::Rgba8UnormSrgb;
 const DEPTH_FORMAT: TextureFormat = TextureFormat::Depth32Float;
+const INSTANCE_ATTRIBUTES: [VertexAttribute; 4] = vertex_attr_array![
+    1 => Float32x4,
+    2 => Float32x4,
+    3 => Float32x4,
+    4 => Float32x4,
+];
 
 impl Renderer {
-    pub async fn new(mesh: &Mesh, width: u32, height: u32) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(model_path: &Path, width: u32, height: u32) -> Result<Self, Box<dyn Error>> {
         // Acquire device
         let instance = Instance::new(InstanceDescriptor::new_without_display_handle());
         let adapter = instance
@@ -46,10 +53,9 @@ impl Renderer {
             .await?;
         let (device, queue) = adapter.request_device(&DeviceDescriptor::default()).await?;
 
-        let shader = device.create_shader_module(include_wgsl!("shader.wgsl"));
-
-        let render_target = device.create_texture(&TextureDescriptor {
-            label: Some("Render Target"),
+        // Color screen
+        let render_texture = device.create_texture(&TextureDescriptor {
+            label: Some("Render Texture"),
             size: Extent3d {
                 width,
                 height,
@@ -62,8 +68,9 @@ impl Renderer {
             usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::COPY_SRC,
             view_formats: &[COLOR_FORMAT],
         });
-        let render_target_view = render_target.create_view(&TextureViewDescriptor::default());
+        let render_texture_view = render_texture.create_view(&TextureViewDescriptor::default());
 
+        // Depth screen
         let depth_texture = device.create_texture(&TextureDescriptor {
             label: Some("Depth Texture"),
             size: Extent3d {
@@ -88,25 +95,7 @@ impl Renderer {
             mapped_at_creation: false,
         });
 
-        let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: mesh.vertices_bytes(),
-            usage: BufferUsages::VERTEX,
-        });
-
-        let indices = mesh.triangle_indices_iter().collect::<Vec<u32>>();
-        let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(&indices),
-            usage: BufferUsages::INDEX,
-        });
-
-        let transform_matrix = Self::generate_matrix(mesh, width, height).to_cols_array_2d();
-        let camera_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("Camera Buffer"),
-            contents: bytemuck::bytes_of(&transform_matrix),
-            usage: BufferUsages::UNIFORM,
-        });
+        let shader = device.create_shader_module(include_wgsl!("shader.wgsl"));
 
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: Some("Pipeline"),
@@ -115,15 +104,22 @@ impl Renderer {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[Some(VertexBufferLayout {
-                    array_stride: 12,
-                    step_mode: VertexStepMode::Vertex,
-                    attributes: &[VertexAttribute {
-                        format: VertexFormat::Float32x3,
-                        offset: 0,
-                        shader_location: 0,
-                    }],
-                })],
+                buffers: &[
+                    Some(VertexBufferLayout {
+                        array_stride: 12,
+                        step_mode: VertexStepMode::Vertex,
+                        attributes: &[VertexAttribute {
+                            format: VertexFormat::Float32x3,
+                            offset: 0,
+                            shader_location: 0,
+                        }],
+                    }),
+                    Some(VertexBufferLayout {
+                        array_stride: mem::size_of::<InstanceMatrix>() as u64,
+                        step_mode: VertexStepMode::Instance,
+                        attributes: &INSTANCE_ATTRIBUTES,
+                    }),
+                ],
             },
             fragment: Some(FragmentState {
                 module: &shader,
@@ -135,13 +131,23 @@ impl Renderer {
             depth_stencil: Some(DepthStencilState {
                 format: DEPTH_FORMAT,
                 depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::Less),
+                depth_compare: Some(CompareFunction::Less),
                 stencil: StencilState::default(),
                 bias: DepthBiasState::default(),
             }),
             multisample: MultisampleState::default(),
             multiview_mask: None,
             cache: None,
+        });
+
+        let model = Model::load(&device, model_path)?;
+
+        let transform_matrix =
+            Self::generate_matrix(&model.bounds(), width, height).to_cols_array_2d();
+        let camera_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::bytes_of(&transform_matrix),
+            usage: BufferUsages::UNIFORM,
         });
 
         let camera_bind_group = device.create_bind_group(&BindGroupDescriptor {
@@ -156,14 +162,12 @@ impl Renderer {
         Ok(Self {
             device,
             queue,
-            render_target,
-            render_target_view,
+            render_texture,
+            render_texture_view,
             depth_texture_view,
             output_staging_buffer,
             pipeline,
-            vertex_buffer,
-            index_buffer,
-            index_count: indices.len() as u32,
+            model,
             camera_bind_group,
             width,
             height,
@@ -171,11 +175,14 @@ impl Renderer {
         })
     }
 
-    fn generate_matrix(mesh: &Mesh, width: u32, height: u32) -> Mat4 {
-        let aabb = mesh.aabb();
-        let center: Vec3 = aabb.center().into();
+    fn generate_matrix(bounds: &AABB, width: u32, height: u32) -> Mat4 {
+        if bounds.is_empty() {
+            return Mat4::IDENTITY;
+        }
+
+        let center: Vec3 = bounds.center().into();
         let translation_matrix = Mat4::from_translation(-center);
-        let size: Vec3 = aabb.size().into();
+        let size: Vec3 = bounds.size().into();
         let largest = size.max_element();
         let scale = if largest > 0.0 {
             2.0 * (1.0 - VIEW_MARGIN) / largest
@@ -200,7 +207,7 @@ impl Renderer {
             let mut render_pass = command_encoder.begin_render_pass(&RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(RenderPassColorAttachment {
-                    view: &self.render_target_view,
+                    view: &self.render_texture_view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: Operations {
@@ -221,15 +228,13 @@ impl Renderer {
                 multiview_mask: None,
             });
             render_pass.set_pipeline(&self.pipeline);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            render_pass.draw_indexed(0..self.index_count, 0, 0..1);
+            self.model.draw(&mut render_pass);
         }
 
         command_encoder.copy_texture_to_buffer(
             TexelCopyTextureInfo {
-                texture: &self.render_target,
+                texture: &self.render_texture,
                 mip_level: 0,
                 origin: Origin3d::ZERO,
                 aspect: TextureAspect::All,
@@ -261,7 +266,7 @@ impl Renderer {
         let padded_row_bytes = self.padded_bytes_per_row as usize;
         let mut pixels = Vec::with_capacity(self.width as usize * self.height as usize * 3);
         for row in out.chunks_exact(padded_row_bytes) {
-            for rgba in row[..rgba_row_bytes].chunks_exact(4) {
+            for rgba in row[..rgba_row_bytes].as_chunks::<4>().0 {
                 pixels.extend_from_slice(&rgba[..3]);
             }
         }

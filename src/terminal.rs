@@ -3,7 +3,7 @@ use crossterm::{
     cursor::{Hide, MoveTo, Show},
     execute, queue,
     style::{Color, Colors, Print, SetColors},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use std::io::{self, Stdout, stdout};
 
@@ -15,6 +15,7 @@ impl Terminal {
     pub fn new() -> io::Result<Self> {
         let mut stdout = stdout();
         execute!(stdout, EnterAlternateScreen, Hide)?;
+        enable_raw_mode()?;
         Ok(Self { stdout })
     }
 
@@ -52,6 +53,7 @@ impl Terminal {
 
 impl Drop for Terminal {
     fn drop(&mut self) {
+        let _ = disable_raw_mode();
         let _ = execute!(self.stdout, Show, LeaveAlternateScreen);
     }
 }

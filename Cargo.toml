@@ -11,6 +11,4 @@ crossterm = "0.29.0"
 glam = "0.32.1"
 image = "0.25.10"
 pollster = "1.0.1"
-ratatui = { version = "0.30.2", features = ["crossterm"] }
-ratatui-image = "11.0.6"
 wgpu = "30.0.0"
