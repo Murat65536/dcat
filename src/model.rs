@@ -16,6 +16,7 @@ pub struct Model {
     instance_buffer: Buffer,
     batches: Vec<MeshBatch>,
     bounds: AABB,
+    coordinate_system: Mat4,
 }
 
 struct MeshBatch {
@@ -127,12 +128,20 @@ impl Model {
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
         });
 
+        let coordinate_system = scene.metadata().map_or(Mat4::IDENTITY, |metadata| {
+            up_axis_conversion(
+                metadata.get_i32("UpAxis").unwrap_or(1),
+                metadata.get_i32("UpAxisSign").unwrap_or(1),
+            )
+        });
+
         Ok(Self {
             vertex_buffer,
             index_buffer,
             instance_buffer,
             batches,
             bounds,
+            coordinate_system,
         })
     }
 
@@ -187,5 +196,20 @@ impl Model {
 
     pub fn bounds(&self) -> AABB {
         self.bounds
+    }
+
+    // Rotation that brings the file's up axis to +Y
+    pub fn coordinate_system(&self) -> Mat4 {
+        self.coordinate_system
+    }
+}
+
+fn up_axis_conversion(axis: i32, sign: i32) -> Mat4 {
+    match (axis, sign) {
+        // Z-up
+        (2, 1) => Mat4::from_rotation_x(-90f32.to_radians()),
+        // X-up
+        (0, 1) => Mat4::from_rotation_z(90f32.to_radians()),
+        _ => Mat4::IDENTITY,
     }
 }

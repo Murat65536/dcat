@@ -1,7 +1,6 @@
 use std::{error::Error, mem, path::Path, sync::mpsc::channel};
 
-use asset_importer::AABB;
-use glam::{Mat4, Vec3};
+use glam::Mat4;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferDescriptor, BufferUsages,
     COPY_BYTES_PER_ROW_ALIGNMENT, Color, CommandEncoderDescriptor, CompareFunction, DepthBiasState,
@@ -40,7 +39,6 @@ struct Targets {
     padded_bytes_per_row: u32,
 }
 
-const VIEW_MARGIN: f32 = 0.1;
 const COLOR_FORMAT: TextureFormat = TextureFormat::Rgba8UnormSrgb;
 const DEPTH_FORMAT: TextureFormat = TextureFormat::Depth32Float;
 const INSTANCE_ATTRIBUTES: [VertexAttribute; 4] = vertex_attr_array![
@@ -108,11 +106,9 @@ impl Renderer {
 
         let model = Model::load(&device, model_path)?;
 
-        let transform_matrix =
-            Self::generate_matrix(&model.bounds(), width, height).to_cols_array_2d();
         let camera_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Camera Buffer"),
-            contents: bytemuck::bytes_of(&transform_matrix),
+            contents: bytemuck::bytes_of(&Mat4::IDENTITY.to_cols_array_2d()),
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 
@@ -137,47 +133,24 @@ impl Renderer {
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        if (width, height) == (self.targets.width, self.targets.height) {
-            return;
+        if (width, height) != (self.targets.width, self.targets.height) {
+            self.targets = Targets::new(&self.device, width, height);
         }
+    }
 
-        self.targets = Targets::new(&self.device, width, height);
+    pub fn model(&self) -> &Model {
+        &self.model
+    }
 
-        let transform_matrix =
-            Self::generate_matrix(&self.model.bounds(), width, height).to_cols_array_2d();
+    // Render with the given model-view-projection matrix and read the frame back as RGB
+    pub fn render(&self, transform: Mat4) -> Result<Vec<u8>, Box<dyn Error>> {
+        let targets = &self.targets;
         self.queue.write_buffer(
             &self.camera_buffer,
             0,
-            bytemuck::bytes_of(&transform_matrix),
+            bytemuck::bytes_of(&transform.to_cols_array_2d()),
         );
-    }
 
-    fn generate_matrix(bounds: &AABB, width: u32, height: u32) -> Mat4 {
-        if bounds.is_empty() {
-            return Mat4::IDENTITY;
-        }
-
-        let center: Vec3 = bounds.center().into();
-        let translation_matrix = Mat4::from_translation(-center);
-        let size: Vec3 = bounds.size().into();
-        let largest = size.max_element();
-        let scale = if largest > 0.0 {
-            2.0 * (1.0 - VIEW_MARGIN) / largest
-        } else {
-            1.0
-        };
-        let scale_matrix = Mat4::from_scale(Vec3::splat(scale));
-
-        let projection_matrix =
-            Mat4::perspective_rh(45f32.to_radians(), width as f32 / height as f32, 0.1, 100.0);
-
-        let view_matrix = Mat4::look_at_rh(Vec3::new(0.0, 0.0, 3.0), Vec3::ZERO, Vec3::Y);
-
-        projection_matrix * view_matrix * scale_matrix * translation_matrix
-    }
-
-    pub fn render(&self) -> Result<Vec<u8>, Box<dyn Error>> {
-        let targets = &self.targets;
         let mut command_encoder = self
             .device
             .create_command_encoder(&CommandEncoderDescriptor::default());

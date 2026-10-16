@@ -1,16 +1,36 @@
 use std::{
     error::Error,
+    f32::consts::PI,
     time::{Duration, Instant},
 };
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{
+    self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+    MouseEventKind,
+};
+use glam::{Mat4, Vec3};
 use pollster::block_on;
 
 use crate::{
+    camera::{Camera, Framing},
     cli::Args,
+    input::{HeldKey, HeldKeys},
     renderer::Renderer,
     terminal::{self, Terminal},
 };
+
+// Orbit step per key press
+const ROTATION_AMOUNT: f32 = PI / 8.0;
+// Zoom step per key press or scroll notch
+const ZOOM_AMOUNT: f32 = 0.05;
+// First-person movement in units per second, adjustable with v/b
+const INITIAL_MOVE_SPEED: f32 = 0.5;
+// First-person look speed in radians per second
+const LOOK_SPEED: f32 = 2.0;
+// Movement multiplier while ctrl is held
+const PRECISE_FACTOR: f32 = 0.25;
+// Mouse panning relative to mouse orbit sensitivity
+const PAN_FACTOR: f32 = 0.2;
 
 pub struct App {
     args: Args,
@@ -21,6 +41,13 @@ pub struct App {
     frame_time: Duration,
     resize_pending: bool,
     should_quit: bool,
+
+    camera: Camera,
+    base_model_matrix: Mat4,
+    spin_angle: f32,
+    move_speed: f32,
+    held_keys: HeldKeys,
+    last_mouse: (u16, u16),
 }
 
 impl App {
@@ -33,7 +60,15 @@ impl App {
 
         // Set up the GPU before taking over the terminal so errors print normally
         let renderer = block_on(Renderer::new(model_path, width, height))?;
-        let terminal = Terminal::new()?;
+
+        let model = renderer.model();
+        let framing = Framing::from_bounds(&model.bounds());
+        let base_model_matrix = framing.model_matrix(model.coordinate_system(), args.model_scale);
+        let camera_position = framing.camera_position(args.model_scale, args.camera_distance);
+        let camera = Camera::new(camera_position, Vec3::ZERO, width, height);
+
+        let terminal = Terminal::new(args.mouse_orbit, args.keyboard_controls)?;
+        let held_keys = HeldKeys::new(terminal.reports_key_releases());
 
         Ok(Self {
             frame_time: Duration::from_secs_f64(1.0 / f64::from(args.fps)),
@@ -44,6 +79,12 @@ impl App {
             height,
             resize_pending: false,
             should_quit: false,
+            camera,
+            base_model_matrix,
+            spin_angle: 0.0,
+            move_speed: INITIAL_MOVE_SPEED,
+            held_keys,
+            last_mouse: (0, 0),
         })
     }
 
@@ -59,8 +100,18 @@ impl App {
                 self.resize()?;
             }
 
-            let pixels = self.renderer.render()?;
-            let status = self.args.status_bar.then(|| status_line(delta_time));
+            if self.args.keyboard_controls {
+                self.apply_held_keys(delta_time, frame_start);
+            } else {
+                self.spin_angle += self.args.spin * delta_time;
+            }
+
+            let model_matrix = Mat4::from_rotation_y(self.spin_angle) * self.base_model_matrix;
+            let transform =
+                self.camera.projection_matrix() * self.camera.view_matrix() * model_matrix;
+            let pixels = self.renderer.render(transform)?;
+
+            let status = self.args.status_bar.then(|| self.status_line(delta_time));
             self.terminal
                 .draw(&pixels, self.width, self.height, status.as_deref())?;
 
@@ -77,7 +128,8 @@ impl App {
                 break;
             }
             match event::read()? {
-                Event::Key(key) if key.kind == KeyEventKind::Press => self.handle_key(key),
+                Event::Key(key) => self.handle_key(key),
+                Event::Mouse(mouse) => self.handle_mouse(mouse),
                 Event::Resize(..) => self.resize_pending = true,
                 _ => {}
             }
@@ -86,13 +138,100 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Char('q') => self.should_quit = true,
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.should_quit = true;
+        if self.args.keyboard_controls
+            && let Some(held) = HeldKey::from_code(key.code)
+        {
+            match key.kind {
+                KeyEventKind::Press | KeyEventKind::Repeat => {
+                    self.held_keys.press(held, Instant::now());
+                }
+                KeyEventKind::Release => self.held_keys.release(held),
             }
+        }
+
+        // Autorepeat counts as more presses for the discrete actions below
+        if key.kind == KeyEventKind::Release {
+            return;
+        }
+
+        let KeyCode::Char(c) = key.code else {
+            return;
+        };
+        match c.to_ascii_lowercase() {
+            'q' => self.should_quit = true,
+            'c' if key.modifiers.contains(KeyModifiers::CONTROL) => self.should_quit = true,
+            _ if self.args.keyboard_controls => {}
+            'a' => self.camera.orbit(ROTATION_AMOUNT, 0.0),
+            'd' => self.camera.orbit(-ROTATION_AMOUNT, 0.0),
+            'w' => self.camera.orbit(0.0, -ROTATION_AMOUNT),
+            's' => self.camera.orbit(0.0, ROTATION_AMOUNT),
+            'e' => self.camera.zoom(ZOOM_AMOUNT),
+            'r' => self.camera.zoom(-ZOOM_AMOUNT),
             _ => {}
         }
+    }
+
+    // Mouse events only arrive when --mouse-orbit enabled capture
+    fn handle_mouse(&mut self, mouse: MouseEvent) {
+        let position = (mouse.column, mouse.row);
+        let delta = (
+            f32::from(position.0) - f32::from(self.last_mouse.0),
+            f32::from(position.1) - f32::from(self.last_mouse.1),
+        );
+        let sensitivity = self.args.mouse_sensitivity;
+
+        match mouse.kind {
+            MouseEventKind::Down(_) => self.last_mouse = position,
+            MouseEventKind::Drag(MouseButton::Left) => {
+                self.last_mouse = position;
+                self.camera
+                    .orbit(delta.0 * sensitivity, -delta.1 * sensitivity);
+            }
+            MouseEventKind::Drag(MouseButton::Right | MouseButton::Middle) => {
+                self.last_mouse = position;
+                let pan_speed = sensitivity * PAN_FACTOR;
+                self.camera.pan(delta.0 * pan_speed, delta.1 * pan_speed);
+            }
+            MouseEventKind::ScrollUp => self.camera.zoom(ZOOM_AMOUNT),
+            MouseEventKind::ScrollDown => self.camera.zoom(-ZOOM_AMOUNT),
+            _ => {}
+        }
+    }
+
+    // First-person movement from the keys currently held
+    fn apply_held_keys(&mut self, delta_time: f32, now: Instant) {
+        let held = |key| self.held_keys.is_held(key, now);
+
+        if held(HeldKey::Slower) {
+            self.move_speed /= 1.0 + delta_time;
+        }
+        if held(HeldKey::Faster) {
+            self.move_speed *= 1.0 + delta_time;
+        }
+
+        let mut step = self.move_speed * delta_time;
+        if held(HeldKey::Precise) {
+            step *= PRECISE_FACTOR;
+        }
+        let axis = |positive, negative| match (held(positive), held(negative)) {
+            (true, false) => 1.0,
+            (false, true) => -1.0,
+            _ => 0.0,
+        };
+
+        let forward = axis(HeldKey::Forward, HeldKey::Back);
+        let right = axis(HeldKey::Right, HeldKey::Left);
+        let up = axis(HeldKey::Up, HeldKey::Down);
+        let look_yaw = axis(HeldKey::LookRight, HeldKey::LookLeft);
+        let look_pitch = axis(HeldKey::LookUp, HeldKey::LookDown);
+
+        self.camera.move_forward(forward * step);
+        self.camera.move_right(right * step);
+        self.camera.move_up(up * step);
+
+        let look_step = LOOK_SPEED * delta_time;
+        self.camera
+            .rotate(look_yaw * look_step, look_pitch * look_step);
     }
 
     fn resize(&mut self) -> Result<(), Box<dyn Error>> {
@@ -102,18 +241,23 @@ impl App {
             self.width = width;
             self.height = height;
             self.renderer.resize(width, height);
+            self.camera.set_viewport(width, height);
         }
         // The terminal may have shrunk even if the render size is fixed
         self.terminal.clear()?;
         Ok(())
     }
-}
 
-fn status_line(delta_time: f32) -> String {
-    let fps = if delta_time > 0.0 {
-        1.0 / delta_time
-    } else {
-        0.0
-    };
-    format!(" FPS: {fps:.1} ")
+    fn status_line(&self, delta_time: f32) -> String {
+        let fps = if delta_time > 0.0 {
+            1.0 / delta_time
+        } else {
+            0.0
+        };
+        let position = self.camera.position;
+        format!(
+            " FPS: {fps:.1} | SPEED: {:.2} | POS: {:.2}, {:.2}, {:.2} ",
+            self.move_speed, position.x, position.y, position.z
+        )
+    }
 }
