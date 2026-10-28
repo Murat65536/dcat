@@ -9,7 +9,7 @@ use wgpu::{
     ColorTargetState, ColorWrites, CommandEncoderDescriptor, CompareFunction, DepthBiasState,
     DepthStencilState, Device, DeviceDescriptor, Extent3d, Features, FragmentState, Instance,
     InstanceDescriptor, LoadOp, MapMode, MultisampleState, Operations, Origin3d, PipelineLayout,
-    PipelineLayoutDescriptor, PollType, PolygonMode, PrimitiveState, Queue,
+    PipelineLayoutDescriptor, PollType, PolygonMode, PowerPreference, PrimitiveState, Queue,
     RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
     RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions, SamplerBindingType,
     ShaderModule, ShaderStages, StencilState, StoreOp, TexelCopyBufferInfo, TexelCopyBufferLayout,
@@ -130,7 +130,11 @@ impl Renderer {
     pub async fn new(model: &ModelData, width: u32, height: u32) -> Result<Self, Box<dyn Error>> {
         let instance = Instance::new(InstanceDescriptor::new_without_display_handle());
         let adapter = instance
-            .request_adapter(&RequestAdapterOptions::default())
+            .request_adapter(&RequestAdapterOptions {
+                // Prefer a discrete GPU where there is a choice
+                power_preference: PowerPreference::HighPerformance,
+                ..Default::default()
+            })
             .await?;
         let (device, queue) = adapter
             .request_device(&DeviceDescriptor {
@@ -264,7 +268,8 @@ impl Renderer {
                     depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
                         view: &targets.depth_texture_view,
                         depth_ops: Some(Operations {
-                            load: LoadOp::Clear(1.0),
+                            // Reversed depth: 0 is infinitely far away
+                            load: LoadOp::Clear(0.0),
                             store: StoreOp::Discard,
                         }),
                         stencil_ops: None,
@@ -274,8 +279,18 @@ impl Renderer {
                     multiview_mask: None,
                 });
                 render_pass.set_bind_group(0, &self.frame_bind_group, &[]);
-                self.model
-                    .draw(&mut render_pass, opaque_pipeline, &self.blend_pipeline);
+                // Wireframe shows blended parts as lines too
+                let blend_pipeline = match (&self.wireframe_pipeline, self.wireframe) {
+                    (Some(wireframe), true) => wireframe,
+                    _ => &self.blend_pipeline,
+                };
+                self.model.draw(
+                    &mut render_pass,
+                    opaque_pipeline,
+                    blend_pipeline,
+                    params.model,
+                    params.camera_position,
+                );
             }
 
             command_encoder.copy_texture_to_buffer(
@@ -410,7 +425,7 @@ fn create_pipeline(
         depth_stencil: Some(DepthStencilState {
             format: DEPTH_FORMAT,
             depth_write_enabled: Some(depth_write),
-            depth_compare: Some(CompareFunction::Less),
+            depth_compare: Some(CompareFunction::Greater),
             stencil: StencilState::default(),
             bias: DepthBiasState::default(),
         }),

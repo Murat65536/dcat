@@ -1,6 +1,7 @@
 use std::ops::Range;
 
 use bytemuck::{Pod, Zeroable};
+use glam::{Mat4, Vec3};
 use wgpu::{
     AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource,
     Buffer, BufferUsages, Device, Extent3d, FilterMode, IndexFormat, Origin3d, Queue, RenderPass,
@@ -62,6 +63,8 @@ pub struct GpuModel {
     index_buffer: Buffer,
     instance_buffer: Buffer,
     batches: Vec<GpuBatch>,
+    // Model-space center of each instance, for ordering blended draws
+    instance_centers: Vec<Vec3>,
     material_bind_groups: Vec<BindGroup>,
     has_uvs: bool,
 }
@@ -161,6 +164,7 @@ impl GpuModel {
             index_buffer,
             instance_buffer,
             batches,
+            instance_centers: model.instance_centers.clone(),
             material_bind_groups,
             has_uvs: model.has_uvs,
         }
@@ -170,32 +174,82 @@ impl GpuModel {
         self.has_uvs
     }
 
-    // Draw opaque meshes first, then blended ones over them
+    // Draw opaque meshes first, then blended ones over them from back to front
     pub fn draw(
         &self,
         pass: &mut RenderPass,
         opaque_pipeline: &RenderPipeline,
         blend_pipeline: &RenderPipeline,
+        model: Mat4,
+        camera_position: Vec3,
     ) {
         pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
         pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
 
-        for (pipeline, blend) in [(opaque_pipeline, false), (blend_pipeline, true)] {
-            pass.set_pipeline(pipeline);
-            for batch in &self.batches {
-                if batch.blend != blend || batch.instance_range.is_empty() {
-                    continue;
-                }
-                pass.set_bind_group(1, &self.material_bind_groups[batch.material], &[]);
-                pass.draw_indexed(
-                    batch.index_range.clone(),
-                    batch.base_vertex,
-                    batch.instance_range.clone(),
-                );
+        pass.set_pipeline(opaque_pipeline);
+        for batch in self.batches.iter().filter(|batch| !batch.blend) {
+            if batch.instance_range.is_empty() {
+                continue;
             }
+            pass.set_bind_group(1, &self.material_bind_groups[batch.material], &[]);
+            pass.draw_indexed(
+                batch.index_range.clone(),
+                batch.base_vertex,
+                batch.instance_range.clone(),
+            );
+        }
+
+        let order = blend_draw_order(
+            &self.batches,
+            &self.instance_centers,
+            model,
+            camera_position,
+        );
+        if order.is_empty() {
+            return;
+        }
+        pass.set_pipeline(blend_pipeline);
+        let mut bound_material = None;
+        for (batch_index, instance) in order {
+            let batch = &self.batches[batch_index];
+            if bound_material != Some(batch.material) {
+                pass.set_bind_group(1, &self.material_bind_groups[batch.material], &[]);
+                bound_material = Some(batch.material);
+            }
+            pass.draw_indexed(
+                batch.index_range.clone(),
+                batch.base_vertex,
+                instance..instance + 1,
+            );
         }
     }
+}
+
+// Blended instances as (batch, instance), farthest from the camera first.
+// They are drawn without depth writes, so each must be drawn after whatever
+// it covers.
+fn blend_draw_order(
+    batches: &[GpuBatch],
+    instance_centers: &[Vec3],
+    model: Mat4,
+    camera_position: Vec3,
+) -> Vec<(usize, u32)> {
+    let mut draws: Vec<(f32, usize, u32)> = batches
+        .iter()
+        .enumerate()
+        .filter(|(_, batch)| batch.blend)
+        .flat_map(|(index, batch)| batch.instance_range.clone().map(move |i| (index, i)))
+        .map(|(index, instance)| {
+            let center = model.transform_point3(instance_centers[instance as usize]);
+            (center.distance_squared(camera_position), index, instance)
+        })
+        .collect();
+    draws.sort_by(|a, b| b.0.total_cmp(&a.0));
+    draws
+        .into_iter()
+        .map(|(_, index, instance)| (index, instance))
+        .collect()
 }
 
 fn upload_texture(device: &Device, queue: &Queue, texture: &ModelTexture) -> TextureView {
@@ -256,5 +310,35 @@ mod tests {
     #[test]
     fn uniform_size_matches_shader() {
         assert_eq!(std::mem::size_of::<MaterialUniforms>(), 48);
+    }
+
+    fn batch(instance_range: Range<u32>, blend: bool) -> GpuBatch {
+        GpuBatch {
+            index_range: 0..3,
+            base_vertex: 0,
+            instance_range,
+            material: 0,
+            blend,
+        }
+    }
+
+    #[test]
+    fn blended_instances_draw_far_to_near() {
+        // Opaque batch 0, blended batch 1 with two instances, blended batch 2
+        let batches = [batch(0..1, false), batch(1..3, true), batch(3..4, true)];
+        let centers = [
+            Vec3::new(0.0, 0.0, -9.0),
+            Vec3::new(0.0, 0.0, -2.0),
+            Vec3::new(0.0, 0.0, -8.0),
+            Vec3::new(0.0, 0.0, -5.0),
+        ];
+        let order = blend_draw_order(&batches, &centers, Mat4::IDENTITY, Vec3::ZERO);
+        assert_eq!(order, vec![(1, 2), (2, 3), (1, 1)]);
+
+        // The model transform moves the instances before measuring
+        let flipped = Mat4::from_rotation_y(std::f32::consts::PI);
+        let camera = Vec3::new(0.0, 0.0, 10.0);
+        let order = blend_draw_order(&batches, &centers, flipped, camera);
+        assert_eq!(order, vec![(1, 1), (2, 3), (1, 2)]);
     }
 }

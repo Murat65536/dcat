@@ -13,7 +13,7 @@ use asset_importer::{
     texture::TextureDataRef,
 };
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat3, Mat4};
+use glam::{Mat3, Mat4, Vec3};
 
 use crate::texture::TextureImage;
 
@@ -94,6 +94,9 @@ pub struct ModelData {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
     pub instances: Vec<Instance>,
+    // Bounding-box center of each instance in model space, for sorting
+    // blended draws by distance
+    pub instance_centers: Vec<Vec3>,
     pub batches: Vec<MeshBatch>,
     pub materials: Vec<Material>,
     pub textures: Vec<ModelTexture>,
@@ -181,7 +184,7 @@ impl ModelData {
             return Err(format!("No triangle meshes found in {}", path.display()).into());
         }
 
-        let mut instance_batches = vec![Vec::<Instance>::new(); batches.len()];
+        let mut instance_batches = vec![Vec::<(Instance, Vec3)>::new(); batches.len()];
         let mut bounds = AABB::empty();
 
         if let Some(root) = scene.root_node() {
@@ -195,10 +198,15 @@ impl ModelData {
             );
         }
 
-        let mut instances = Vec::with_capacity(instance_batches.iter().map(Vec::len).sum());
+        let instance_count = instance_batches.iter().map(Vec::len).sum();
+        let mut instances = Vec::with_capacity(instance_count);
+        let mut instance_centers = Vec::with_capacity(instance_count);
         for (batch, mesh_instances) in batches.iter_mut().zip(instance_batches) {
             let first_instance = u32::try_from(instances.len())?;
-            instances.extend(mesh_instances);
+            for (instance, center) in mesh_instances {
+                instances.push(instance);
+                instance_centers.push(center);
+            }
             batch.instance_range = first_instance..u32::try_from(instances.len())?;
         }
 
@@ -213,6 +221,7 @@ impl ModelData {
             vertices,
             indices,
             instances,
+            instance_centers,
             batches,
             materials,
             textures: textures.finish(),
@@ -228,7 +237,7 @@ fn visit_node(
     node: &Node,
     parent_world: Mat4,
     scene_to_gpu: &[Option<usize>],
-    instance_batches: &mut [Vec<Instance>],
+    instance_batches: &mut [Vec<(Instance, Vec3)>],
     bounds: &mut AABB,
 ) {
     let local: Mat4 = node.transformation().into();
@@ -247,15 +256,19 @@ fn visit_node(
             continue;
         };
 
-        instance_batches[gpu_index].push(Instance {
-            model: world.to_cols_array_2d(),
-            normal: normal_matrix.to_cols_array_2d(),
-        });
+        let Some(mesh) = scene.mesh(scene_index) else {
+            continue;
+        };
+        let world_bounds = mesh.aabb().transformed(&world.into());
+        bounds.expand_to_include_aabb(&world_bounds);
 
-        if let Some(mesh) = scene.mesh(scene_index) {
-            let world_bounds = mesh.aabb().transformed(&world.into());
-            bounds.expand_to_include_aabb(&world_bounds);
-        }
+        instance_batches[gpu_index].push((
+            Instance {
+                model: world.to_cols_array_2d(),
+                normal: normal_matrix.to_cols_array_2d(),
+            },
+            Vec3::from(world_bounds.center()),
+        ));
     }
 
     for child in node.children() {
@@ -263,12 +276,16 @@ fn visit_node(
     }
 }
 
+// Rotation that brings the declared up axis (assimp's UpAxis: 0 = X, 1 = Y,
+// 2 = Z) with the given sign (UpAxisSign: +1 or -1) onto +Y
 fn up_axis_conversion(axis: i32, sign: i32) -> Mat4 {
-    match (axis, sign) {
-        // Z-up
-        (2, 1) => Mat4::from_rotation_x(-90f32.to_radians()),
-        // X-up
-        (0, 1) => Mat4::from_rotation_z(90f32.to_radians()),
+    let sign = if sign < 0 { -1.0 } else { 1.0 };
+    let quarter_turn = 90f32.to_radians();
+    match axis {
+        0 => Mat4::from_rotation_z(sign * quarter_turn),
+        2 => Mat4::from_rotation_x(-sign * quarter_turn),
+        // Y, or an unknown axis treated as Y
+        _ if sign < 0.0 => Mat4::from_rotation_x(std::f32::consts::PI),
         _ => Mat4::IDENTITY,
     }
 }
@@ -727,6 +744,25 @@ mod tests {
             assert_eq!(
                 resolve_file_path(dir, r"textures\tex.png"),
                 dir.join("textures/tex.png")
+            );
+        }
+    }
+
+    #[test]
+    fn up_axis_with_sign() {
+        use glam::Vec3;
+        for (axis, sign, declared_up) in [
+            (0, 1, Vec3::X),
+            (0, -1, Vec3::NEG_X),
+            (1, 1, Vec3::Y),
+            (1, -1, Vec3::NEG_Y),
+            (2, 1, Vec3::Z),
+            (2, -1, Vec3::NEG_Z),
+        ] {
+            let up = up_axis_conversion(axis, sign).transform_vector3(declared_up);
+            assert!(
+                up.abs_diff_eq(Vec3::Y, 1e-6),
+                "axis {axis} sign {sign}: {up}"
             );
         }
     }

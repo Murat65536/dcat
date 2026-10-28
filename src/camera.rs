@@ -5,7 +5,6 @@ use glam::{Mat4, Vec3};
 
 const FOV_DEGREES: f32 = 60.0;
 const NEAR_PLANE: f32 = 0.01;
-const FAR_PLANE: f32 = 100.0;
 const MAX_PITCH: f32 = FRAC_PI_2 - 0.01;
 const MIN_ORBIT_DISTANCE: f32 = 0.1;
 // Zoom and pan move further per step the further the camera is from its target
@@ -43,7 +42,10 @@ impl Camera {
     }
 
     pub fn projection_matrix(&self) -> Mat4 {
-        Mat4::perspective_rh(self.fov, self.aspect, NEAR_PLANE, FAR_PLANE)
+        // Reversed depth (1 at the near plane, approaching 0 with distance)
+        // keeps precision far away, and with no far plane nothing is clipped
+        // however far the camera moves
+        Mat4::perspective_infinite_reverse_rh(self.fov, self.aspect, NEAR_PLANE)
     }
 
     // Unit vector the camera looks along, from its yaw and pitch
@@ -192,6 +194,29 @@ mod tests {
 
     fn camera() -> Camera {
         Camera::new(Vec3::new(1.0, 2.0, 3.0), Vec3::ZERO, 80, 48)
+    }
+
+    // Depth of a point `distance` ahead of a camera at the origin
+    fn depth_at(camera: &Camera, distance: f32) -> f32 {
+        let clip = camera.projection_matrix()
+            * camera.view_matrix()
+            * glam::Vec4::new(0.0, 0.0, -distance, 1.0);
+        assert!(clip.w > 0.0);
+        clip.z / clip.w
+    }
+
+    #[test]
+    fn depth_is_reversed_and_never_clipped() {
+        let camera = Camera::new(Vec3::ZERO, Vec3::NEG_Z, 80, 48);
+        assert!((depth_at(&camera, NEAR_PLANE) - 1.0).abs() < 1e-6);
+
+        // Farther points get smaller depth, and none leave the 0..1 range
+        let mut previous = 1.0;
+        for distance in [1.0, 50.0, 150.0, 1000.0, 1e5] {
+            let depth = depth_at(&camera, distance);
+            assert!(depth < previous && depth > 0.0, "{distance}: {depth}");
+            previous = depth;
+        }
     }
 
     #[test]
