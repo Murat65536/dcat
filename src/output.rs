@@ -10,7 +10,7 @@ use flate2::{Compression, write::ZlibEncoder};
 
 use crate::cli::OutputMode;
 
-// A rendered frame of tightly packed RGB pixels
+// A rendered frame of tightly packed RGBA pixels
 #[derive(Clone, Copy)]
 pub struct Frame<'a> {
     pub width: u32,
@@ -19,8 +19,9 @@ pub struct Frame<'a> {
 }
 
 impl Frame<'_> {
+    // Color of one pixel, ignoring alpha
     fn pixel(&self, x: usize, y: usize) -> [u8; 3] {
-        let start = (y * self.width as usize + x) * 3;
+        let start = (y * self.width as usize + x) * 4;
         [
             self.pixels[start],
             self.pixels[start + 1],
@@ -32,11 +33,11 @@ impl Frame<'_> {
     pub fn cropped(&self, width: u32, height: u32) -> Vec<u8> {
         let width = width.min(self.width) as usize;
         let height = height.min(self.height) as usize;
-        let row_bytes = self.width as usize * 3;
+        let row_bytes = self.width as usize * 4;
         self.pixels
             .chunks_exact(row_bytes)
             .take(height)
-            .flat_map(|row| &row[..width * 3])
+            .flat_map(|row| &row[..width * 4])
             .copied()
             .collect()
     }
@@ -210,7 +211,7 @@ pub fn nearest_palette_index([r, g, b]: [u8; 3]) -> u8 {
 // Escape sequences are limited to this many bytes of base64 payload each
 const KITTY_CHUNK_SIZE: usize = 4096;
 
-// Kitty graphics protocol: compressed RGB, replacing the previous frame's
+// Kitty graphics protocol: compressed RGBA, replacing the previous frame's
 // image and placement so they don't pile up. The cursor isn't moved, so a
 // full-height image can't scroll the screen.
 pub fn encode_kitty(frame: Frame, out: &mut Vec<u8>) -> io::Result<()> {
@@ -224,7 +225,7 @@ pub fn encode_kitty(frame: Frame, out: &mut Vec<u8>) -> io::Result<()> {
         if index == 0 {
             write!(
                 out,
-                "\x1b_Ga=T,f=24,o=z,s={},v={},i=1,p=1,q=2,C=1,m={more};",
+                "\x1b_Ga=T,f=32,o=z,s={},v={},i=1,p=1,q=2,C=1,m={more};",
                 frame.width, frame.height
             )?;
         } else {
@@ -278,9 +279,9 @@ fn sixel_quantize(frame: Frame) -> Vec<u8> {
 
     let width = frame.width as usize;
     let mut indices = Vec::with_capacity(width * frame.height as usize);
-    for (y, row) in frame.pixels.chunks_exact(width * 3).enumerate() {
+    for (y, row) in frame.pixels.chunks_exact(width * 4).enumerate() {
         let thresholds = &BAYER_4X4[y % 4];
-        for (x, [r, g, b]) in row.as_chunks::<3>().0.iter().enumerate() {
+        for (x, [r, g, b, _]) in row.as_chunks::<4>().0.iter().enumerate() {
             let t = thresholds[x % 4] as usize;
             let index = usize::from(r_table[t][*r as usize]) * g_levels * b_levels
                 + usize::from(g_table[t][*g as usize]) * b_levels
@@ -427,9 +428,13 @@ mod tests {
         assert_eq!(nearest_palette_index([95, 135, 175]), 16 + 36 + 2 * 6 + 3);
     }
 
+    // Opaque RGBA pixels from RGB colors
     fn frame_from(width: u32, height: u32, pixels: &[[u8; 3]]) -> Vec<u8> {
         assert_eq!(pixels.len(), (width * height) as usize);
-        pixels.concat()
+        pixels
+            .iter()
+            .flat_map(|&[r, g, b]| [r, g, b, 255])
+            .collect()
     }
 
     #[test]
@@ -451,7 +456,7 @@ mod tests {
 
     #[test]
     fn half_blocks_clip_and_handle_odd_height() {
-        let pixels = vec![200; 4 * 3 * 3];
+        let pixels = vec![200; 4 * 3 * 4];
         let frame = Frame {
             width: 4,
             height: 3,
@@ -487,13 +492,13 @@ mod tests {
 
     #[test]
     fn crop() {
-        let pixels: Vec<u8> = (0..4 * 2 * 3).map(|v| v as u8).collect();
+        let pixels: Vec<u8> = (0..4 * 2 * 4).map(|v| v as u8).collect();
         let frame = Frame {
             width: 4,
             height: 2,
             pixels: &pixels,
         };
-        assert_eq!(frame.cropped(2, 1), vec![0, 1, 2, 3, 4, 5]);
+        assert_eq!(frame.cropped(2, 1), (0..8).collect::<Vec<u8>>());
         assert_eq!(frame.cropped(10, 10), pixels);
     }
 
@@ -501,7 +506,7 @@ mod tests {
     fn kitty_round_trip() {
         // Noise doesn't compress, so this needs several chunks
         let mut state = 0x2545_f491_u32;
-        let pixels: Vec<u8> = (0..200 * 150 * 3)
+        let pixels: Vec<u8> = (0..200 * 150 * 4)
             .map(|_| {
                 state ^= state << 13;
                 state ^= state >> 17;
@@ -524,7 +529,7 @@ mod tests {
             .map(|c| c.strip_prefix("\x1b_G").unwrap())
             .collect();
         assert!(commands.len() > 1);
-        assert!(commands[0].starts_with("a=T,f=24,o=z,s=200,v=150,"));
+        assert!(commands[0].starts_with("a=T,f=32,o=z,s=200,v=150,"));
 
         let mut payload = String::new();
         for (index, command) in commands.iter().enumerate() {
@@ -615,7 +620,7 @@ mod tests {
         let pixels: Vec<u8> = (0..width * height)
             .flat_map(|i| {
                 let (x, y) = (i % width, i / width);
-                [(x * 7) as u8, (y * 17) as u8, 128]
+                [(x * 7) as u8, (y * 17) as u8, 128, 255]
             })
             .collect();
         let frame = Frame {
@@ -637,7 +642,7 @@ mod tests {
     #[test]
     fn sixel_quantization_is_close() {
         // Flat colors exactly on the palette survive dithering unchanged
-        let pixels = [0, 0, 0, 255, 255, 255, 255, 0, 0];
+        let pixels = [0, 0, 0, 255, 255, 255, 255, 255, 255, 0, 0, 255];
         let frame = Frame {
             width: 3,
             height: 1,
@@ -664,6 +669,49 @@ mod bench {
 
     #[test]
     #[ignore = "timing only; run with --release --ignored"]
+    fn kitty_encode_time() {
+        for (width, height) in [(1200u32, 800u32), (1920, 1080), (2560, 1440), (3840, 2160)] {
+            // A rendered-looking frame: flat background with a smooth blob
+            let pixels: Vec<u8> = (0..width * height)
+                .flat_map(|i| {
+                    let (x, y) = (
+                        (i % width) as f32 / width as f32,
+                        (i / width) as f32 / height as f32,
+                    );
+                    let d = ((x - 0.5).powi(2) + (y - 0.5).powi(2)).sqrt();
+                    if d < 0.3 {
+                        [
+                            (200.0 * (1.0 - d)) as u8,
+                            (180.0 * y) as u8,
+                            (150.0 * x) as u8,
+                            255,
+                        ]
+                    } else {
+                        [0, 0, 0, 255]
+                    }
+                })
+                .collect();
+            let frame = Frame {
+                width,
+                height,
+                pixels: &pixels,
+            };
+            let mut out = Vec::new();
+            let start = std::time::Instant::now();
+            for _ in 0..5 {
+                out.clear();
+                encode_kitty(frame, &mut out).unwrap();
+            }
+            eprintln!(
+                "kitty {width}x{height}: {:?} per frame, {} KB",
+                start.elapsed() / 5,
+                out.len() / 1024
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "timing only; run with --release --ignored"]
     fn sixel_encode_time() {
         // A real frame if one is given (binary PPM), otherwise a synthetic gradient
         let (width, height, pixels) = match std::env::var("DCAT_BENCH_PPM") {
@@ -672,12 +720,19 @@ mod bench {
                 let header: Vec<&[u8]> = data.splitn(5, |b| b.is_ascii_whitespace()).collect();
                 let parse = |b: &[u8]| std::str::from_utf8(b).unwrap().parse::<u32>().unwrap();
                 let (w, h) = (parse(header[1]), parse(header[2]));
-                (w, h, data[data.len() - (w * h * 3) as usize..].to_vec())
+                let rgb = &data[data.len() - (w * h * 3) as usize..];
+                let rgba: Vec<u8> = rgb
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
+                    .flat_map(|&[r, g, b]| [r, g, b, 255])
+                    .collect();
+                (w, h, rgba)
             }
             Err(_) => (
                 1200,
                 780,
-                (0..1200 * 780 * 3).map(|i| (i % 200) as u8).collect(),
+                (0..1200 * 780 * 4).map(|i| (i % 200) as u8).collect(),
             ),
         };
         let frame = Frame {

@@ -227,8 +227,13 @@ impl Renderer {
         self.wireframe = !self.wireframe && self.wireframe_pipeline.is_some();
     }
 
-    // Render a frame and read it back as RGB
-    pub fn render(&self, params: &FrameParams) -> Result<Vec<u8>, Box<dyn Error>> {
+    // Render a frame and read it back into `pixels` as tightly packed RGBA,
+    // reusing the buffer's allocation
+    pub fn render_into(
+        &self,
+        params: &FrameParams,
+        pixels: &mut Vec<u8>,
+    ) -> Result<(), Box<dyn Error>> {
         let targets = &self.targets;
         let uniforms = FrameUniforms::new(params, !self.model.has_uvs());
         self.queue
@@ -299,17 +304,18 @@ impl Renderer {
         buffer_slice.map_async(MapMode::Read, move |r| sender.send(r).unwrap());
         self.device.poll(PollType::wait_indefinitely())?;
         receiver.recv()??;
-        let out = buffer_slice.get_mapped_range()?.to_vec();
-        targets.output_staging_buffer.unmap();
-        let rgba_row_bytes = targets.width as usize * 4;
-        let padded_row_bytes = targets.padded_bytes_per_row as usize;
-        let mut pixels = Vec::with_capacity(targets.width as usize * targets.height as usize * 3);
-        for row in out.chunks_exact(padded_row_bytes) {
-            for rgba in row[..rgba_row_bytes].as_chunks::<4>().0 {
-                pixels.extend_from_slice(&rgba[..3]);
+        {
+            // Rows are padded to the copy alignment; keep only the pixels
+            let mapped = buffer_slice.get_mapped_range()?;
+            let row_bytes = targets.width as usize * 4;
+            pixels.clear();
+            pixels.reserve(row_bytes * targets.height as usize);
+            for row in mapped.chunks_exact(targets.padded_bytes_per_row as usize) {
+                pixels.extend_from_slice(&row[..row_bytes]);
             }
         }
-        Ok(pixels)
+        targets.output_staging_buffer.unmap();
+        Ok(())
     }
 }
 

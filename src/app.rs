@@ -1,6 +1,11 @@
 use std::{
     error::Error,
     f32::consts::PI,
+    io,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -16,7 +21,7 @@ use crate::{
     cli::{Args, OutputMode},
     input::{HeldKey, HeldKeys},
     model::{ModelData, TextureOverrides},
-    output::{self, Frame},
+    output,
     renderer::{FrameParams, Renderer},
     terminal::{self, Terminal},
 };
@@ -33,6 +38,33 @@ const LOOK_SPEED: f32 = 2.0;
 const PRECISE_FACTOR: f32 = 0.25;
 // Mouse panning relative to mouse orbit sensitivity
 const PAN_FACTOR: f32 = 0.2;
+// Waiting for input can wake up a millisecond or two late, so the end of each
+// frame's wait is spent spinning instead
+const SPIN_MARGIN: Duration = Duration::from_millis(2);
+
+// Signals that ask dcat to quit. In raw mode Ctrl+C arrives as a key press
+// instead, but these still come from `kill` or a closed terminal.
+#[cfg(unix)]
+const QUIT_SIGNALS: [i32; 3] = [
+    signal_hook::consts::SIGINT,
+    signal_hook::consts::SIGTERM,
+    signal_hook::consts::SIGHUP,
+];
+#[cfg(not(unix))]
+const QUIT_SIGNALS: [i32; 2] = [signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM];
+
+// Quit gracefully on the first quit signal, so the terminal is restored, and
+// immediately on a second one in case shutdown hangs
+fn register_quit_signals() -> io::Result<Arc<AtomicBool>> {
+    let flag = Arc::new(AtomicBool::new(false));
+    for signal in QUIT_SIGNALS {
+        // The shutdown check must be registered first, so the first signal
+        // only sets the flag
+        signal_hook::flag::register_conditional_shutdown(signal, 1, Arc::clone(&flag))?;
+        signal_hook::flag::register(signal, Arc::clone(&flag))?;
+    }
+    Ok(flag)
+}
 
 pub struct App {
     args: Args,
@@ -44,6 +76,7 @@ pub struct App {
     frame_time: Duration,
     resize_pending: bool,
     should_quit: bool,
+    quit_signal: Arc<AtomicBool>,
 
     camera: Camera,
     base_model_matrix: Mat4,
@@ -80,6 +113,7 @@ impl App {
         let camera_position = framing.camera_position(args.model_scale, args.camera_distance);
         let camera = Camera::new(camera_position, Vec3::ZERO, width, height);
 
+        let quit_signal = register_quit_signals()?;
         let terminal = Terminal::new(output_mode, args.mouse_orbit, args.keyboard_controls)?;
         let held_keys = HeldKeys::new(terminal.reports_key_releases());
 
@@ -93,6 +127,7 @@ impl App {
             height,
             resize_pending: false,
             should_quit: false,
+            quit_signal,
             camera,
             base_model_matrix,
             spin_angle: 0.0,
@@ -102,10 +137,15 @@ impl App {
         })
     }
 
+    fn quit_requested(&self) -> bool {
+        self.should_quit || self.quit_signal.load(Ordering::Relaxed)
+    }
+
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
         let mut last_frame = Instant::now();
+        let mut next_frame = last_frame;
 
-        while !self.should_quit {
+        while !self.quit_requested() {
             let frame_start = Instant::now();
             let delta_time = (frame_start - last_frame).as_secs_f32();
             last_frame = frame_start;
@@ -120,32 +160,44 @@ impl App {
                 self.spin_angle += self.args.spin * delta_time;
             }
 
-            let pixels = self.renderer.render(&FrameParams {
-                view_projection: self.camera.projection_matrix() * self.camera.view_matrix(),
-                model: Mat4::from_rotation_y(self.spin_angle) * self.base_model_matrix,
-                camera_position: self.camera.position,
-                // Light the model from the camera
-                light_direction: -self.camera.forward(),
-                lighting: !self.args.no_lighting,
-            })?;
+            let mut pixels = self.terminal.take_buffer();
+            self.renderer.render_into(
+                &FrameParams {
+                    view_projection: self.camera.projection_matrix() * self.camera.view_matrix(),
+                    model: Mat4::from_rotation_y(self.spin_angle) * self.base_model_matrix,
+                    camera_position: self.camera.position,
+                    // Light the model from the camera
+                    light_direction: -self.camera.forward(),
+                    lighting: !self.args.no_lighting,
+                },
+                &mut pixels,
+            )?;
 
+            // Encoding and writing happen on the terminal's writer thread
+            // while the next frame renders
             let status = self.args.status_bar.then(|| self.status_line(delta_time));
-            let frame = Frame {
-                width: self.width,
-                height: self.height,
-                pixels: &pixels,
-            };
-            self.terminal.draw(frame, status.as_deref())?;
+            self.terminal
+                .draw(pixels, self.width, self.height, status)?;
 
-            self.handle_events_until(frame_start + self.frame_time)?;
+            // Keep to a fixed schedule so small overshoots don't add up. After
+            // a frame that ran long, start a new schedule instead of rushing
+            // to catch up.
+            next_frame += self.frame_time;
+            let now = Instant::now();
+            if next_frame < now {
+                next_frame = now;
+            }
+            self.handle_events_until(next_frame)?;
         }
         Ok(())
     }
 
     // Process input until the next frame is due
     fn handle_events_until(&mut self, deadline: Instant) -> Result<(), Box<dyn Error>> {
-        while !self.should_quit {
-            let timeout = deadline.saturating_duration_since(Instant::now());
+        while !self.quit_requested() {
+            let timeout = deadline
+                .saturating_duration_since(Instant::now())
+                .saturating_sub(SPIN_MARGIN);
             if !event::poll(timeout)? {
                 break;
             }
@@ -156,6 +208,7 @@ impl App {
                 _ => {}
             }
         }
+        spin_sleep::sleep_until(deadline);
         Ok(())
     }
 
