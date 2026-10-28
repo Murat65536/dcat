@@ -235,76 +235,83 @@ impl Renderer {
         pixels: &mut Vec<u8>,
     ) -> Result<(), Box<dyn Error>> {
         let targets = &self.targets;
-        let uniforms = FrameUniforms::new(params, !self.model.has_uvs());
-        self.queue
-            .write_buffer(&self.frame_buffer, 0, bytemuck::bytes_of(&uniforms));
-
-        let opaque_pipeline = match (&self.wireframe_pipeline, self.wireframe) {
-            (Some(wireframe), true) => wireframe,
-            _ => &self.opaque_pipeline,
-        };
-
-        let mut command_encoder = self
-            .device
-            .create_command_encoder(&CommandEncoderDescriptor::default());
         {
-            let mut render_pass = command_encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(RenderPassColorAttachment {
-                    view: &targets.render_texture_view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: Operations {
-                        load: LoadOp::Clear(Color::BLACK),
-                        store: StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                    view: &targets.depth_texture_view,
-                    depth_ops: Some(Operations {
-                        load: LoadOp::Clear(1.0),
-                        store: StoreOp::Discard,
+            profiling::scope!("GPU submit");
+            let uniforms = FrameUniforms::new(params, !self.model.has_uvs());
+            self.queue
+                .write_buffer(&self.frame_buffer, 0, bytemuck::bytes_of(&uniforms));
+
+            let opaque_pipeline = match (&self.wireframe_pipeline, self.wireframe) {
+                (Some(wireframe), true) => wireframe,
+                _ => &self.opaque_pipeline,
+            };
+
+            let mut command_encoder = self
+                .device
+                .create_command_encoder(&CommandEncoderDescriptor::default());
+            {
+                let mut render_pass = command_encoder.begin_render_pass(&RenderPassDescriptor {
+                    label: Some("Render Pass"),
+                    color_attachments: &[Some(RenderPassColorAttachment {
+                        view: &targets.render_texture_view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: Operations {
+                            load: LoadOp::Clear(Color::BLACK),
+                            store: StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                        view: &targets.depth_texture_view,
+                        depth_ops: Some(Operations {
+                            load: LoadOp::Clear(1.0),
+                            store: StoreOp::Discard,
+                        }),
+                        stencil_ops: None,
                     }),
-                    stencil_ops: None,
-                }),
-                occlusion_query_set: None,
-                timestamp_writes: None,
-                multiview_mask: None,
-            });
-            render_pass.set_bind_group(0, &self.frame_bind_group, &[]);
-            self.model
-                .draw(&mut render_pass, opaque_pipeline, &self.blend_pipeline);
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                    multiview_mask: None,
+                });
+                render_pass.set_bind_group(0, &self.frame_bind_group, &[]);
+                self.model
+                    .draw(&mut render_pass, opaque_pipeline, &self.blend_pipeline);
+            }
+
+            command_encoder.copy_texture_to_buffer(
+                TexelCopyTextureInfo {
+                    texture: &targets.render_texture,
+                    mip_level: 0,
+                    origin: Origin3d::ZERO,
+                    aspect: TextureAspect::All,
+                },
+                TexelCopyBufferInfo {
+                    buffer: &targets.output_staging_buffer,
+                    layout: TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(targets.padded_bytes_per_row),
+                        rows_per_image: Some(targets.height),
+                    },
+                },
+                Extent3d {
+                    width: targets.width,
+                    height: targets.height,
+                    depth_or_array_layers: 1,
+                },
+            );
+            self.queue.submit(Some(command_encoder.finish()));
         }
 
-        command_encoder.copy_texture_to_buffer(
-            TexelCopyTextureInfo {
-                texture: &targets.render_texture,
-                mip_level: 0,
-                origin: Origin3d::ZERO,
-                aspect: TextureAspect::All,
-            },
-            TexelCopyBufferInfo {
-                buffer: &targets.output_staging_buffer,
-                layout: TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(targets.padded_bytes_per_row),
-                    rows_per_image: Some(targets.height),
-                },
-            },
-            Extent3d {
-                width: targets.width,
-                height: targets.height,
-                depth_or_array_layers: 1,
-            },
-        );
-        self.queue.submit(Some(command_encoder.finish()));
-
         let buffer_slice = targets.output_staging_buffer.slice(..);
-        let (sender, receiver) = channel();
-        buffer_slice.map_async(MapMode::Read, move |r| sender.send(r).unwrap());
-        self.device.poll(PollType::wait_indefinitely())?;
-        receiver.recv()??;
         {
+            profiling::scope!("GPU wait");
+            let (sender, receiver) = channel();
+            buffer_slice.map_async(MapMode::Read, move |r| sender.send(r).unwrap());
+            self.device.poll(PollType::wait_indefinitely())?;
+            receiver.recv()??;
+        }
+        {
+            profiling::scope!("Readback copy");
             // Rows are padded to the copy alignment; keep only the pixels
             let mapped = buffer_slice.get_mapped_range()?;
             let row_bytes = targets.width as usize * 4;

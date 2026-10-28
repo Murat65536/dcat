@@ -24,6 +24,7 @@ use std::{
 use crate::{
     cli::{Args, OutputMode},
     output::{self, ColorDepth, Frame},
+    profile,
 };
 
 // Source pixels covered by one character cell in the half-block modes
@@ -116,36 +117,43 @@ impl FrameWriter {
         let thread = thread::Builder::new()
             .name("frame writer".into())
             .spawn(move || {
+                profiling::register_thread!();
                 let mut buffer = Vec::new();
                 for job in job_receiver {
                     buffer.clear();
-                    match job {
-                        WriterJob::Clear => queue!(buffer, Clear(ClearType::All))?,
-                        WriterJob::Frame {
-                            pixels,
-                            width,
-                            height,
-                            status,
-                            size,
-                            cell_pixels,
-                        } => {
-                            let frame = Frame {
+                    {
+                        profiling::scope!("Encode");
+                        match job {
+                            WriterJob::Clear => queue!(buffer, Clear(ClearType::All))?,
+                            WriterJob::Frame {
+                                pixels,
                                 width,
                                 height,
-                                pixels: &pixels,
-                            };
-                            compose_frame(
-                                mode,
-                                cell_pixels,
-                                frame,
-                                status.as_deref(),
+                                status,
                                 size,
-                                &mut buffer,
-                            )?;
-                            // Fails only if the terminal is being dropped
-                            let _ = recycle.send(pixels);
+                                cell_pixels,
+                            } => {
+                                let frame = Frame {
+                                    width,
+                                    height,
+                                    pixels: &pixels,
+                                };
+                                compose_frame(
+                                    mode,
+                                    cell_pixels,
+                                    frame,
+                                    status.as_deref(),
+                                    size,
+                                    &mut buffer,
+                                )?;
+                                // Fails only if the terminal is being dropped
+                                let _ = recycle.send(pixels);
+                            }
                         }
                     }
+                    profile::plot!("Output bytes", buffer.len());
+
+                    profiling::scope!("Write");
                     let mut stdout = stdout().lock();
                     stdout.write_all(&buffer)?;
                     stdout.flush()?;

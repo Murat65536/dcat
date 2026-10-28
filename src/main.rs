@@ -14,12 +14,15 @@ pub mod gpu_model;
 pub mod input;
 pub mod model;
 pub mod output;
+pub mod profile;
 pub mod renderer;
 pub mod terminal;
 pub mod texture;
 
 fn main() -> ExitCode {
     let args = Args::parse();
+    profile::start();
+    profiling::register_thread!();
 
     if args.controls {
         print!("{CONTROLS}");

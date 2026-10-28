@@ -21,7 +21,7 @@ use crate::{
     cli::{Args, OutputMode},
     input::{HeldKey, HeldKeys},
     model::{ModelData, TextureOverrides},
-    output,
+    output, profile,
     renderer::{FrameParams, Renderer},
     terminal::{self, Terminal},
 };
@@ -99,14 +99,20 @@ impl App {
 
         // Load everything before taking over the terminal so errors and
         // warnings print normally
-        let model = ModelData::load(
-            model_path,
-            TextureOverrides {
-                diffuse: args.texture.as_deref(),
-                normal: args.normal_map.as_deref(),
-            },
-        )?;
-        let renderer = block_on(Renderer::new(&model, width, height))?;
+        let model = {
+            profiling::scope!("Load model");
+            ModelData::load(
+                model_path,
+                TextureOverrides {
+                    diffuse: args.texture.as_deref(),
+                    normal: args.normal_map.as_deref(),
+                },
+            )?
+        };
+        let renderer = {
+            profiling::scope!("Create renderer");
+            block_on(Renderer::new(&model, width, height))?
+        };
 
         let framing = Framing::from_bounds(&model.bounds);
         let base_model_matrix = framing.model_matrix(model.coordinate_system, args.model_scale);
@@ -146,38 +152,52 @@ impl App {
         let mut next_frame = last_frame;
 
         while !self.quit_requested() {
+            profiling::scope!("Frame");
             let frame_start = Instant::now();
             let delta_time = (frame_start - last_frame).as_secs_f32();
             last_frame = frame_start;
 
-            if self.resize_pending {
-                self.resize()?;
-            }
+            {
+                profiling::scope!("Update");
+                if self.resize_pending {
+                    self.resize()?;
+                }
 
-            if self.args.keyboard_controls {
-                self.apply_held_keys(delta_time, frame_start);
-            } else {
-                self.spin_angle += self.args.spin * delta_time;
+                if self.args.keyboard_controls {
+                    self.apply_held_keys(delta_time, frame_start);
+                } else {
+                    self.spin_angle += self.args.spin * delta_time;
+                }
             }
 
             let mut pixels = self.terminal.take_buffer();
-            self.renderer.render_into(
-                &FrameParams {
-                    view_projection: self.camera.projection_matrix() * self.camera.view_matrix(),
-                    model: Mat4::from_rotation_y(self.spin_angle) * self.base_model_matrix,
-                    camera_position: self.camera.position,
-                    // Light the model from the camera
-                    light_direction: -self.camera.forward(),
-                    lighting: !self.args.no_lighting,
-                },
-                &mut pixels,
-            )?;
+            {
+                profiling::scope!("Render");
+                self.renderer.render_into(
+                    &FrameParams {
+                        view_projection: self.camera.projection_matrix()
+                            * self.camera.view_matrix(),
+                        model: Mat4::from_rotation_y(self.spin_angle) * self.base_model_matrix,
+                        camera_position: self.camera.position,
+                        // Light the model from the camera
+                        light_direction: -self.camera.forward(),
+                        lighting: !self.args.no_lighting,
+                    },
+                    &mut pixels,
+                )?;
+            }
 
             // Encoding and writing happen on the terminal's writer thread
             // while the next frame renders
             let status = self.args.status_bar.then(|| self.status_line(delta_time));
-            self.terminal
-                .draw(pixels, self.width, self.height, status)?;
+            {
+                // Waits here while the writer is still busy with the previous frame
+                profiling::scope!("Queue frame");
+                self.terminal
+                    .draw(pixels, self.width, self.height, status)?;
+            }
+            profile::plot!("FPS", fps(delta_time));
+            profile::plot!("Framebuffer pixels", self.width * self.height);
 
             // Keep to a fixed schedule so small overshoots don't add up. After
             // a frame that ran long, start a new schedule instead of rushing
@@ -187,7 +207,11 @@ impl App {
             if next_frame < now {
                 next_frame = now;
             }
-            self.handle_events_until(next_frame)?;
+            {
+                profiling::scope!("Frame pacing");
+                self.handle_events_until(next_frame)?;
+            }
+            profiling::finish_frame!();
         }
         Ok(())
     }
@@ -325,15 +349,22 @@ impl App {
     }
 
     fn status_line(&self, delta_time: f32) -> String {
-        let fps = if delta_time > 0.0 {
-            1.0 / delta_time
-        } else {
-            0.0
-        };
         let position = self.camera.position;
         format!(
-            " FPS: {fps:.1} | SPEED: {:.2} | POS: {:.2}, {:.2}, {:.2} ",
-            self.move_speed, position.x, position.y, position.z
+            " FPS: {:.1} | SPEED: {:.2} | POS: {:.2}, {:.2}, {:.2} ",
+            fps(delta_time),
+            self.move_speed,
+            position.x,
+            position.y,
+            position.z
         )
+    }
+}
+
+fn fps(delta_time: f32) -> f32 {
+    if delta_time > 0.0 {
+        1.0 / delta_time
+    } else {
+        0.0
     }
 }
