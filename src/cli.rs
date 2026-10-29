@@ -42,10 +42,6 @@ pub struct Args {
     #[arg(short, long, value_name = "PATH")]
     pub normal_map: Option<PathBuf>,
 
-    /// Path to the skydome texture file
-    #[arg(long, value_name = "PATH")]
-    pub skydome: Option<PathBuf>,
-
     /// Renderer width in pixels
     #[arg(short = 'W', long, requires = "height", value_parser = value_parser!(u32).range(1..=65535), allow_negative_numbers = true)]
     pub width: Option<u32>,
@@ -202,8 +198,6 @@ mod tests {
             "tex.png",
             "-n",
             "normal.png",
-            "--skydome",
-            "sky.png",
             "-W",
             "320",
             "-H",
@@ -227,7 +221,6 @@ mod tests {
         .unwrap();
         assert_eq!(args.texture, Some(PathBuf::from("tex.png")));
         assert_eq!(args.normal_map, Some(PathBuf::from("normal.png")));
-        assert_eq!(args.skydome, Some(PathBuf::from("sky.png")));
         assert_eq!((args.width, args.height), (Some(320), Some(240)));
         assert_eq!(args.camera_distance, Some(4.5));
         assert_eq!(args.model_scale, 2.0);
