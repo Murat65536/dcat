@@ -27,8 +27,8 @@ use crate::{
     profile,
 };
 
-// Source pixels covered by one character cell in the half-block modes
-const CHARACTER_CELL_PIXELS: (u32, u32) = (1, 2);
+// Source pixels covered by one character cell in the character modes
+const CHARACTER_CELL_PIXELS: (u32, u32) = (output::CELL_COLUMNS as u32, output::CELL_ROWS as u32);
 // Assumed cell size when the terminal doesn't report its size in pixels
 const FALLBACK_CELL_PIXELS: (u32, u32) = (10, 20);
 
@@ -305,10 +305,10 @@ fn compose_frame(
 
     match mode {
         OutputMode::TruecolorCharacters => {
-            output::encode_half_blocks(frame, cols_used, rows_used, ColorDepth::Truecolor, out)?;
+            output::encode_symbols(frame, cols_used, rows_used, ColorDepth::Truecolor, out)?;
         }
         OutputMode::PaletteCharacters => {
-            output::encode_half_blocks(frame, cols_used, rows_used, ColorDepth::Palette, out)?;
+            output::encode_symbols(frame, cols_used, rows_used, ColorDepth::Palette, out)?;
         }
         OutputMode::BlockCharacters => {
             output::encode_mono_blocks(frame, cols_used, rows_used, out)?;
@@ -388,10 +388,12 @@ impl Drop for Terminal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use output::{CELL_COLUMNS, CELL_ROWS};
     use std::num::NonZeroU16;
     use vt100::Color as Vt;
 
-    const CELL_PIXELS: (u32, u32) = (10, 20);
+    const PIXEL_CELL_SIZE: (u32, u32) = (10, 20);
+    const SHAPES: &str = "▘▝▖▗▀▄▌▐▚▞▛▜▙▟▂▆";
 
     // Feed a composed frame through a terminal emulator of the given size
     fn screen(
@@ -401,7 +403,7 @@ mod tests {
         (cols, rows): (u16, u16),
     ) -> vt100::Parser {
         let mut out = Vec::new();
-        compose_frame(mode, CELL_PIXELS, frame, status, (cols, rows), &mut out).unwrap();
+        compose_frame(mode, PIXEL_CELL_SIZE, frame, status, (cols, rows), &mut out).unwrap();
         let mut parser = vt100::Parser::new(
             NonZeroU16::new(rows).unwrap(),
             NonZeroU16::new(cols).unwrap(),
@@ -411,16 +413,57 @@ mod tests {
         parser
     }
 
-    // A different color for every pixel, so misplaced pixels show up
-    fn gradient(width: u32, height: u32) -> Vec<u8> {
-        (0..height)
-            .flat_map(|y| (0..width).flat_map(move |x| [(x * 20) as u8, (y * 20) as u8, 100, 255]))
+    // RGBA pixels covering `cols` by `rows` cells. Each cell has two colors
+    // laid out as a different block shape, so every cell can be shown exactly.
+    fn shaped_frame(cols: usize, rows: usize) -> (u32, u32, Vec<u8>) {
+        let (width, height) = (cols * CELL_COLUMNS, rows * CELL_ROWS);
+        let shapes: Vec<char> = SHAPES.chars().collect();
+        let mut pixels = vec![255; width * height * 4];
+        for y in 0..height {
+            for x in 0..width {
+                let (col, row) = (x / CELL_COLUMNS, y / CELL_ROWS);
+                let shape = shapes[(row * cols + col) % shapes.len()];
+                let mask = output::symbol_mask(shape).unwrap();
+                let bit = (y % CELL_ROWS) * CELL_COLUMNS + x % CELL_COLUMNS;
+                let color = if mask & (1 << bit) != 0 {
+                    [(col * 30) as u8, (row * 40) as u8, 200]
+                } else {
+                    [255 - (col * 30) as u8, 100, (row * 20) as u8]
+                };
+                let start = (y * width + x) * 4;
+                pixels[start..start + 3].copy_from_slice(&color);
+            }
+        }
+        (width as u32, height as u32, pixels)
+    }
+
+    // The source pixels of one cell
+    fn source_cell(pixels: &[u8], width: u32, col: u16, row: u16) -> Vec<[u8; 3]> {
+        (0..CELL_ROWS)
+            .flat_map(|dy| (0..CELL_COLUMNS).map(move |dx| (dx, dy)))
+            .map(|(dx, dy)| {
+                let x = usize::from(col) * CELL_COLUMNS + dx;
+                let y = usize::from(row) * CELL_ROWS + dy;
+                let start = (y * width as usize + x) * 4;
+                [pixels[start], pixels[start + 1], pixels[start + 2]]
+            })
             .collect()
     }
 
-    fn pixel(pixels: &[u8], width: u32, x: u16, y: u16) -> [u8; 3] {
-        let start = (usize::from(y) * width as usize + usize::from(x)) * 4;
-        [pixels[start], pixels[start + 1], pixels[start + 2]]
+    // The pixels a terminal cell shows, as the colors of its two regions
+    fn shown_cell(parser: &vt100::Parser, col: u16, row: u16) -> Vec<Vt> {
+        let cell = parser.screen().cell(row, col).unwrap();
+        let symbol = cell.contents().chars().next().unwrap_or(' ');
+        let mask = output::symbol_mask(symbol).unwrap_or_else(|| panic!("{symbol:?}"));
+        (0..CELL_ROWS * CELL_COLUMNS)
+            .map(|bit| {
+                if mask & (1 << bit) != 0 {
+                    cell.fgcolor()
+                } else {
+                    cell.bgcolor()
+                }
+            })
+            .collect()
     }
 
     fn rgb([r, g, b]: [u8; 3]) -> Vt {
@@ -434,51 +477,57 @@ mod tests {
     }
 
     #[test]
-    fn truecolor_cells_hold_two_pixels() {
-        let pixels = gradient(4, 6);
+    fn truecolor_cells_reproduce_every_pixel() {
+        let (width, height, pixels) = shaped_frame(4, 4);
         let frame = Frame {
-            width: 4,
-            height: 6,
+            width,
+            height,
             pixels: &pixels,
         };
-        let parser = screen(OutputMode::TruecolorCharacters, frame, None, (4, 3));
+        let parser = screen(OutputMode::TruecolorCharacters, frame, None, (4, 4));
 
-        for row in 0..3 {
+        for row in 0..4 {
             for col in 0..4 {
-                let cell = parser.screen().cell(row, col).unwrap();
-                assert_eq!(cell.contents(), "▀", "({row}, {col})");
-                assert_eq!(cell.fgcolor(), rgb(pixel(&pixels, 4, col, row * 2)));
-                assert_eq!(cell.bgcolor(), rgb(pixel(&pixels, 4, col, row * 2 + 1)));
+                let expected: Vec<Vt> = source_cell(&pixels, width, col, row)
+                    .into_iter()
+                    .map(rgb)
+                    .collect();
+                assert_eq!(shown_cell(&parser, col, row), expected, "({col}, {row})");
             }
         }
     }
 
     #[test]
     fn palette_cells_use_palette_colors() {
-        let pixels = gradient(3, 2);
+        let (width, height, pixels) = shaped_frame(3, 2);
         let frame = Frame {
-            width: 3,
-            height: 2,
+            width,
+            height,
             pixels: &pixels,
         };
-        let parser = screen(OutputMode::PaletteCharacters, frame, None, (3, 1));
+        let parser = screen(OutputMode::PaletteCharacters, frame, None, (3, 2));
 
-        for col in 0..3 {
-            let cell = parser.screen().cell(0, col).unwrap();
-            let expected = |y| Vt::Idx(output::nearest_palette_index(pixel(&pixels, 3, col, y)));
-            assert_eq!(cell.fgcolor(), expected(0));
-            assert_eq!(cell.bgcolor(), expected(1));
+        for row in 0..2 {
+            for col in 0..3 {
+                let expected: Vec<Vt> = source_cell(&pixels, width, col, row)
+                    .into_iter()
+                    .map(|color| Vt::Idx(output::nearest_palette_index(color)))
+                    .collect();
+                assert_eq!(shown_cell(&parser, col, row), expected, "({col}, {row})");
+            }
         }
     }
 
     #[test]
     fn mono_blocks_use_terminal_colors() {
-        let white = [255u8; 4];
-        let black = [0, 0, 0, 255];
-        let pixels = [white, black, black, white].concat();
+        // Left cell lit on top, right cell lit on the bottom
+        let (white, black) = ([255, 255, 255, 255], [0, 0, 0, 255]);
+        let top = [white, white, black, black];
+        let bottom = [black, black, white, white];
+        let pixels: Vec<u8> = [top, top, bottom, bottom].concat().concat();
         let frame = Frame {
-            width: 2,
-            height: 2,
+            width: 4,
+            height: 4,
             pixels: &pixels,
         };
         let parser = screen(OutputMode::BlockCharacters, frame, None, (2, 1));
@@ -492,10 +541,10 @@ mod tests {
 
     #[test]
     fn status_bar_takes_the_last_row() {
-        let pixels = gradient(4, 6);
+        let (width, height, pixels) = shaped_frame(4, 3);
         let frame = Frame {
-            width: 4,
-            height: 6,
+            width,
+            height,
             pixels: &pixels,
         };
         let parser = screen(
@@ -506,7 +555,12 @@ mod tests {
         );
 
         // The image keeps the rows above, and the status is cut to the width
-        assert_eq!(row_text(&parser, 1, 4), "▀▀▀▀");
+        let image_row = row_text(&parser, 1, 4);
+        assert_eq!(image_row.chars().count(), 4);
+        assert!(
+            image_row.chars().all(|c| SHAPES.contains(c)),
+            "{image_row:?}"
+        );
         assert_eq!(row_text(&parser, 2, 4), "FPS:");
         assert!(parser.screen().cell(2, 0).unwrap().inverse());
         assert!(!parser.screen().cell(1, 0).unwrap().inverse());
@@ -514,42 +568,55 @@ mod tests {
 
     #[test]
     fn oversized_frames_are_clipped_without_scrolling() {
-        let pixels = gradient(10, 10);
+        let (width, height, pixels) = shaped_frame(10, 6);
         let frame = Frame {
-            width: 10,
-            height: 10,
+            width,
+            height,
             pixels: &pixels,
         };
         let parser = screen(OutputMode::TruecolorCharacters, frame, None, (4, 3));
 
-        // Had anything wrapped or scrolled, the corners would hold other pixels
-        let top_left = parser.screen().cell(0, 0).unwrap();
-        assert_eq!(top_left.fgcolor(), rgb(pixel(&pixels, 10, 0, 0)));
-        let bottom_right = parser.screen().cell(2, 3).unwrap();
-        assert_eq!(bottom_right.fgcolor(), rgb(pixel(&pixels, 10, 3, 4)));
-        assert_eq!(bottom_right.bgcolor(), rgb(pixel(&pixels, 10, 3, 5)));
+        // Had anything wrapped or scrolled, the corners would hold other cells
+        for (col, row) in [(0, 0), (3, 2)] {
+            let expected: Vec<Vt> = source_cell(&pixels, width, col, row)
+                .into_iter()
+                .map(rgb)
+                .collect();
+            assert_eq!(shown_cell(&parser, col, row), expected, "({col}, {row})");
+        }
         assert_eq!(parser.screen().cursor_position().0, 2);
     }
 
     #[test]
-    fn odd_height_leaves_the_last_half_cell_empty() {
-        let pixels = gradient(2, 3);
+    fn partial_cells_show_the_pixels_that_exist() {
+        // Six pixel rows: one full cell row and half of another
+        let (width, _, pixels) = shaped_frame(2, 2);
+        let pixels = &pixels[..width as usize * 6 * 4];
         let frame = Frame {
-            width: 2,
-            height: 3,
-            pixels: &pixels,
+            width,
+            height: 6,
+            pixels,
         };
         let parser = screen(OutputMode::TruecolorCharacters, frame, None, (2, 2));
 
-        let cell = parser.screen().cell(1, 1).unwrap();
-        assert_eq!(cell.fgcolor(), rgb(pixel(&pixels, 2, 1, 2)));
-        assert_eq!(cell.bgcolor(), Vt::Default);
+        for col in 0..2 {
+            let present_pixels = CELL_COLUMNS * 2;
+            let expected: Vec<Vt> = source_cell(&pixels.repeat(2), width, col, 1)[..present_pixels]
+                .iter()
+                .map(|&color| rgb(color))
+                .collect();
+            assert_eq!(
+                shown_cell(&parser, col, 1)[..present_pixels],
+                expected,
+                "col {col}"
+            );
+        }
     }
 
     #[test]
     fn image_protocols_leave_no_text_behind() {
         // A frame larger than the screen, so cropping is exercised too
-        let pixels = gradient(50, 70);
+        let pixels = vec![120; 50 * 70 * 4];
         let frame = Frame {
             width: 50,
             height: 70,
