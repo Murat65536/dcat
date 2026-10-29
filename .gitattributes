@@ -1,5 +1,4 @@
-*.sh text eol=lf
-meson.build text eol=lf
-meson_options.txt text eol=lf
-meson.options text eol=lf
-*.wrap text eol=lf
+* text=auto eol=lf
+*.png binary
+*.obj text eol=lf
+*.fbx binary
