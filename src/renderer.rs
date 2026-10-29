@@ -22,6 +22,7 @@ use wgpu::{
 };
 
 use crate::{
+    animation::MAX_BONES,
     gpu_model::GpuModel,
     model::{self, ModelData},
 };
@@ -30,12 +31,14 @@ use crate::{
 const COLOR_FORMAT: TextureFormat = TextureFormat::Rgba8Unorm;
 const DEPTH_FORMAT: TextureFormat = TextureFormat::Depth32Float;
 
-const VERTEX_ATTRIBUTES: [VertexAttribute; 5] = vertex_attr_array![
+const VERTEX_ATTRIBUTES: [VertexAttribute; 7] = vertex_attr_array![
     0 => Float32x3,
     1 => Float32x2,
     2 => Float32x3,
     3 => Float32x3,
     4 => Float32x3,
+    12 => Uint32x4,
+    13 => Float32x4,
 ];
 const INSTANCE_ATTRIBUTES: [VertexAttribute; 7] = vertex_attr_array![
     5 => Float32x4,
@@ -54,13 +57,15 @@ const FILL_LIGHT_INTENSITY: f32 = 0.18;
 const RIM_LIGHT_INTENSITY: f32 = 0.22;
 
 // Per-frame scene parameters
-pub struct FrameParams {
+pub struct FrameParams<'a> {
     pub view_projection: Mat4,
     pub model: Mat4,
     pub camera_position: Vec3,
     // Direction towards the key light
     pub light_direction: Vec3,
     pub lighting: bool,
+    // Bone matrices posing an animated model; empty for static models
+    pub bones: &'a [Mat4],
 }
 
 #[repr(C)]
@@ -76,6 +81,8 @@ struct FrameUniforms {
     hemisphere_ground_color: [f32; 4],
     fill_light: [f32; 4],
     rim_light: [f32; 4],
+    animated: u32,
+    _padding: [u32; 3],
 }
 
 impl FrameUniforms {
@@ -97,6 +104,8 @@ impl FrameUniforms {
             hemisphere_ground_color: HEMISPHERE_GROUND_COLOR,
             fill_light: fill.extend(FILL_LIGHT_INTENSITY).to_array(),
             rim_light: rim.extend(RIM_LIGHT_INTENSITY).to_array(),
+            animated: u32::from(!params.bones.is_empty()),
+            _padding: [0; 3],
         }
     }
 }
@@ -112,6 +121,7 @@ pub struct Renderer {
     wireframe: bool,
     model: GpuModel,
     frame_buffer: Buffer,
+    bone_buffer: Buffer,
     frame_bind_group: BindGroup,
 }
 
@@ -148,7 +158,10 @@ impl Renderer {
 
         let frame_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("Frame Bind Group Layout"),
-            entries: &[uniform_entry(0, ShaderStages::VERTEX_FRAGMENT)],
+            entries: &[
+                uniform_entry(0, ShaderStages::VERTEX_FRAGMENT),
+                uniform_entry(1, ShaderStages::VERTEX),
+            ],
         });
         let material_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("Material Bind Group Layout"),
@@ -196,13 +209,25 @@ impl Renderer {
             contents: bytemuck::bytes_of(&FrameUniforms::zeroed()),
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
+        let bone_buffer = device.create_buffer(&BufferDescriptor {
+            label: Some("Bone Uniform Buffer"),
+            size: (MAX_BONES * mem::size_of::<Mat4>()) as u64,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let frame_bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("Frame Bind Group"),
             layout: &frame_layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: frame_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: frame_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: bone_buffer.as_entire_binding(),
+                },
+            ],
         });
 
         Ok(Self {
@@ -215,6 +240,7 @@ impl Renderer {
             wireframe: false,
             model: gpu_model,
             frame_buffer,
+            bone_buffer,
             frame_bind_group,
         })
     }
@@ -244,6 +270,11 @@ impl Renderer {
             let uniforms = FrameUniforms::new(params, !self.model.has_uvs());
             self.queue
                 .write_buffer(&self.frame_buffer, 0, bytemuck::bytes_of(&uniforms));
+            if !params.bones.is_empty() {
+                let bones = &params.bones[..params.bones.len().min(MAX_BONES)];
+                self.queue
+                    .write_buffer(&self.bone_buffer, 0, bytemuck::cast_slice(bones));
+            }
 
             let opaque_pipeline = match (&self.wireframe_pipeline, self.wireframe) {
                 (Some(wireframe), true) => wireframe,
@@ -498,7 +529,7 @@ mod tests {
     // WGSL layouts the Rust uniform structs must match
     #[test]
     fn uniform_sizes_match_shader() {
-        assert_eq!(mem::size_of::<FrameUniforms>(), 224);
+        assert_eq!(mem::size_of::<FrameUniforms>(), 240);
     }
 
     #[test]

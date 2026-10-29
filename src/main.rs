@@ -7,6 +7,7 @@ use crate::{
     cli::{Args, CONTROLS},
 };
 
+pub mod animation;
 pub mod app;
 pub mod camera;
 pub mod cli;

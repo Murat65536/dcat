@@ -17,10 +17,11 @@ use glam::{Mat4, Vec3};
 use pollster::block_on;
 
 use crate::{
+    animation::AnimationPlayer,
     camera::{Camera, Framing},
     cli::{Args, OutputMode},
     input::{HeldKey, HeldKeys},
-    model::{ModelData, TextureOverrides},
+    model::{AnimationData, ModelData, TextureOverrides},
     output, profile,
     renderer::{FrameParams, Renderer},
     terminal::{self, Terminal},
@@ -84,6 +85,11 @@ pub struct App {
     move_speed: f32,
     held_keys: HeldKeys,
     last_mouse: (u16, u16),
+
+    // Set for animated models
+    animation: Option<AnimationData>,
+    player: AnimationPlayer,
+    bone_matrices: Vec<Mat4>,
 }
 
 impl App {
@@ -99,7 +105,7 @@ impl App {
 
         // Load everything before taking over the terminal so errors and
         // warnings print normally
-        let model = {
+        let mut model = {
             profiling::scope!("Load model");
             ModelData::load(
                 model_path,
@@ -120,6 +126,7 @@ impl App {
         let camera = Camera::new(camera_position, Vec3::ZERO, width, height);
 
         let quit_signal = register_quit_signals()?;
+        let animation = model.animation.take();
         let terminal = Terminal::new(output_mode, args.mouse_orbit, args.keyboard_controls)?;
         let held_keys = HeldKeys::new(terminal.reports_key_releases());
 
@@ -140,6 +147,9 @@ impl App {
             move_speed: INITIAL_MOVE_SPEED,
             held_keys,
             last_mouse: (0, 0),
+            animation,
+            player: AnimationPlayer::new(),
+            bone_matrices: Vec::new(),
         })
     }
 
@@ -169,6 +179,16 @@ impl App {
                     self.spin_angle += self.args.spin * delta_time;
                 }
             }
+            if let Some(data) = &self.animation
+                && let Some(animation) = data.animations.get(self.player.current)
+            {
+                profiling::scope!("Animate");
+                self.player.advance(animation, delta_time);
+                data.skeleton.pose(
+                    Some((animation, self.player.time())),
+                    &mut self.bone_matrices,
+                );
+            }
 
             let mut pixels = self.terminal.take_buffer();
             {
@@ -182,6 +202,7 @@ impl App {
                         // Light the model from the camera
                         light_direction: -self.camera.forward(),
                         lighting: !self.args.no_lighting,
+                        bones: &self.bone_matrices,
                     },
                     &mut pixels,
                 )?;
@@ -260,6 +281,14 @@ impl App {
             'q' => self.should_quit = true,
             'c' if key.modifiers.contains(KeyModifiers::CONTROL) => self.should_quit = true,
             'm' => self.renderer.toggle_wireframe(),
+            'p' => self.player.toggle_playing(),
+            '1' | '2' => {
+                let count = self
+                    .animation
+                    .as_ref()
+                    .map_or(0, |data| data.animations.len());
+                self.player.step(c == '2', count);
+            }
             _ if self.args.keyboard_controls => {}
             'a' => self.camera.orbit(ROTATION_AMOUNT, 0.0),
             'd' => self.camera.orbit(-ROTATION_AMOUNT, 0.0),
@@ -350,8 +379,14 @@ impl App {
 
     fn status_line(&self, delta_time: f32) -> String {
         let position = self.camera.position;
+        let animation = self
+            .animation
+            .as_ref()
+            .and_then(|data| data.animations.get(self.player.current))
+            .map(|animation| format!(" | ANIM: {}", animation.name))
+            .unwrap_or_default();
         format!(
-            " FPS: {:.1} | SPEED: {:.2} | POS: {:.2}, {:.2}, {:.2} ",
+            " FPS: {:.1} | SPEED: {:.2} | POS: {:.2}, {:.2}, {:.2}{animation} ",
             fps(delta_time),
             self.move_speed,
             position.x,

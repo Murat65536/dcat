@@ -12,7 +12,12 @@ struct FrameUniforms {
     // xyz = direction, w = intensity
     fill_light: vec4<f32>,
     rim_light: vec4<f32>,
+    // Nonzero when vertices are posed by the bone matrices
+    animated: u32,
 }
+
+// Must match animation::MAX_BONES
+const MAX_BONES: u32 = 1024u;
 
 struct MaterialUniforms {
     base_color: vec4<f32>,
@@ -25,6 +30,7 @@ struct MaterialUniforms {
 }
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
+@group(0) @binding(1) var<uniform> bones: array<mat4x4<f32>, MAX_BONES>;
 
 @group(1) @binding(0) var<uniform> material: MaterialUniforms;
 @group(1) @binding(1) var diffuse_texture: texture_2d<f32>;
@@ -37,6 +43,8 @@ struct VertexInput {
     @location(2) normal: vec3<f32>,
     @location(3) tangent: vec3<f32>,
     @location(4) bitangent: vec3<f32>,
+    @location(12) bone_ids: vec4<u32>,
+    @location(13) bone_weights: vec4<f32>,
 }
 
 struct InstanceInput {
@@ -76,14 +84,34 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
     let frame_rotation = upper_3x3(frame.model);
     let instance_rotation = upper_3x3(instance_model);
 
-    let world_position = frame.model * instance_model * vec4<f32>(vertex.position, 1.0);
+    // Blend the vertex's bone matrices by weight
+    var skin = mat4x4<f32>(
+        vec4<f32>(1.0, 0.0, 0.0, 0.0),
+        vec4<f32>(0.0, 1.0, 0.0, 0.0),
+        vec4<f32>(0.0, 0.0, 1.0, 0.0),
+        vec4<f32>(0.0, 0.0, 0.0, 1.0),
+    );
+    if frame.animated != 0u {
+        skin = mat4x4<f32>(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
+        for (var i = 0u; i < 4u; i++) {
+            let weight = vertex.bone_weights[i];
+            let bone = vertex.bone_ids[i];
+            if weight > 0.0 && bone < MAX_BONES {
+                skin += bones[bone] * weight;
+            }
+        }
+    }
+    let skin_rotation = upper_3x3(skin);
+
+    let world_position = frame.model * instance_model * skin * vec4<f32>(vertex.position, 1.0);
 
     var out: VertexOutput;
     out.clip_position = frame.view_projection * world_position;
     out.uv = vertex.uv;
-    out.world_normal = frame_rotation * (instance_normal * vertex.normal);
-    out.world_tangent = frame_rotation * (instance_rotation * vertex.tangent);
-    out.world_bitangent = frame_rotation * (instance_rotation * vertex.bitangent);
+    out.world_normal = frame_rotation * (instance_normal * (skin_rotation * vertex.normal));
+    out.world_tangent = frame_rotation * (instance_rotation * (skin_rotation * vertex.tangent));
+    out.world_bitangent =
+        frame_rotation * (instance_rotation * (skin_rotation * vertex.bitangent));
     out.world_position = world_position.xyz;
     return out;
 }

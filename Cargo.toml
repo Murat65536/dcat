@@ -10,7 +10,7 @@ bytemuck = { version = "1.25.2", features = ["derive"] }
 clap = { version = "4.6.5", features = ["derive"] }
 crossterm = "0.29.0"
 flate2 = "1.1.10"
-glam = "0.32.1"
+glam = { version = "0.32.1", features = ["bytemuck"] }
 image = "0.25.10"
 pollster = "1.0.1"
 profiling = "1.0.18"
