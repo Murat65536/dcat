@@ -1,0 +1,4 @@
+# Link the C runtime statically on Windows, so dcat.exe runs without the
+# Visual C++ redistributable and uses the matching prebuilt Assimp
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

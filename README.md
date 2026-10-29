@@ -11,7 +11,27 @@ https://github.com/user-attachments/assets/ca47ea52-6a46-4ac2-8c9f-430fc9ea9865
 
 Prebuilt binaries for every release are on the [releases page](https://github.com/Murat65536/dcat/releases).
 
-To build from source, install [Rust](https://rustup.rs/), then:
+### Linux and macOS
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/Murat65536/dcat/releases/latest/download/dcat-installer.sh | sh
+```
+
+### Windows
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/Murat65536/dcat/releases/latest/download/dcat-installer.ps1 | iex"
+```
+
+### Cargo
+
+```sh
+cargo install dcat
+```
+
+### From source
+
+Install [Rust](https://rustup.rs/), then:
 
 ```sh
 cargo build --release
@@ -20,17 +40,3 @@ cargo build --release
 
 dcat needs a GPU with Vulkan drivers. On Linux, linking also needs zlib
 (`zlib1g-dev` on Debian and Ubuntu).
-
-
-### Windows
-
-Download and run `dcat-windows-setup.exe`.
-
-### Linux
-
-Download `dcat-x86_64.AppImage`, make it executable, and run it:
-
-```sh
-chmod +x dcat-x86_64.AppImage
-./dcat-x86_64.AppImage model.glb
-```

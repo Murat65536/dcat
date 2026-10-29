@@ -2,6 +2,14 @@
 name = "dcat"
 version = "1.3.0"
 edition = "2024"
+description = "A 3D model viewer for the terminal"
+license = "Apache-2.0"
+repository = "https://github.com/Murat65536/dcat"
+readme = "README.md"
+keywords = ["3d", "terminal", "viewer", "model", "cli"]
+categories = ["command-line-utilities", "graphics", "rendering"]
+# Test models are only needed in the repository
+exclude = ["tests/"]
 
 [dependencies]
 asset-importer = { version = "0.8.0", features = ["bytemuck", "glam", "prebuilt", "static-link"] }
@@ -36,3 +44,8 @@ tracy = [
 [dev-dependencies]
 naga = { version = "30.0.1", features = ["wgsl-in"] }
 vt100 = "0.18.1"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
