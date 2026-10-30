@@ -15,7 +15,7 @@ exclude = ["tests/"]
 asset-importer = { version = "0.8.0", features = ["bytemuck", "glam", "prebuilt", "static-link"] }
 base64 = "0.23.1"
 bytemuck = { version = "1.25.2", features = ["derive"] }
-clap = { version = "4.6.5", features = ["derive"] }
+clap = { version = "4.6.7", features = ["derive"] }
 crossterm = "0.29.0"
 flate2 = "1.1.10"
 glam = { version = "0.32.1", features = ["bytemuck"] }
@@ -28,6 +28,7 @@ tracy-client = { version = "=0.18.4", default-features = false, optional = true 
 # tracy-client 0.18.4 and tracy-client-sys 0.28.0 bundle Tracy 0.13.1, matching
 # the 0.13 viewer. Newer releases use the incompatible Tracy 0.14 protocol.
 tracy-client-sys = { version = "=0.28.0", default-features = false, optional = true }
+typed-path = "0.13.0"
 wgpu = "30.0.0"
 
 [features]

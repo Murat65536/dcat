@@ -1,5 +1,3 @@
-# Publishes the crate to crates.io during a release. dist's release workflow
-# calls this once every platform has built (publish-jobs in dist-workspace.toml).
 name: Publish to crates.io
 
 on:

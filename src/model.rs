@@ -15,6 +15,7 @@ use asset_importer::{
 };
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Mat4, Vec3};
+use typed_path::{Utf8Component, Utf8WindowsPath};
 
 use crate::{
     animation::{Animation, MAX_BONES, Skeleton},
@@ -625,8 +626,10 @@ impl TextureSource {
     }
 }
 
+// The file name of a path written on any platform. Windows rules accept both
+// \ and / as separators, so they split paths from either platform.
 fn file_name(path: &str) -> &str {
-    path.rsplit(['/', '\\']).next().unwrap_or(path)
+    Utf8WindowsPath::new(path).file_name().unwrap_or(path)
 }
 
 // Find the texture a material refers to. Exporters often store paths from the
@@ -653,25 +656,27 @@ fn resolve_texture_path(model_dir: &Path, path: &str, scene: &Scene) -> Option<T
 }
 
 fn resolve_file_path(model_dir: &Path, path: &str) -> PathBuf {
-    let bytes = path.as_bytes();
-    let is_windows_absolute =
-        bytes.len() >= 3 && bytes[1] == b':' && matches!(bytes[2], b'\\' | b'/');
-
-    let as_path = Path::new(path);
-    if as_path.is_absolute() && as_path.exists() {
-        return as_path.to_path_buf();
+    let native = Path::new(path);
+    if native.is_absolute() && native.exists() {
+        return native.to_path_buf();
     }
-    if as_path.is_absolute() || is_windows_absolute {
+
+    // Parsed with Windows rules, which also accept Unix paths
+    let written = Utf8WindowsPath::new(path);
+
+    // An absolute path from the machine the model was made on: C:\...,
+    // \\server\... or /home/...
+    if written.has_root() || written.components().has_prefix() {
         return model_dir.join(file_name(path));
     }
 
-    // Relative paths written on Windows use backslashes
-    let relative = if cfg!(windows) {
-        path.to_owned()
-    } else {
-        path.replace('\\', "/")
-    };
-    model_dir.join(relative)
+    // A relative path, rebuilt with this platform's separators
+    model_dir.join(
+        written
+            .components()
+            .map(|component| component.as_str())
+            .collect::<PathBuf>(),
+    )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -1042,12 +1047,18 @@ mod tests {
             resolve_file_path(dir, "/home/artist/missing/tex.png"),
             dir.join("tex.png")
         );
-        if cfg!(unix) {
-            assert_eq!(
-                resolve_file_path(dir, r"textures\tex.png"),
-                dir.join("textures/tex.png")
-            );
-        }
+        assert_eq!(
+            resolve_file_path(dir, r"\\server\share\tex.png"),
+            dir.join("tex.png")
+        );
+        // Relative paths keep their folders in either separator style
+        let in_textures = dir.join("textures").join("tex.png");
+        assert_eq!(resolve_file_path(dir, r"textures\tex.png"), in_textures);
+        assert_eq!(resolve_file_path(dir, "textures/tex.png"), in_textures);
+        assert_eq!(
+            resolve_file_path(dir, r"..\shared\tex.png"),
+            dir.join("..").join("shared").join("tex.png")
+        );
     }
 
     #[test]
