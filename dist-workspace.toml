@@ -22,9 +22,6 @@ github-build-setup = "../build-setup.yml"
 # Publish jobs to run in CI
 publish-jobs = ["./publish-crates"]
 
-# Latest runner images, so image changes surface problems early. Linux stays
-# on Ubuntu 22.04: the binary needs the glibc of the system that builds it.
-# There's no free floating Intel macOS image, so that one is pinned.
 [dist.github-custom-runners]
 global = "ubuntu-latest"
 aarch64-apple-darwin = "macos-latest"
@@ -32,14 +29,11 @@ x86_64-apple-darwin = "macos-26-intel"
 x86_64-pc-windows-msvc = "windows-latest"
 x86_64-unknown-linux-gnu = "ubuntu-22.04"
 
-# Newer action versions than this dist release generates
 [dist.github-action-commits]
 "actions/checkout" = "v7"
 "actions/upload-artifact" = "v7"
 "actions/download-artifact" = "v8"
 
-# Statically linked Assimp needs zlib at link time, and building it from
-# source needs CMake
 [dist.dependencies.apt]
 zlib1g-dev = "*"
 cmake = "*"
