@@ -570,12 +570,22 @@ mod tests {
                 &[("TERM", "xterm-256color"), ("COLORTERM", "truecolor")],
                 OutputMode::TruecolorCharacters,
             ),
-            (&[("TERM", "linux")], OutputMode::BlockCharacters),
         ];
         for (vars, expected) in cases {
             assert_eq!(detect(env(vars)), *expected, "{vars:?}");
         }
-        if !cfg!(windows) {
+        // Windows terminals all support truecolor, so the rest only apply elsewhere
+        if cfg!(windows) {
+            assert_eq!(
+                detect(env(&[("TERM", "linux")])),
+                OutputMode::TruecolorCharacters
+            );
+            assert_eq!(detect(env(&[])), OutputMode::TruecolorCharacters);
+        } else {
+            assert_eq!(
+                detect(env(&[("TERM", "linux")])),
+                OutputMode::BlockCharacters
+            );
             assert_eq!(
                 detect(env(&[("TERM", "xterm-256color")])),
                 OutputMode::PaletteCharacters
