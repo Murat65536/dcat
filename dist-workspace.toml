@@ -18,7 +18,11 @@ install-path = "CARGO_HOME"
 hosting = "github"
 # Whether to install an updater program
 install-updater = false
+# Extra steps before each build, relative to .github/workflows
+github-build-setup = "../build-setup.yml"
 
-# Statically linked Assimp needs zlib at link time
+# Statically linked Assimp needs zlib at link time, and building it from
+# source needs CMake
 [dist.dependencies.apt]
 zlib1g-dev = "*"
+cmake = "*"

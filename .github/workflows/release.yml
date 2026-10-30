@@ -127,6 +127,9 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             echo "$HOME/.cargo/bin" >> $GITHUB_PATH
           fi
+      - name: "Build Assimp from source on Linux"
+        if: "runner.os == 'Linux'"
+        run: "echo \"ASSET_IMPORTER_FORCE_BUILD=1\" >> \"$GITHUB_ENV\""
       - name: Install dist
         run: ${{ matrix.install_dist.run }}
       # Get the dist-manifest

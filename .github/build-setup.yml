@@ -1,0 +1,8 @@
+# Extra steps dist runs before each build (see github-build-setup in dist-workspace.toml)
+
+# The prebuilt static Assimp for Linux needs glibc 2.38 or newer, which Ubuntu
+# 22.04 lacks. Building it from source there keeps the binary working on
+# older distributions.
+- name: Build Assimp from source on Linux
+  if: runner.os == 'Linux'
+  run: echo "ASSET_IMPORTER_FORCE_BUILD=1" >> "$GITHUB_ENV"
