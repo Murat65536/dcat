@@ -250,7 +250,7 @@ pub fn encode_symbols(
 ) -> io::Result<()> {
     let to_color = |[r, g, b]: [u8; 3]| match depth {
         ColorDepth::Truecolor => Color::Rgb { r, g, b },
-        ColorDepth::Palette => Color::AnsiValue(nearest_palette_index([r, g, b])),
+        ColorDepth::Palette => Color::AnsiValue(ansi_colours::ansi256_from_rgb([r, g, b])),
     };
     let (cols, rows) = cell_extent(frame, cols, rows);
 
@@ -354,39 +354,6 @@ pub fn encode_mono_blocks(
         queue!(out, Print(line))?;
     }
     Ok(())
-}
-
-// The xterm 256-color palette above the 16 theme colors: a 6x6x6 color cube
-// (16-231) and a 24-step gray ramp (232-255)
-const CUBE_LEVELS: [u8; 6] = [0, 95, 135, 175, 215, 255];
-
-pub fn nearest_palette_index([r, g, b]: [u8; 3]) -> u8 {
-    let nearest_level = |value: u8| {
-        CUBE_LEVELS
-            .iter()
-            .enumerate()
-            .min_by_key(|&(_, &level)| value.abs_diff(level))
-            .map_or(0, |(index, _)| index)
-    };
-    let distance = |[r2, g2, b2]: [u8; 3]| {
-        let d = |a: u8, b: u8| u32::from(a.abs_diff(b)).pow(2);
-        d(r, r2) + d(g, g2) + d(b, b2)
-    };
-
-    let (ri, gi, bi) = (nearest_level(r), nearest_level(g), nearest_level(b));
-    let cube_color = [CUBE_LEVELS[ri], CUBE_LEVELS[gi], CUBE_LEVELS[bi]];
-    let cube_index = 16 + 36 * ri + 6 * gi + bi;
-
-    let average = (u32::from(r) + u32::from(g) + u32::from(b)) / 3;
-    let gray_step = (average.saturating_sub(3) / 10).min(23);
-    let gray_level = (8 + 10 * gray_step) as u8;
-    let gray_index = 232 + gray_step as usize;
-
-    if distance([gray_level; 3]) < distance(cube_color) {
-        gray_index as u8
-    } else {
-        cube_index as u8
-    }
 }
 
 // Escape sequences are limited to this many bytes of base64 payload each
@@ -628,15 +595,6 @@ mod tests {
             );
             assert_eq!(detect(env(&[])), OutputMode::PaletteCharacters);
         }
-    }
-
-    #[test]
-    fn palette_indices() {
-        assert_eq!(nearest_palette_index([0, 0, 0]), 16);
-        assert_eq!(nearest_palette_index([255, 255, 255]), 231);
-        assert_eq!(nearest_palette_index([255, 0, 0]), 196);
-        assert_eq!(nearest_palette_index([128, 128, 128]), 244);
-        assert_eq!(nearest_palette_index([95, 135, 175]), 16 + 36 + 2 * 6 + 3);
     }
 
     // Opaque RGBA pixels from RGB colors

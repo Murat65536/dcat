@@ -621,7 +621,7 @@ mod tests {
             for col in 0..3 {
                 let expected: Vec<Vt> = source_cell(&pixels, width, col, row)
                     .into_iter()
-                    .map(|color| Vt::Idx(output::nearest_palette_index(color)))
+                    .map(|color| Vt::Idx(ansi_colours::ansi256_from_rgb(color)))
                     .collect();
                 assert_eq!(shown_cell(&parser, col, row), expected, "({col}, {row})");
             }
