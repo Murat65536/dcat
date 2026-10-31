@@ -11,6 +11,9 @@ updates:
       # Pinned to match the installed Tracy profiler; bump them alongside it
       - dependency-name: tracy-client
       - dependency-name: tracy-client-sys
+      # Must match the glam version asset-importer uses, so it moves with that
+      - dependency-name: glam
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: github-actions
     directory: /
