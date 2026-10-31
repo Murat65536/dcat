@@ -31,6 +31,10 @@ tracy-client-sys = { version = "=0.28.0", default-features = false, optional = t
 typed-path = "0.13.0"
 wgpu = "30.0.0"
 
+# Shared memory for Kitty graphics
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1.4", features = ["event", "mm", "shm", "stdio"] }
+
 [features]
 # Tracy profiling: collects only while a viewer on this machine is connected
 tracy = [

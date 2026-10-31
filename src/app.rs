@@ -67,6 +67,18 @@ fn register_quit_signals() -> io::Result<Arc<AtomicBool>> {
     Ok(flag)
 }
 
+// Everything that changes the drawn frame. A frame matching the last one drawn
+// is skipped, so a still model costs almost nothing.
+#[derive(PartialEq)]
+struct SceneState {
+    camera: (Vec3, Vec3),
+    spin_angle: f32,
+    move_speed: f32,
+    wireframe: bool,
+    animation: Option<(usize, f32)>,
+    size: (u32, u32),
+}
+
 pub struct App {
     args: Args,
     output_mode: OutputMode,
@@ -77,6 +89,8 @@ pub struct App {
     frame_time: Duration,
     resize_pending: bool,
     should_quit: bool,
+    // None until the first frame and after the screen is cleared
+    last_drawn: Option<SceneState>,
     quit_signal: Arc<AtomicBool>,
 
     camera: Camera,
@@ -140,6 +154,7 @@ impl App {
             height,
             resize_pending: false,
             should_quit: false,
+            last_drawn: None,
             quit_signal,
             camera,
             base_model_matrix,
@@ -158,8 +173,9 @@ impl App {
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let mut last_frame = Instant::now();
-        let mut next_frame = last_frame;
+        // As if a frame had just been drawn, so the first one reports a normal frame time
+        let mut last_frame = Instant::now() - self.frame_time;
+        let mut next_frame = Instant::now();
 
         while !self.quit_requested() {
             profiling::scope!("Frame");
@@ -190,32 +206,20 @@ impl App {
                 );
             }
 
-            let mut pixels = self.terminal.take_buffer();
-            {
-                profiling::scope!("Render");
-                self.renderer.render_into(
-                    &FrameParams {
-                        view_projection: self.camera.projection_matrix()
-                            * self.camera.view_matrix(),
-                        model: Mat4::from_rotation_y(self.spin_angle) * self.base_model_matrix,
-                        camera_position: self.camera.position,
-                        // Light the model from the camera
-                        light_direction: -self.camera.forward(),
-                        lighting: !self.args.no_lighting,
-                        bones: &self.bone_matrices,
-                    },
-                    &mut pixels,
-                )?;
-            }
-
-            // Encoding and writing happen on the terminal's writer thread
-            // while the next frame renders
-            let status = self.args.status_bar.then(|| self.status_line(delta_time));
-            {
-                // Waits here while the writer is still busy with the previous frame
-                profiling::scope!("Queue frame");
-                self.terminal
-                    .draw(pixels, self.width, self.height, status)?;
+            let state = SceneState {
+                camera: (self.camera.position, self.camera.target),
+                spin_angle: self.spin_angle,
+                move_speed: self.move_speed,
+                wireframe: self.renderer.wireframe(),
+                animation: self
+                    .animation
+                    .as_ref()
+                    .map(|_| (self.player.current, self.player.time())),
+                size: (self.width, self.height),
+            };
+            if self.last_drawn.as_ref() != Some(&state) {
+                self.draw(delta_time)?;
+                self.last_drawn = Some(state);
             }
             profile::plot!("FPS", fps(delta_time));
             profile::plot!("Framebuffer pixels", self.width * self.height);
@@ -233,6 +237,37 @@ impl App {
                 self.handle_events_until(next_frame)?;
             }
             profiling::finish_frame!();
+        }
+        Ok(())
+    }
+
+    // Render the scene and hand the frame to the terminal
+    fn draw(&mut self, delta_time: f32) -> Result<(), Box<dyn Error>> {
+        let mut pixels = self.terminal.take_buffer();
+        {
+            profiling::scope!("Render");
+            self.renderer.render_into(
+                &FrameParams {
+                    view_projection: self.camera.projection_matrix() * self.camera.view_matrix(),
+                    model: Mat4::from_rotation_y(self.spin_angle) * self.base_model_matrix,
+                    camera_position: self.camera.position,
+                    // Light the model from the camera
+                    light_direction: -self.camera.forward(),
+                    lighting: !self.args.no_lighting,
+                    bones: &self.bone_matrices,
+                },
+                &mut pixels,
+            )?;
+        }
+
+        // Encoding and writing happen on the terminal's writer thread
+        // while the next frame renders
+        let status = self.args.status_bar.then(|| self.status_line(delta_time));
+        {
+            // Waits here while the writer is still busy with the previous frame
+            profiling::scope!("Queue frame");
+            self.terminal
+                .draw(pixels, self.width, self.height, status)?;
         }
         Ok(())
     }
@@ -374,6 +409,7 @@ impl App {
         }
         // The terminal may have shrunk even if the render size is fixed
         self.terminal.clear()?;
+        self.last_drawn = None;
         Ok(())
     }
 

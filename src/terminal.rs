@@ -111,7 +111,7 @@ struct FrameWriter {
 }
 
 impl FrameWriter {
-    fn spawn(mode: OutputMode) -> io::Result<Self> {
+    fn spawn(mode: OutputMode, kitty_shared_memory: bool) -> io::Result<Self> {
         let (jobs, job_receiver) = sync_channel::<WriterJob>(0);
         let (recycle, recycled) = channel();
         let thread = thread::Builder::new()
@@ -119,6 +119,10 @@ impl FrameWriter {
             .spawn(move || {
                 profiling::register_thread!();
                 let mut buffer = Vec::new();
+                #[cfg(unix)]
+                let mut shared_frames = kitty_shared_memory.then(crate::shm::SharedFrames::default);
+                #[cfg(not(unix))]
+                let _ = kitty_shared_memory;
                 for job in job_receiver {
                     buffer.clear();
                     {
@@ -138,12 +142,23 @@ impl FrameWriter {
                                     height,
                                     pixels: &pixels,
                                 };
+                                #[cfg(unix)]
+                                let mut write_shared = shared_frames
+                                    .as_mut()
+                                    .map(|frames| move |data: &[u8]| frames.write(data));
+                                #[cfg(not(unix))]
+                                let mut write_shared: Option<
+                                    fn(&[u8]) -> io::Result<String>,
+                                > = None;
                                 compose_frame(
                                     mode,
                                     cell_pixels,
                                     frame,
                                     status.as_deref(),
                                     size,
+                                    write_shared
+                                        .as_mut()
+                                        .map(|write| write as &mut WriteShared<'_>),
                                     &mut buffer,
                                 )?;
                                 // Fails only if the terminal is being dropped
@@ -199,6 +214,14 @@ impl Terminal {
             MOUSE_CAPTURED.store(true, Ordering::SeqCst);
         }
 
+        // Kitty can read frames from shared memory when it runs on this
+        // machine. The query reads the reply itself, so it must come before
+        // anything else reads input.
+        #[cfg(unix)]
+        let kitty_shared_memory = mode == OutputMode::Kitty && crate::shm::terminal_supports();
+        #[cfg(not(unix))]
+        let kitty_shared_memory = false;
+
         // The Windows console reports releases natively; elsewhere they need
         // the Kitty keyboard protocol. A terminal that doesn't answer the
         // query is treated as not supporting it.
@@ -222,7 +245,7 @@ impl Terminal {
         Ok(Self {
             mode,
             reports_key_releases,
-            writer: Some(FrameWriter::spawn(mode)?),
+            writer: Some(FrameWriter::spawn(mode, kitty_shared_memory)?),
         })
     }
 
@@ -290,12 +313,16 @@ impl Terminal {
 
 // Everything written to the terminal for one frame: the image in the given
 // mode and the status bar, fitted to a terminal of `cols` by `rows` cells
+// Writes a frame's pixels to shared memory and returns the object's name
+type WriteShared<'a> = dyn FnMut(&[u8]) -> io::Result<String> + 'a;
+
 fn compose_frame(
     mode: OutputMode,
     (cell_width, cell_height): (u32, u32),
     frame: Frame,
     status: Option<&str>,
     (cols, rows): (u16, u16),
+    kitty_shared: Option<&mut WriteShared<'_>>,
     out: &mut Vec<u8>,
 ) -> io::Result<()> {
     let image_rows = rows.saturating_sub(reserved_rows(mode, status.is_some()));
@@ -332,7 +359,12 @@ fn compose_frame(
             queue!(out, MoveTo(0, 0))?;
             if frame.width > 0 && frame.height > 0 {
                 if mode == OutputMode::Kitty {
-                    output::encode_kitty(frame, out)?;
+                    match kitty_shared.map(|write| write(frame.pixels)) {
+                        Some(Ok(name)) => output::encode_kitty_shared(frame, &name, out)?,
+                        // Without shared memory, or if writing it failed,
+                        // send the pixels in the escape sequence
+                        _ => output::encode_kitty(frame, out)?,
+                    }
                 } else {
                     output::encode_sixel(frame, out)?;
                 }
@@ -403,7 +435,16 @@ mod tests {
         (cols, rows): (u16, u16),
     ) -> vt100::Parser {
         let mut out = Vec::new();
-        compose_frame(mode, PIXEL_CELL_SIZE, frame, status, (cols, rows), &mut out).unwrap();
+        compose_frame(
+            mode,
+            PIXEL_CELL_SIZE,
+            frame,
+            status,
+            (cols, rows),
+            None,
+            &mut out,
+        )
+        .unwrap();
         let mut parser = vt100::Parser::new(
             NonZeroU16::new(rows).unwrap(),
             NonZeroU16::new(cols).unwrap(),
@@ -629,6 +670,47 @@ mod tests {
             }
             assert_eq!(row_text(&parser, 2, 4), "stat", "{mode:?}");
         }
+    }
+
+    fn compose_kitty(write_shared: &mut WriteShared<'_>) -> String {
+        let pixels = vec![120; 20 * 40 * 4];
+        let frame = Frame {
+            width: 20,
+            height: 40,
+            pixels: &pixels,
+        };
+        let mut out = Vec::new();
+        compose_frame(
+            OutputMode::Kitty,
+            PIXEL_CELL_SIZE,
+            frame,
+            None,
+            (4, 3),
+            Some(write_shared),
+            &mut out,
+        )
+        .unwrap();
+        String::from_utf8(out).unwrap()
+    }
+
+    #[test]
+    fn kitty_sends_shared_memory_names() {
+        let mut written = Vec::new();
+        let text = compose_kitty(&mut |data: &[u8]| {
+            written.push(data.len());
+            Ok("/dcat-test".into())
+        });
+        // The frame went to shared memory and only its name to the terminal
+        assert_eq!(written, [20 * 40 * 4]);
+        assert!(text.contains("t=s,"), "{text}");
+        assert!(!text.contains("o=z"), "{text}");
+    }
+
+    #[test]
+    fn kitty_falls_back_when_shared_memory_fails() {
+        let text = compose_kitty(&mut |_: &[u8]| Err(io::Error::other("no space")));
+        assert!(text.contains("o=z"), "{text}");
+        assert!(!text.contains("t=s"), "{text}");
     }
 
     #[test]

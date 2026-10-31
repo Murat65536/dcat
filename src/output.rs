@@ -402,6 +402,19 @@ pub fn encode_kitty(frame: Frame, out: &mut Vec<u8>) -> io::Result<()> {
     Ok(())
 }
 
+// Kitty graphics protocol with the pixels in a shared memory object, which
+// the terminal reads and removes, instead of in the escape sequence
+pub fn encode_kitty_shared(frame: Frame, shm_name: &str, out: &mut Vec<u8>) -> io::Result<()> {
+    write!(
+        out,
+        "\x1b_Ga=T,f=32,t=s,s={},v={},S={},i=1,p=1,q=2,C=1;{}\x1b\\",
+        frame.width,
+        frame.height,
+        frame.pixels.len(),
+        BASE64.encode(shm_name)
+    )
+}
+
 // Removes every Kitty image, so none are left behind on exit
 pub const KITTY_DELETE_ALL: &str = "\x1b_Ga=d,d=A,q=2\x1b\\";
 
@@ -834,6 +847,26 @@ mod tests {
             .read_to_end(&mut decoded)
             .unwrap();
         assert_eq!(decoded, pixels);
+    }
+
+    #[test]
+    fn kitty_shared_memory_command() {
+        let pixels = vec![0; 3 * 2 * 4];
+        let frame = Frame {
+            width: 3,
+            height: 2,
+            pixels: &pixels,
+        };
+        let mut out = Vec::new();
+        encode_kitty_shared(frame, "/dcat-1-7", &mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        let command = text
+            .strip_prefix("\x1b_G")
+            .and_then(|t| t.strip_suffix("\x1b\\"))
+            .unwrap();
+        let (keys, payload) = command.split_once(';').unwrap();
+        assert_eq!(keys, "a=T,f=32,t=s,s=3,v=2,S=24,i=1,p=1,q=2,C=1");
+        assert_eq!(BASE64.decode(payload).unwrap(), b"/dcat-1-7");
     }
 
     // Decode sixel data into palette indices, for checking the encoder

@@ -17,6 +17,8 @@ pub mod model;
 pub mod output;
 pub mod profile;
 pub mod renderer;
+#[cfg(unix)]
+pub mod shm;
 pub mod terminal;
 pub mod texture;
 

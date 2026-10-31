@@ -257,6 +257,10 @@ impl Renderer {
         self.wireframe = !self.wireframe && self.wireframe_pipeline.is_some();
     }
 
+    pub fn wireframe(&self) -> bool {
+        self.wireframe
+    }
+
     // Render a frame and read it back into `pixels` as tightly packed RGBA,
     // reusing the buffer's allocation
     pub fn render_into(

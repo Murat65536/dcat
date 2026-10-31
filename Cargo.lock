@@ -504,6 +504,7 @@ dependencies = [
  "naga",
  "pollster",
  "profiling",
+ "rustix",
  "signal-hook",
  "spin_sleep",
  "tracy-client",
