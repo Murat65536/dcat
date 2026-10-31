@@ -50,6 +50,10 @@ pub struct Args {
     #[arg(short = 'H', long, requires = "width", value_parser = value_parser!(u32).range(1..=65535), allow_negative_numbers = true)]
     pub height: Option<u32>,
 
+    /// Pixels per terminal cell, like 9x18, for terminals that don't report it
+    #[arg(long, value_name = "WxH", value_parser = cell_size, conflicts_with_all = ["width", "height"])]
+    pub cell_size: Option<(u32, u32)>,
+
     /// Camera distance from origin
     #[arg(long, value_name = "DIST", value_parser = positive_f32, allow_negative_numbers = true)]
     pub camera_distance: Option<f32>,
@@ -137,6 +141,15 @@ impl Args {
         ]
         .into_iter()
         .find_map(|(set, mode)| set.then_some(mode))
+    }
+}
+
+fn cell_size(value: &str) -> Result<(u32, u32), String> {
+    let invalid = || format!("expected WIDTHxHEIGHT in pixels, like 9x18: {value}");
+    let (width, height) = value.split_once('x').ok_or_else(invalid)?;
+    match (width.parse(), height.parse()) {
+        (Ok(width), Ok(height)) if width > 0 && height > 0 => Ok((width, height)),
+        _ => Err(invalid()),
     }
 }
 
@@ -279,6 +292,20 @@ mod tests {
     }
 
     #[test]
+    fn cell_size() {
+        assert_eq!(parse(&["m.glb"]).unwrap().cell_size, None);
+        assert_eq!(
+            parse(&["--cell-size", "9x18", "m.glb"]).unwrap().cell_size,
+            Some((9, 18))
+        );
+        // It sizes the frame from the terminal, which a fixed size overrides
+        assert_eq!(
+            parse_err(&["--cell-size", "9x18", "-W", "10", "-H", "10", "m.glb"]),
+            ErrorKind::ArgumentConflict
+        );
+    }
+
+    #[test]
     fn invalid_values() {
         for args in [
             &["-W", "0", "-H", "10", "m.glb"][..],
@@ -293,6 +320,10 @@ mod tests {
             &["-W", "-1", "-H", "10", "m.glb"],
             &["--spin", "inf", "m.glb"],
             &["--spin", "nan", "m.glb"],
+            &["--cell-size", "9", "m.glb"],
+            &["--cell-size", "0x18", "m.glb"],
+            &["--cell-size", "9x-18", "m.glb"],
+            &["--cell-size", "9x18x2", "m.glb"],
         ] {
             assert_eq!(parse_err(args), ErrorKind::ValueValidation, "{args:?}");
         }

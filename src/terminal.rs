@@ -42,10 +42,14 @@ static KEYBOARD_ENHANCED: AtomicBool = AtomicBool::new(false);
 static KITTY_IMAGES_SHOWN: AtomicBool = AtomicBool::new(false);
 static SIXEL_SCROLLING_DISABLED: AtomicBool = AtomicBool::new(false);
 
-// Pixels covered by one character cell
-fn cell_pixels(mode: OutputMode) -> (u32, u32) {
+// Pixels covered by one character cell. A given size wins over the terminal's,
+// for ptys that report none, like the ones Neovim jobs run in.
+fn cell_pixels(mode: OutputMode, cell_size: Option<(u32, u32)>) -> (u32, u32) {
     if mode.uses_characters() {
         return CHARACTER_CELL_PIXELS;
+    }
+    if let Some(size) = cell_size {
+        return size;
     }
     match terminal::window_size() {
         Ok(size) if size.width > 0 && size.height > 0 && size.columns > 0 && size.rows > 0 => (
@@ -71,7 +75,7 @@ pub fn render_size(args: &Args, mode: OutputMode) -> io::Result<(u32, u32)> {
 
     let (cols, rows) = terminal::size()?;
     let image_rows = rows.saturating_sub(reserved_rows(mode, args.status_bar));
-    let (cell_width, cell_height) = cell_pixels(mode);
+    let (cell_width, cell_height) = cell_pixels(mode, args.cell_size);
     Ok((
         u32::from(cols.max(1)) * cell_width,
         u32::from(image_rows.max(1)) * cell_height,
@@ -80,6 +84,7 @@ pub fn render_size(args: &Args, mode: OutputMode) -> io::Result<(u32, u32)> {
 
 pub struct Terminal {
     mode: OutputMode,
+    cell_size: Option<(u32, u32)>,
     reports_key_releases: bool,
     // None once stopped, which only happens on drop or after a write error
     writer: Option<FrameWriter>,
@@ -185,7 +190,12 @@ impl FrameWriter {
 
 impl Terminal {
     // `key_releases` asks for key release events, which first-person movement needs
-    pub fn new(mode: OutputMode, mouse_capture: bool, key_releases: bool) -> io::Result<Self> {
+    pub fn new(
+        mode: OutputMode,
+        cell_size: Option<(u32, u32)>,
+        mouse_capture: bool,
+        key_releases: bool,
+    ) -> io::Result<Self> {
         // Restore the terminal before the panic message is printed, otherwise
         // it is lost on the alternate screen.
         let default_hook = panic::take_hook();
@@ -244,6 +254,7 @@ impl Terminal {
 
         Ok(Self {
             mode,
+            cell_size,
             reports_key_releases,
             writer: Some(FrameWriter::spawn(mode, kitty_shared_memory)?),
         })
@@ -280,7 +291,7 @@ impl Terminal {
             height,
             status,
             size: terminal::size()?,
-            cell_pixels: cell_pixels(self.mode),
+            cell_pixels: cell_pixels(self.mode, self.cell_size),
         };
         self.send(job)
     }
@@ -452,6 +463,18 @@ mod tests {
         );
         parser.process(&out);
         parser
+    }
+
+    #[test]
+    fn given_cell_size_wins_in_pixel_modes() {
+        for mode in [OutputMode::Kitty, OutputMode::Sixel] {
+            assert_eq!(cell_pixels(mode, Some((9, 18))), (9, 18), "{mode:?}");
+        }
+        // Character modes always sample the same pixels per cell
+        assert_eq!(
+            cell_pixels(OutputMode::TruecolorCharacters, Some((9, 18))),
+            CHARACTER_CELL_PIXELS
+        );
     }
 
     // RGBA pixels covering `cols` by `rows` cells. Each cell has two colors
