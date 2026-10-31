@@ -78,6 +78,13 @@ pub struct Args {
     #[arg(long)]
     pub keyboard_controls: bool,
 
+    /// With --keyboard-controls, read held keys from the keyboard itself when
+    /// the terminal can't report releases, like Neovim's or tmux. Linux and
+    /// macOS only, and it needs permission to read every keystroke: the input
+    /// group on Linux, Input Monitoring on macOS.
+    #[arg(long, requires = "keyboard_controls")]
+    pub raw_keyboard: bool,
+
     /// Enable mouse drag to orbit the model
     #[arg(long)]
     pub mouse_orbit: bool,
@@ -299,6 +306,16 @@ mod tests {
         assert_eq!(parse_err(&[]), ErrorKind::MissingRequiredArgument);
         assert!(parse(&["--controls"]).unwrap().controls);
         assert!(parse(&["--detect-output"]).unwrap().detect_output);
+    }
+
+    #[test]
+    fn raw_keyboard_needs_keyboard_controls() {
+        assert_eq!(
+            parse_err(&["--raw-keyboard", "m.glb"]),
+            ErrorKind::MissingRequiredArgument
+        );
+        let args = parse(&["--keyboard-controls", "--raw-keyboard", "m.glb"]).unwrap();
+        assert!(args.raw_keyboard);
     }
 
     #[test]

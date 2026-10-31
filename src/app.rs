@@ -14,6 +14,7 @@ use crossterm::event::{
     MouseEventKind,
 };
 use glam::{Mat4, Vec3};
+use input_query::InputHandler;
 use pollster::block_on;
 
 use crate::{
@@ -137,10 +138,25 @@ impl App {
         let camera_position = framing.camera_position(args.model_scale, args.camera_distance);
         let camera = Camera::new(camera_position, Vec3::ZERO, width, height);
 
+        // Opened first so a warning prints on the normal screen. It's only
+        // used if the terminal turns out not to report key releases.
+        let keyboard = args
+            .raw_keyboard
+            .then(InputHandler::new)
+            .and_then(|keyboard| {
+                keyboard
+                    .inspect_err(|error| eprintln!("dcat: --raw-keyboard: {error}"))
+                    .ok()
+            });
+
         let quit_signal = register_quit_signals()?;
         let animation = model.animation.take();
-        let terminal = Terminal::new(output_mode, &args)?;
-        let held_keys = HeldKeys::new(terminal.reports_key_releases());
+        let mut terminal = Terminal::new(output_mode, &args)?;
+        let keyboard = keyboard.filter(|_| !terminal.reports_key_releases());
+        if keyboard.is_some() {
+            terminal.report_focus()?;
+        }
+        let held_keys = HeldKeys::new(terminal.reports_key_releases(), keyboard);
 
         Ok(Self {
             frame_time: Duration::from_secs_f64(1.0 / f64::from(args.fps)),
@@ -283,6 +299,8 @@ impl App {
                 Event::Key(key) => self.handle_key(key),
                 Event::Mouse(mouse) => self.handle_mouse(mouse),
                 Event::Resize(..) => self.resize_pending = true,
+                Event::FocusGained => self.held_keys.set_focused(true),
+                Event::FocusLost => self.held_keys.set_focused(false),
                 _ => {}
             }
         }
@@ -291,6 +309,9 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) {
+        // Keys only arrive while the terminal has focus
+        self.held_keys.set_focused(true);
+
         if self.args.keyboard_controls
             && let Some(held) = HeldKey::from_code(key.code)
         {
@@ -362,6 +383,7 @@ impl App {
 
     // First-person movement from the keys currently held
     fn apply_held_keys(&mut self, delta_time: f32, now: Instant) {
+        self.held_keys.update();
         let held = |key| self.held_keys.is_held(key, now);
 
         if held(HeldKey::Slower) {

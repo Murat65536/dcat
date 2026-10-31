@@ -1,4 +1,7 @@
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    process::{Command, Stdio},
+};
 
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use crossterm::{
@@ -63,15 +66,84 @@ impl OutputMode {
 
 // The output mode forced on the command line, or else the detected one
 pub fn choose(forced: Option<OutputMode>) -> OutputMode {
-    forced.unwrap_or_else(|| detect(|name| std::env::var(name).ok()))
+    let env = |name: &str| std::env::var(name).ok();
+    forced.unwrap_or_else(|| detect(env, || TmuxClient::query(env("TMUX_PANE"))))
+}
+
+// What tmux reports about the terminal it runs in
+#[derive(Debug, Default, PartialEq)]
+pub struct TmuxClient {
+    // Its TERM and its name for itself, like "xterm-kitty kitty(0.49.1)"
+    terminal: String,
+    // Like "256,RGB,sixel"
+    features: String,
+    // Whether tmux was built with Sixel support
+    sixel_support: bool,
+    // Whether programs may pass escape sequences through to the terminal
+    passthrough: bool,
+}
+
+const TMUX_FORMAT: &str = "#{client_termname} #{client_termtype}\t#{client_termfeatures}\t\
+                           #{sixel_support}\t#{allow-passthrough}";
+
+impl TmuxClient {
+    // Ask tmux about the terminal showing `pane`
+    pub fn query(pane: Option<String>) -> Option<Self> {
+        let mut command = Command::new("tmux");
+        command.args(["display-message", "-p"]);
+        if let Some(pane) = pane {
+            command.args(["-t", &pane]);
+        }
+        let output = command
+            .arg(TMUX_FORMAT)
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()?;
+        output
+            .status
+            .success()
+            .then(|| Self::parse(&String::from_utf8_lossy(&output.stdout)))?
+    }
+
+    fn parse(reply: &str) -> Option<Self> {
+        let mut fields = reply.trim_end_matches('\n').split('\t');
+        let mut next = || fields.next();
+        let (terminal, features, sixel_support, passthrough) = (next()?, next()?, next()?, next()?);
+        Some(Self {
+            terminal: terminal.to_lowercase(),
+            features: features.into(),
+            // Older versions leave out what they don't know about
+            sixel_support: sixel_support == "1",
+            passthrough: matches!(passthrough, "on" | "all"),
+        })
+    }
+
+    fn has_feature(&self, name: &str) -> bool {
+        self.features.split(',').any(|feature| feature == name)
+    }
 }
 
 // Pick the best output mode the terminal is known to support, judging by its
-// environment variables
-pub fn detect(env: impl Fn(&str) -> Option<String>) -> OutputMode {
+// environment variables, or inside tmux by what tmux reports
+pub fn detect(
+    env: impl Fn(&str) -> Option<String>,
+    tmux: impl FnOnce() -> Option<TmuxClient>,
+) -> OutputMode {
+    // tmux keeps graphics from reaching the terminal unless asked to. GNU
+    // screen and Neovim's terminal drop them.
+    if env("TMUX").is_some() {
+        return tmux().map_or_else(
+            || characters(&env, false),
+            |client| inside_tmux(&env, &client),
+        );
+    }
+    if env("STY").is_some() || env("NVIM").is_some() {
+        return characters(&env, false);
+    }
+
     let term = env("TERM").unwrap_or_default();
     let term_program = env("TERM_PROGRAM").unwrap_or_default();
-    let colorterm = env("COLORTERM").unwrap_or_default();
 
     let kitty_graphics = env("KITTY_WINDOW_ID").is_some()
         || matches!(term.as_str(), "xterm-kitty" | "xterm-ghostty")
@@ -88,8 +160,31 @@ pub fn detect(env: impl Fn(&str) -> Option<String>) -> OutputMode {
     if sixel {
         return OutputMode::Sixel;
     }
+    characters(&env, false)
+}
 
-    if matches!(colorterm.as_str(), "truecolor" | "24bit")
+fn inside_tmux(env: impl Fn(&str) -> Option<String>, client: &TmuxClient) -> OutputMode {
+    // Kitty images pass through tmux, shown by placeholder text that tmux
+    // moves around like any other. WezTerm doesn't support the placeholders.
+    if client.passthrough
+        && ["kitty", "ghostty"]
+            .iter()
+            .any(|name| client.terminal.contains(name))
+    {
+        return OutputMode::Kitty;
+    }
+    // tmux draws Sixel images itself
+    if client.sixel_support && client.has_feature("sixel") {
+        return OutputMode::Sixel;
+    }
+    characters(env, client.has_feature("RGB"))
+}
+
+fn characters(env: impl Fn(&str) -> Option<String>, truecolor: bool) -> OutputMode {
+    let term = env("TERM").unwrap_or_default();
+    let colorterm = env("COLORTERM").unwrap_or_default();
+    if truecolor
+        || matches!(colorterm.as_str(), "truecolor" | "24bit")
         || env("WT_SESSION").is_some()
         || cfg!(windows)
     {
@@ -362,7 +457,27 @@ const KITTY_CHUNK_SIZE: usize = 4096;
 // Kitty graphics protocol: compressed RGBA, replacing the previous frame's
 // image and placement so they don't pile up. The cursor isn't moved, so a
 // full-height image can't scroll the screen.
-pub fn encode_kitty(frame: Frame, image_id: u32, out: &mut Vec<u8>) -> io::Result<()> {
+// Where a Kitty image is shown
+#[derive(Clone, Copy)]
+pub struct KittyPlacement {
+    pub image_id: u32,
+    // A virtual placement this many cells wide and tall, which Unicode
+    // placeholders show (see encode_kitty_placeholders), or None to show the
+    // image at the cursor
+    pub virtual_cells: Option<(u16, u16)>,
+}
+
+impl KittyPlacement {
+    fn keys(self) -> String {
+        let id = self.image_id;
+        match self.virtual_cells {
+            Some((cols, rows)) => format!("i={id},p=1,q=2,U=1,c={cols},r={rows}"),
+            None => format!("i={id},p=1,q=2,C=1"),
+        }
+    }
+}
+
+pub fn encode_kitty(frame: Frame, placement: KittyPlacement, out: &mut Vec<u8>) -> io::Result<()> {
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
     encoder.write_all(frame.pixels)?;
     let payload = BASE64.encode(encoder.finish()?);
@@ -373,8 +488,10 @@ pub fn encode_kitty(frame: Frame, image_id: u32, out: &mut Vec<u8>) -> io::Resul
         if index == 0 {
             write!(
                 out,
-                "\x1b_Ga=T,f=32,o=z,s={},v={},i={image_id},p=1,q=2,C=1,m={more};",
-                frame.width, frame.height
+                "\x1b_Ga=T,f=32,o=z,s={},v={},{},m={more};",
+                frame.width,
+                frame.height,
+                placement.keys()
             )?;
         } else {
             write!(out, "\x1b_Gm={more};")?;
@@ -389,18 +506,123 @@ pub fn encode_kitty(frame: Frame, image_id: u32, out: &mut Vec<u8>) -> io::Resul
 // the terminal reads and removes, instead of in the escape sequence
 pub fn encode_kitty_shared(
     frame: Frame,
-    image_id: u32,
+    placement: KittyPlacement,
     shm_name: &str,
     out: &mut Vec<u8>,
 ) -> io::Result<()> {
     write!(
         out,
-        "\x1b_Ga=T,f=32,t=s,s={},v={},S={},i={image_id},p=1,q=2,C=1;{}\x1b\\",
+        "\x1b_Ga=T,f=32,t=s,s={},v={},S={},{};{}\x1b\\",
         frame.width,
         frame.height,
         frame.pixels.len(),
+        placement.keys(),
         BASE64.encode(shm_name)
     )
+}
+
+// Kitty shows a virtual placement wherever this character is, in the image's
+// id as foreground color, with diacritics giving the cell's row and column
+const PLACEHOLDER: char = '\u{10EEEE}';
+// The diacritics numbering placeholder rows and columns, from Kitty's
+// rowcolumn-diacritics.txt
+#[rustfmt::skip]
+const PLACEHOLDER_DIACRITICS: [char; 297] = [
+    '\u{0305}', '\u{030d}', '\u{030e}', '\u{0310}', '\u{0312}', '\u{033d}', '\u{033e}', '\u{033f}',
+    '\u{0346}', '\u{034a}', '\u{034b}', '\u{034c}', '\u{0350}', '\u{0351}', '\u{0352}', '\u{0357}',
+    '\u{035b}', '\u{0363}', '\u{0364}', '\u{0365}', '\u{0366}', '\u{0367}', '\u{0368}', '\u{0369}',
+    '\u{036a}', '\u{036b}', '\u{036c}', '\u{036d}', '\u{036e}', '\u{036f}', '\u{0483}', '\u{0484}',
+    '\u{0485}', '\u{0486}', '\u{0487}', '\u{0592}', '\u{0593}', '\u{0594}', '\u{0595}', '\u{0597}',
+    '\u{0598}', '\u{0599}', '\u{059c}', '\u{059d}', '\u{059e}', '\u{059f}', '\u{05a0}', '\u{05a1}',
+    '\u{05a8}', '\u{05a9}', '\u{05ab}', '\u{05ac}', '\u{05af}', '\u{05c4}', '\u{0610}', '\u{0611}',
+    '\u{0612}', '\u{0613}', '\u{0614}', '\u{0615}', '\u{0616}', '\u{0617}', '\u{0657}', '\u{0658}',
+    '\u{0659}', '\u{065a}', '\u{065b}', '\u{065d}', '\u{065e}', '\u{06d6}', '\u{06d7}', '\u{06d8}',
+    '\u{06d9}', '\u{06da}', '\u{06db}', '\u{06dc}', '\u{06df}', '\u{06e0}', '\u{06e1}', '\u{06e2}',
+    '\u{06e4}', '\u{06e7}', '\u{06e8}', '\u{06eb}', '\u{06ec}', '\u{0730}', '\u{0732}', '\u{0733}',
+    '\u{0735}', '\u{0736}', '\u{073a}', '\u{073d}', '\u{073f}', '\u{0740}', '\u{0741}', '\u{0743}',
+    '\u{0745}', '\u{0747}', '\u{0749}', '\u{074a}', '\u{07eb}', '\u{07ec}', '\u{07ed}', '\u{07ee}',
+    '\u{07ef}', '\u{07f0}', '\u{07f1}', '\u{07f3}', '\u{0816}', '\u{0817}', '\u{0818}', '\u{0819}',
+    '\u{081b}', '\u{081c}', '\u{081d}', '\u{081e}', '\u{081f}', '\u{0820}', '\u{0821}', '\u{0822}',
+    '\u{0823}', '\u{0825}', '\u{0826}', '\u{0827}', '\u{0829}', '\u{082a}', '\u{082b}', '\u{082c}',
+    '\u{082d}', '\u{0951}', '\u{0953}', '\u{0954}', '\u{0f82}', '\u{0f83}', '\u{0f86}', '\u{0f87}',
+    '\u{135d}', '\u{135e}', '\u{135f}', '\u{17dd}', '\u{193a}', '\u{1a17}', '\u{1a75}', '\u{1a76}',
+    '\u{1a77}', '\u{1a78}', '\u{1a79}', '\u{1a7a}', '\u{1a7b}', '\u{1a7c}', '\u{1b6b}', '\u{1b6d}',
+    '\u{1b6e}', '\u{1b6f}', '\u{1b70}', '\u{1b71}', '\u{1b72}', '\u{1b73}', '\u{1cd0}', '\u{1cd1}',
+    '\u{1cd2}', '\u{1cda}', '\u{1cdb}', '\u{1ce0}', '\u{1dc0}', '\u{1dc1}', '\u{1dc3}', '\u{1dc4}',
+    '\u{1dc5}', '\u{1dc6}', '\u{1dc7}', '\u{1dc8}', '\u{1dc9}', '\u{1dcb}', '\u{1dcc}', '\u{1dd1}',
+    '\u{1dd2}', '\u{1dd3}', '\u{1dd4}', '\u{1dd5}', '\u{1dd6}', '\u{1dd7}', '\u{1dd8}', '\u{1dd9}',
+    '\u{1dda}', '\u{1ddb}', '\u{1ddc}', '\u{1ddd}', '\u{1dde}', '\u{1ddf}', '\u{1de0}', '\u{1de1}',
+    '\u{1de2}', '\u{1de3}', '\u{1de4}', '\u{1de5}', '\u{1de6}', '\u{1dfe}', '\u{20d0}', '\u{20d1}',
+    '\u{20d4}', '\u{20d5}', '\u{20d6}', '\u{20d7}', '\u{20db}', '\u{20dc}', '\u{20e1}', '\u{20e7}',
+    '\u{20e9}', '\u{20f0}', '\u{2cef}', '\u{2cf0}', '\u{2cf1}', '\u{2de0}', '\u{2de1}', '\u{2de2}',
+    '\u{2de3}', '\u{2de4}', '\u{2de5}', '\u{2de6}', '\u{2de7}', '\u{2de8}', '\u{2de9}', '\u{2dea}',
+    '\u{2deb}', '\u{2dec}', '\u{2ded}', '\u{2dee}', '\u{2def}', '\u{2df0}', '\u{2df1}', '\u{2df2}',
+    '\u{2df3}', '\u{2df4}', '\u{2df5}', '\u{2df6}', '\u{2df7}', '\u{2df8}', '\u{2df9}', '\u{2dfa}',
+    '\u{2dfb}', '\u{2dfc}', '\u{2dfd}', '\u{2dfe}', '\u{2dff}', '\u{a66f}', '\u{a67c}', '\u{a67d}',
+    '\u{a6f0}', '\u{a6f1}', '\u{a8e0}', '\u{a8e1}', '\u{a8e2}', '\u{a8e3}', '\u{a8e4}', '\u{a8e5}',
+    '\u{a8e6}', '\u{a8e7}', '\u{a8e8}', '\u{a8e9}', '\u{a8ea}', '\u{a8eb}', '\u{a8ec}', '\u{a8ed}',
+    '\u{a8ee}', '\u{a8ef}', '\u{a8f0}', '\u{a8f1}', '\u{aab0}', '\u{aab2}', '\u{aab3}', '\u{aab7}',
+    '\u{aab8}', '\u{aabe}', '\u{aabf}', '\u{aac1}', '\u{fe20}', '\u{fe21}', '\u{fe22}', '\u{fe23}',
+    '\u{fe24}', '\u{fe25}', '\u{fe26}', '\u{10a0f}', '\u{10a38}', '\u{1d185}', '\u{1d186}',
+    '\u{1d187}', '\u{1d188}', '\u{1d189}', '\u{1d1aa}', '\u{1d1ab}', '\u{1d1ac}', '\u{1d1ad}',
+    '\u{1d242}', '\u{1d243}', '\u{1d244}',
+];
+
+// Placeholder text for a virtual placement of `cols` by `rows` cells, starting
+// at the top left. Only the first cell of each row is numbered, and the rest
+// count on from it.
+pub fn encode_kitty_placeholders(
+    image_id: u32,
+    (cols, rows): (u16, u16),
+    out: &mut Vec<u8>,
+) -> io::Result<()> {
+    // Ids that fit go in a 256-color index, which tmux passes on as it is.
+    // Bigger ones need truecolor, with a third diacritic for the top byte.
+    let (color, top_byte) = match u8::try_from(image_id) {
+        Ok(index) => (Color::AnsiValue(index), None),
+        Err(_) => {
+            let [top, r, g, b] = image_id.to_be_bytes();
+            (Color::Rgb { r, g, b }, Some(top))
+        }
+    };
+    queue!(out, SetForegroundColor(color))?;
+    for row in 0..rows.min(PLACEHOLDER_DIACRITICS.len() as u16) {
+        let mut text = String::from(PLACEHOLDER);
+        text.push(PLACEHOLDER_DIACRITICS[usize::from(row)]);
+        text.push(PLACEHOLDER_DIACRITICS[0]);
+        if let Some(top) = top_byte {
+            text.push(PLACEHOLDER_DIACRITICS[usize::from(top)]);
+        }
+        text.extend(std::iter::repeat_n(
+            PLACEHOLDER,
+            usize::from(cols).saturating_sub(1),
+        ));
+        queue!(out, MoveTo(0, row), Print(text))?;
+    }
+    queue!(out, ResetColor)
+}
+
+// Wrap escape sequences, each ending in ST, so tmux passes them on to the
+// terminal: in a tmux DCS with every ESC doubled. Each goes in its own, since
+// tmux drops long ones.
+pub fn wrap_for_tmux(sequences: &[u8], out: &mut Vec<u8>) {
+    let mut rest = sequences;
+    while !rest.is_empty() {
+        let end = rest
+            .windows(2)
+            .position(|window| window == b"\x1b\\")
+            .map_or(rest.len(), |start| start + 2);
+        let (sequence, tail) = rest.split_at(end);
+        out.extend_from_slice(b"\x1bPtmux;");
+        for &byte in sequence {
+            if byte == 0x1b {
+                out.push(0x1b);
+            }
+            out.push(byte);
+        }
+        out.extend_from_slice(b"\x1b\\");
+        rest = tail;
+    }
 }
 
 // Removes dcat's image on exit, leaving other programs' images alone
@@ -555,6 +777,95 @@ mod tests {
         move |name| map.get(name).map(|value| value.to_string())
     }
 
+    fn tmux_client(reply: &str) -> TmuxClient {
+        TmuxClient::parse(reply).unwrap()
+    }
+
+    #[test]
+    fn tmux_replies() {
+        assert_eq!(
+            tmux_client("xterm-kitty kitty(0.49.1)\t256,RGB,sixel\t1\ton\n"),
+            TmuxClient {
+                terminal: "xterm-kitty kitty(0.49.1)".into(),
+                features: "256,RGB,sixel".into(),
+                sixel_support: true,
+                passthrough: true,
+            }
+        );
+        // tmux before 3.3 knows neither Sixel nor passthrough
+        let old = tmux_client("xterm-256color \t256\t\t\n");
+        assert!(!old.sixel_support && !old.passthrough);
+        assert_eq!(TmuxClient::parse("not a reply"), None);
+    }
+
+    #[test]
+    fn detection_inside_multiplexers() {
+        let in_tmux = env(&[
+            ("TMUX", "/tmp/tmux-1000/default,1,0"),
+            ("TERM", "tmux-256color"),
+        ]);
+        let cases = [
+            (
+                "xterm-kitty kitty(0.49.1)\t256,RGB\t1\ton",
+                OutputMode::Kitty,
+            ),
+            (
+                "xterm-ghostty ghostty 1.2\t256,RGB\t1\tall",
+                OutputMode::Kitty,
+            ),
+            // Kitty graphics need passthrough
+            (
+                "xterm-kitty kitty(0.49.1)\t256,RGB\t1\toff",
+                OutputMode::TruecolorCharacters,
+            ),
+            ("foot foot(1.20)\t256,RGB,sixel\t1\toff", OutputMode::Sixel),
+            // Sixel needs tmux built with it
+            (
+                "foot foot(1.20)\t256,RGB,sixel\t0\toff",
+                OutputMode::TruecolorCharacters,
+            ),
+            (
+                "wezterm WezTerm 2024\t256,RGB,sixel\t1\ton",
+                OutputMode::Sixel,
+            ),
+        ];
+        for (reply, expected) in cases {
+            assert_eq!(
+                detect(&in_tmux, || Some(tmux_client(reply))),
+                expected,
+                "{reply:?}"
+            );
+        }
+
+        // Without an answer from tmux, the terminal outside is unknown
+        let kitty_in_tmux = env(&[
+            ("TMUX", "/tmp/tmux-1000/default,1,0"),
+            ("KITTY_WINDOW_ID", "1"),
+            ("COLORTERM", "truecolor"),
+        ]);
+        assert_eq!(
+            detect(kitty_in_tmux, || None),
+            OutputMode::TruecolorCharacters
+        );
+
+        // GNU screen and Neovim's terminal never pass graphics on
+        for (name, value) in [
+            ("STY", "1234.pts-0.host"),
+            ("NVIM", "/run/user/1000/nvim.1.0"),
+        ] {
+            let vars = [
+                (name, value),
+                ("TERM", "xterm-kitty"),
+                ("COLORTERM", "truecolor"),
+            ];
+            assert_eq!(
+                detect(env(&vars), || None),
+                OutputMode::TruecolorCharacters,
+                "{name}"
+            );
+        }
+    }
+
     #[test]
     fn detection() {
         let cases: &[(&[(&str, &str)], OutputMode)] = &[
@@ -575,25 +886,25 @@ mod tests {
             ),
         ];
         for (vars, expected) in cases {
-            assert_eq!(detect(env(vars)), *expected, "{vars:?}");
+            assert_eq!(detect(env(vars), || None), *expected, "{vars:?}");
         }
         // Windows terminals all support truecolor, so the rest only apply elsewhere
         if cfg!(windows) {
             assert_eq!(
-                detect(env(&[("TERM", "linux")])),
+                detect(env(&[("TERM", "linux")]), || None),
                 OutputMode::TruecolorCharacters
             );
-            assert_eq!(detect(env(&[])), OutputMode::TruecolorCharacters);
+            assert_eq!(detect(env(&[]), || None), OutputMode::TruecolorCharacters);
         } else {
             assert_eq!(
-                detect(env(&[("TERM", "linux")])),
+                detect(env(&[("TERM", "linux")]), || None),
                 OutputMode::BlockCharacters
             );
             assert_eq!(
-                detect(env(&[("TERM", "xterm-256color")])),
+                detect(env(&[("TERM", "xterm-256color")]), || None),
                 OutputMode::PaletteCharacters
             );
-            assert_eq!(detect(env(&[])), OutputMode::PaletteCharacters);
+            assert_eq!(detect(env(&[]), || None), OutputMode::PaletteCharacters);
         }
     }
 
@@ -802,7 +1113,11 @@ mod tests {
             pixels: &pixels,
         };
         let mut out = Vec::new();
-        encode_kitty(frame, 7, &mut out).unwrap();
+        let placement = KittyPlacement {
+            image_id: 7,
+            virtual_cells: None,
+        };
+        encode_kitty(frame, placement, &mut out).unwrap();
         let text = String::from_utf8(out).unwrap();
 
         let commands: Vec<&str> = text
@@ -831,6 +1146,67 @@ mod tests {
     }
 
     #[test]
+    fn kitty_virtual_placement() {
+        let pixels = vec![0; 3 * 2 * 4];
+        let frame = Frame {
+            width: 3,
+            height: 2,
+            pixels: &pixels,
+        };
+        let placement = KittyPlacement {
+            image_id: 7,
+            virtual_cells: Some((4, 3)),
+        };
+        let mut out = Vec::new();
+        encode_kitty_shared(frame, placement, "/dcat-1-7", &mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.starts_with("\x1b_Ga=T,f=32,t=s,s=3,v=2,S=24,i=7,p=1,q=2,U=1,c=4,r=3;"));
+    }
+
+    #[test]
+    fn kitty_placeholders() {
+        let placeholder = |cell: &vt100::Cell| cell.contents().to_string();
+        let mut out = Vec::new();
+        encode_kitty_placeholders(42, (3, 2), &mut out).unwrap();
+        let mut parser = vt100::Parser::new(
+            std::num::NonZeroU16::new(4).unwrap(),
+            std::num::NonZeroU16::new(5).unwrap(),
+            0,
+        );
+        parser.process(&out);
+        let screen = parser.screen();
+        for (row, diacritic) in [(0, '\u{0305}'), (1, '\u{030d}')] {
+            let first = screen.cell(row, 0).unwrap();
+            assert_eq!(placeholder(first), format!("\u{10EEEE}{diacritic}\u{0305}"));
+            assert_eq!(first.fgcolor(), vt100::Color::Idx(42));
+            for col in 1..3 {
+                assert_eq!(placeholder(screen.cell(row, col).unwrap()), "\u{10EEEE}");
+            }
+            assert_eq!(placeholder(screen.cell(row, 3).unwrap()), "");
+        }
+
+        // Ids above 255 go in truecolor, with their top byte as a third diacritic
+        let mut out = Vec::new();
+        encode_kitty_placeholders(0x0201_0203, (1, 1), &mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.starts_with("\x1b[38;2;1;2;3m"), "{text:?}");
+        assert!(
+            text.contains("\u{10EEEE}\u{0305}\u{0305}\u{030e}"),
+            "{text:?}"
+        );
+    }
+
+    #[test]
+    fn tmux_passthrough() {
+        let mut out = Vec::new();
+        wrap_for_tmux(b"\x1b_Ga=T;AAAA\x1b\\\x1b_Gm=0;BB\x1b\\", &mut out);
+        assert_eq!(
+            out,
+            b"\x1bPtmux;\x1b\x1b_Ga=T;AAAA\x1b\x1b\\\x1b\\\x1bPtmux;\x1b\x1b_Gm=0;BB\x1b\x1b\\\x1b\\"
+        );
+    }
+
+    #[test]
     fn kitty_shared_memory_command() {
         let pixels = vec![0; 3 * 2 * 4];
         let frame = Frame {
@@ -839,7 +1215,11 @@ mod tests {
             pixels: &pixels,
         };
         let mut out = Vec::new();
-        encode_kitty_shared(frame, 7, "/dcat-1-7", &mut out).unwrap();
+        let placement = KittyPlacement {
+            image_id: 7,
+            virtual_cells: None,
+        };
+        encode_kitty_shared(frame, placement, "/dcat-1-7", &mut out).unwrap();
         let text = String::from_utf8(out).unwrap();
         let command = text
             .strip_prefix("\x1b_G")
@@ -1002,7 +1382,11 @@ mod bench {
             let start = std::time::Instant::now();
             for _ in 0..5 {
                 out.clear();
-                encode_kitty(frame, 1, &mut out).unwrap();
+                let placement = KittyPlacement {
+                    image_id: 1,
+                    virtual_cells: None,
+                };
+                encode_kitty(frame, placement, &mut out).unwrap();
             }
             eprintln!(
                 "kitty {width}x{height}: {:?} per frame, {} KB",

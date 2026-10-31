@@ -1,8 +1,8 @@
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
     event::{
-        DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags,
-        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+        DisableFocusChange, DisableMouseCapture, EnableFocusChange, EnableMouseCapture,
+        KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     execute, queue,
     style::{Attribute, Print, SetAttribute},
@@ -23,7 +23,7 @@ use std::{
 
 use crate::{
     cli::{Args, OutputMode},
-    output::{self, ColorDepth, Frame},
+    output::{self, ColorDepth, Frame, KittyPlacement},
     profile,
 };
 
@@ -39,8 +39,11 @@ const DISABLE_PIXEL_MOUSE: &str = "\x1b[?1016l";
 // Terminal modes to undo on exit, readable from the panic hook
 static MOUSE_CAPTURED: AtomicBool = AtomicBool::new(false);
 static KEYBOARD_ENHANCED: AtomicBool = AtomicBool::new(false);
+static FOCUS_REPORTED: AtomicBool = AtomicBool::new(false);
 // The id of the Kitty image dcat shows, or 0 for none
 static KITTY_IMAGE_SHOWN: AtomicU32 = AtomicU32::new(0);
+// Whether Kitty commands have to be passed through tmux
+static KITTY_IN_TMUX: AtomicBool = AtomicBool::new(false);
 static SIXEL_SCROLLING_DISABLED: AtomicBool = AtomicBool::new(false);
 
 // Pixels covered by one character cell. A given size wins over the terminal's,
@@ -129,8 +132,9 @@ struct FrameWriter {
 #[derive(Clone, Copy, PartialEq)]
 enum SharedMemory {
     Off,
-    // The terminal said it reads it. If it stops, frames go inline instead.
-    Confirmed,
+    // The terminal said it reads it, or likely does. If it stops, frames go
+    // inline instead.
+    Likely,
     // The caller says the terminal reads it, but frames may be skipped, like
     // dcat.nvim does while its viewer is hidden. Unread ones are removed.
     Assumed,
@@ -141,6 +145,7 @@ impl FrameWriter {
         mode: OutputMode,
         kitty_image_id: u32,
         shared_memory: SharedMemory,
+        tmux: bool,
     ) -> io::Result<Self> {
         let (jobs, job_receiver) = sync_channel::<WriterJob>(0);
         let (recycle, recycled) = channel();
@@ -154,12 +159,16 @@ impl FrameWriter {
                     .then(|| crate::shm::SharedFrames::new(shared_memory == SharedMemory::Assumed));
                 #[cfg(not(unix))]
                 let _ = shared_memory;
+                let mut placeholders_drawn = None;
                 for job in job_receiver {
                     buffer.clear();
                     {
                         profiling::scope!("Encode");
                         match job {
-                            WriterJob::Clear => queue!(buffer, Clear(ClearType::All))?,
+                            WriterJob::Clear => {
+                                queue!(buffer, Clear(ClearType::All))?;
+                                placeholders_drawn = None;
+                            }
                             WriterJob::Frame {
                                 pixels,
                                 width,
@@ -185,6 +194,7 @@ impl FrameWriter {
                                         .map(|write| write as &mut WriteShared<'_>),
                                     #[cfg(not(unix))]
                                     write_shared: None,
+                                    placeholders_drawn: tmux.then_some(&mut placeholders_drawn),
                                 };
                                 compose_frame(
                                     mode,
@@ -251,12 +261,27 @@ impl Terminal {
         // machine. The query reads the reply itself, so it must come before
         // anything else reads input. It can be skipped when the caller knows
         // better, like inside Neovim, whose terminal answers part of it itself.
+        // Inside tmux, Kitty commands have to be passed through it
+        let tmux = mode == OutputMode::Kitty && std::env::var_os("TMUX").is_some();
+        KITTY_IN_TMUX.store(tmux, Ordering::SeqCst);
+        let over_ssh = ["SSH_CONNECTION", "SSH_TTY"]
+            .iter()
+            .any(|name| std::env::var_os(name).is_some());
         let shared_memory = if mode != OutputMode::Kitty {
             SharedMemory::Off
         } else if args.kitty_shared_memory {
             SharedMemory::Assumed
+        } else if tmux {
+            // tmux would take the query for a window title, and shows Kitty its
+            // own answer. Shared memory is tried anyway unless over SSH, since
+            // big inline frames back up in tmux until it drops some.
+            if over_ssh {
+                SharedMemory::Off
+            } else {
+                SharedMemory::Likely
+            }
         } else if terminal_reads_shared_memory() {
-            SharedMemory::Confirmed
+            SharedMemory::Likely
         } else {
             SharedMemory::Off
         };
@@ -264,9 +289,12 @@ impl Terminal {
         // First-person movement needs key releases. The Windows console reports
         // them natively; elsewhere they need the Kitty keyboard protocol. A
         // terminal that doesn't answer the query is treated as not supporting it.
+        // Neovim's terminal answers it, but never gets releases itself from the
+        // terminal it runs in, so keys would stay held.
         let mut reports_key_releases = cfg!(windows);
         if args.keyboard_controls
             && !reports_key_releases
+            && std::env::var_os("NVIM").is_none()
             && terminal::supports_keyboard_enhancement().unwrap_or(false)
         {
             execute!(
@@ -289,12 +317,20 @@ impl Terminal {
                 mode,
                 args.kitty_image_id,
                 shared_memory,
+                tmux,
             )?),
         })
     }
 
     pub fn reports_key_releases(&self) -> bool {
         self.reports_key_releases
+    }
+
+    // Ask the terminal to report gaining and losing focus
+    pub fn report_focus(&mut self) -> io::Result<()> {
+        execute!(stdout(), EnableFocusChange)?;
+        FOCUS_REPORTED.store(true, Ordering::SeqCst);
+        Ok(())
     }
 
     // Clear leftovers from a larger previous frame
@@ -365,6 +401,9 @@ struct KittyImage<'a> {
     id: u32,
     // None to send the pixels inline
     write_shared: Option<&'a mut WriteShared<'a>>,
+    // Inside tmux, the size of the placeholder text last drawn. tmux keeps
+    // it, so it's only drawn again when that changes.
+    placeholders_drawn: Option<&'a mut Option<(u16, u16)>>,
 }
 
 fn compose_frame(
@@ -379,7 +418,12 @@ fn compose_frame(
     let image_rows = rows.saturating_sub(reserved_rows(mode, status.is_some()));
     let (cols_used, rows_used) = (usize::from(cols), usize::from(image_rows));
 
-    queue!(out, BeginSynchronizedUpdate)?;
+    // tmux redraws a whole pane after a synchronized update, which would send
+    // the placeholder text again every frame. Kitty swaps images at once anyway.
+    let synchronized = kitty.placeholders_drawn.is_none();
+    if synchronized {
+        queue!(out, BeginSynchronizedUpdate)?;
+    }
 
     match mode {
         OutputMode::TruecolorCharacters => {
@@ -410,13 +454,32 @@ fn compose_frame(
             queue!(out, MoveTo(0, 0))?;
             if frame.width > 0 && frame.height > 0 {
                 if mode == OutputMode::Kitty {
+                    // Inside tmux the image goes in a virtual placement, which
+                    // placeholder text shows
+                    let cells = (
+                        frame.width.div_ceil(cell_width) as u16,
+                        frame.height.div_ceil(cell_height) as u16,
+                    );
+                    let placement = KittyPlacement {
+                        image_id: kitty.id,
+                        virtual_cells: kitty.placeholders_drawn.is_some().then_some(cells),
+                    };
+                    let start = out.len();
                     match kitty.write_shared.map(|write| write(frame.pixels)) {
                         Some(Ok(name)) => {
-                            output::encode_kitty_shared(frame, kitty.id, &name, out)?;
+                            output::encode_kitty_shared(frame, placement, &name, out)?;
                         }
                         // Without shared memory, or if writing it failed,
                         // send the pixels in the escape sequence
-                        _ => output::encode_kitty(frame, kitty.id, out)?,
+                        _ => output::encode_kitty(frame, placement, out)?,
+                    }
+                    if let Some(drawn) = kitty.placeholders_drawn {
+                        let commands = out.split_off(start);
+                        output::wrap_for_tmux(&commands, out);
+                        if *drawn != Some(cells) {
+                            output::encode_kitty_placeholders(kitty.id, cells, out)?;
+                            *drawn = Some(cells);
+                        }
                     }
                 } else {
                     output::encode_sixel(frame, out)?;
@@ -439,16 +502,29 @@ fn compose_frame(
         )?;
     }
 
-    queue!(out, EndSynchronizedUpdate)
+    if synchronized {
+        queue!(out, EndSynchronizedUpdate)?;
+    }
+    Ok(())
 }
 
 fn restore() {
     let kitty_image = KITTY_IMAGE_SHOWN.swap(0, Ordering::SeqCst);
     if kitty_image != 0 {
-        let _ = execute!(stdout(), Print(output::kitty_delete(kitty_image)));
+        let delete = output::kitty_delete(kitty_image);
+        let mut command = Vec::new();
+        if KITTY_IN_TMUX.load(Ordering::SeqCst) {
+            output::wrap_for_tmux(delete.as_bytes(), &mut command);
+        } else {
+            command.extend_from_slice(delete.as_bytes());
+        }
+        let _ = stdout().write_all(&command).and_then(|()| stdout().flush());
     }
     if SIXEL_SCROLLING_DISABLED.swap(false, Ordering::SeqCst) {
         let _ = execute!(stdout(), Print(output::SIXEL_ENABLE_SCROLLING));
+    }
+    if FOCUS_REPORTED.swap(false, Ordering::SeqCst) {
+        let _ = execute!(stdout(), DisableFocusChange);
     }
     if KEYBOARD_ENHANCED.swap(false, Ordering::SeqCst) {
         let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
@@ -498,6 +574,7 @@ mod tests {
             KittyImage {
                 id: 1,
                 write_shared: None,
+                placeholders_drawn: None,
             },
             &mut out,
         )
@@ -758,6 +835,7 @@ mod tests {
             KittyImage {
                 id: 1,
                 write_shared: Some(write_shared),
+                placeholders_drawn: None,
             },
             &mut out,
         )
@@ -776,6 +854,54 @@ mod tests {
         assert_eq!(written, [20 * 40 * 4]);
         assert!(text.contains("t=s,"), "{text}");
         assert!(!text.contains("o=z"), "{text}");
+    }
+
+    #[test]
+    fn kitty_in_tmux_uses_placeholders() {
+        let pixels = vec![120; 20 * 40 * 4];
+        let frame = Frame {
+            width: 20,
+            height: 40,
+            pixels: &pixels,
+        };
+        let mut drawn = None;
+        let compose = |drawn: &mut Option<(u16, u16)>| {
+            let mut out = Vec::new();
+            let kitty = KittyImage {
+                id: 1,
+                write_shared: None,
+                placeholders_drawn: Some(drawn),
+            };
+            compose_frame(
+                OutputMode::Kitty,
+                PIXEL_CELL_SIZE,
+                frame,
+                None,
+                (4, 3),
+                kitty,
+                &mut out,
+            )
+            .unwrap();
+            String::from_utf8(out).unwrap()
+        };
+
+        let first = compose(&mut drawn);
+        // The image goes through tmux into a 2x2 cell virtual placement
+        assert!(
+            !first.replace("\x1b\x1b", "").contains("\x1b_G"),
+            "{first:?}"
+        );
+        assert!(first.contains("\x1bPtmux;\x1b\x1b_Ga=T,"), "{first:?}");
+        assert!(first.contains(",U=1,c=2,r=2,"), "{first:?}");
+        assert_eq!(first.matches('\u{10EEEE}').count(), 4);
+        assert_eq!(drawn, Some((2, 2)));
+
+        assert!(!first.contains("\x1b[?2026h"), "{first:?}");
+
+        // tmux keeps the placeholders, so they aren't sent again
+        let second = compose(&mut drawn);
+        assert!(second.contains("\x1bPtmux;"));
+        assert_eq!(second.matches('\u{10EEEE}').count(), 0);
     }
 
     #[test]
