@@ -12,6 +12,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # asset-importer downloads Assimp next to its sources by default, which the
+  # cache doesn't keep, so cached builds would fail to link
+  ASSET_IMPORTER_CACHE_DIR: ${{ github.workspace }}/.asset-importer
 
 jobs:
   fmt:
@@ -36,6 +39,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: ${{ env.ASSET_IMPORTER_CACHE_DIR }}
       - name: Install zlib
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y zlib1g-dev

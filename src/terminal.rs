@@ -146,19 +146,19 @@ impl FrameWriter {
                                 let mut write_shared = shared_frames
                                     .as_mut()
                                     .map(|frames| move |data: &[u8]| frames.write(data));
+                                #[cfg(unix)]
+                                let kitty_shared = write_shared
+                                    .as_mut()
+                                    .map(|write| write as &mut WriteShared<'_>);
                                 #[cfg(not(unix))]
-                                let mut write_shared: Option<
-                                    fn(&[u8]) -> io::Result<String>,
-                                > = None;
+                                let kitty_shared = None;
                                 compose_frame(
                                     mode,
                                     cell_pixels,
                                     frame,
                                     status.as_deref(),
                                     size,
-                                    write_shared
-                                        .as_mut()
-                                        .map(|write| write as &mut WriteShared<'_>),
+                                    kitty_shared,
                                     &mut buffer,
                                 )?;
                                 // Fails only if the terminal is being dropped
