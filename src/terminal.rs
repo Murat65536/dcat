@@ -15,7 +15,7 @@ use std::{
     io::{self, Write, stdout},
     panic,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
         mpsc::{Receiver, SyncSender, channel, sync_channel},
     },
     thread::{self, JoinHandle},
@@ -39,7 +39,8 @@ const DISABLE_PIXEL_MOUSE: &str = "\x1b[?1016l";
 // Terminal modes to undo on exit, readable from the panic hook
 static MOUSE_CAPTURED: AtomicBool = AtomicBool::new(false);
 static KEYBOARD_ENHANCED: AtomicBool = AtomicBool::new(false);
-static KITTY_IMAGES_SHOWN: AtomicBool = AtomicBool::new(false);
+// The id of the Kitty image dcat shows, or 0 for none
+static KITTY_IMAGE_SHOWN: AtomicU32 = AtomicU32::new(0);
 static SIXEL_SCROLLING_DISABLED: AtomicBool = AtomicBool::new(false);
 
 // Pixels covered by one character cell. A given size wins over the terminal's,
@@ -58,6 +59,15 @@ fn cell_pixels(mode: OutputMode, cell_size: Option<(u32, u32)>) -> (u32, u32) {
         ),
         _ => FALLBACK_CELL_PIXELS,
     }
+}
+
+// Whether the terminal says it can read frames from shared memory
+fn terminal_reads_shared_memory() -> bool {
+    #[cfg(unix)]
+    let supported = crate::shm::terminal_supports();
+    #[cfg(not(unix))]
+    let supported = false;
+    supported
 }
 
 // Rows below the image: the status bar, and for Sixel a spare row so the
@@ -115,8 +125,23 @@ struct FrameWriter {
     thread: JoinHandle<io::Result<()>>,
 }
 
+// Whether Kitty frames go through shared memory
+#[derive(Clone, Copy, PartialEq)]
+enum SharedMemory {
+    Off,
+    // The terminal said it reads it. If it stops, frames go inline instead.
+    Confirmed,
+    // The caller says the terminal reads it, but frames may be skipped, like
+    // dcat.nvim does while its viewer is hidden. Unread ones are removed.
+    Assumed,
+}
+
 impl FrameWriter {
-    fn spawn(mode: OutputMode, kitty_shared_memory: bool) -> io::Result<Self> {
+    fn spawn(
+        mode: OutputMode,
+        kitty_image_id: u32,
+        shared_memory: SharedMemory,
+    ) -> io::Result<Self> {
         let (jobs, job_receiver) = sync_channel::<WriterJob>(0);
         let (recycle, recycled) = channel();
         let thread = thread::Builder::new()
@@ -125,9 +150,10 @@ impl FrameWriter {
                 profiling::register_thread!();
                 let mut buffer = Vec::new();
                 #[cfg(unix)]
-                let mut shared_frames = kitty_shared_memory.then(crate::shm::SharedFrames::default);
+                let mut shared_frames = (shared_memory != SharedMemory::Off)
+                    .then(|| crate::shm::SharedFrames::new(shared_memory == SharedMemory::Assumed));
                 #[cfg(not(unix))]
-                let _ = kitty_shared_memory;
+                let _ = shared_memory;
                 for job in job_receiver {
                     buffer.clear();
                     {
@@ -151,19 +177,22 @@ impl FrameWriter {
                                 let mut write_shared = shared_frames
                                     .as_mut()
                                     .map(|frames| move |data: &[u8]| frames.write(data));
-                                #[cfg(unix)]
-                                let kitty_shared = write_shared
-                                    .as_mut()
-                                    .map(|write| write as &mut WriteShared<'_>);
-                                #[cfg(not(unix))]
-                                let kitty_shared = None;
+                                let kitty = KittyImage {
+                                    id: kitty_image_id,
+                                    #[cfg(unix)]
+                                    write_shared: write_shared
+                                        .as_mut()
+                                        .map(|write| write as &mut WriteShared<'_>),
+                                    #[cfg(not(unix))]
+                                    write_shared: None,
+                                };
                                 compose_frame(
                                     mode,
                                     cell_pixels,
                                     frame,
                                     status.as_deref(),
                                     size,
-                                    kitty_shared,
+                                    kitty,
                                     &mut buffer,
                                 )?;
                                 // Fails only if the terminal is being dropped
@@ -189,13 +218,7 @@ impl FrameWriter {
 }
 
 impl Terminal {
-    // `key_releases` asks for key release events, which first-person movement needs
-    pub fn new(
-        mode: OutputMode,
-        cell_size: Option<(u32, u32)>,
-        mouse_capture: bool,
-        key_releases: bool,
-    ) -> io::Result<Self> {
+    pub fn new(mode: OutputMode, args: &Args) -> io::Result<Self> {
         // Restore the terminal before the panic message is printed, otherwise
         // it is lost on the alternate screen.
         let default_hook = panic::take_hook();
@@ -208,7 +231,7 @@ impl Terminal {
         enable_raw_mode()?;
 
         match mode {
-            OutputMode::Kitty => KITTY_IMAGES_SHOWN.store(true, Ordering::SeqCst),
+            OutputMode::Kitty => KITTY_IMAGE_SHOWN.store(args.kitty_image_id, Ordering::SeqCst),
             OutputMode::Sixel => {
                 execute!(stdout(), Print(output::SIXEL_DISABLE_SCROLLING))?;
                 SIXEL_SCROLLING_DISABLED.store(true, Ordering::SeqCst);
@@ -216,7 +239,7 @@ impl Terminal {
             _ => {}
         }
 
-        if mouse_capture {
+        if args.mouse_orbit {
             execute!(stdout(), EnableMouseCapture)?;
             if cfg!(unix) {
                 execute!(stdout(), Print(ENABLE_PIXEL_MOUSE))?;
@@ -226,17 +249,23 @@ impl Terminal {
 
         // Kitty can read frames from shared memory when it runs on this
         // machine. The query reads the reply itself, so it must come before
-        // anything else reads input.
-        #[cfg(unix)]
-        let kitty_shared_memory = mode == OutputMode::Kitty && crate::shm::terminal_supports();
-        #[cfg(not(unix))]
-        let kitty_shared_memory = false;
+        // anything else reads input. It can be skipped when the caller knows
+        // better, like inside Neovim, whose terminal answers part of it itself.
+        let shared_memory = if mode != OutputMode::Kitty {
+            SharedMemory::Off
+        } else if args.kitty_shared_memory {
+            SharedMemory::Assumed
+        } else if terminal_reads_shared_memory() {
+            SharedMemory::Confirmed
+        } else {
+            SharedMemory::Off
+        };
 
-        // The Windows console reports releases natively; elsewhere they need
-        // the Kitty keyboard protocol. A terminal that doesn't answer the
-        // query is treated as not supporting it.
+        // First-person movement needs key releases. The Windows console reports
+        // them natively; elsewhere they need the Kitty keyboard protocol. A
+        // terminal that doesn't answer the query is treated as not supporting it.
         let mut reports_key_releases = cfg!(windows);
-        if key_releases
+        if args.keyboard_controls
             && !reports_key_releases
             && terminal::supports_keyboard_enhancement().unwrap_or(false)
         {
@@ -254,9 +283,13 @@ impl Terminal {
 
         Ok(Self {
             mode,
-            cell_size,
+            cell_size: args.cell_size,
             reports_key_releases,
-            writer: Some(FrameWriter::spawn(mode, kitty_shared_memory)?),
+            writer: Some(FrameWriter::spawn(
+                mode,
+                args.kitty_image_id,
+                shared_memory,
+            )?),
         })
     }
 
@@ -327,13 +360,20 @@ impl Terminal {
 // Writes a frame's pixels to shared memory and returns the object's name
 type WriteShared<'a> = dyn FnMut(&[u8]) -> io::Result<String> + 'a;
 
+// How Kitty frames are sent
+struct KittyImage<'a> {
+    id: u32,
+    // None to send the pixels inline
+    write_shared: Option<&'a mut WriteShared<'a>>,
+}
+
 fn compose_frame(
     mode: OutputMode,
     (cell_width, cell_height): (u32, u32),
     frame: Frame,
     status: Option<&str>,
     (cols, rows): (u16, u16),
-    kitty_shared: Option<&mut WriteShared<'_>>,
+    kitty: KittyImage<'_>,
     out: &mut Vec<u8>,
 ) -> io::Result<()> {
     let image_rows = rows.saturating_sub(reserved_rows(mode, status.is_some()));
@@ -370,11 +410,13 @@ fn compose_frame(
             queue!(out, MoveTo(0, 0))?;
             if frame.width > 0 && frame.height > 0 {
                 if mode == OutputMode::Kitty {
-                    match kitty_shared.map(|write| write(frame.pixels)) {
-                        Some(Ok(name)) => output::encode_kitty_shared(frame, &name, out)?,
+                    match kitty.write_shared.map(|write| write(frame.pixels)) {
+                        Some(Ok(name)) => {
+                            output::encode_kitty_shared(frame, kitty.id, &name, out)?;
+                        }
                         // Without shared memory, or if writing it failed,
                         // send the pixels in the escape sequence
-                        _ => output::encode_kitty(frame, out)?,
+                        _ => output::encode_kitty(frame, kitty.id, out)?,
                     }
                 } else {
                     output::encode_sixel(frame, out)?;
@@ -401,8 +443,9 @@ fn compose_frame(
 }
 
 fn restore() {
-    if KITTY_IMAGES_SHOWN.swap(false, Ordering::SeqCst) {
-        let _ = execute!(stdout(), Print(output::KITTY_DELETE_ALL));
+    let kitty_image = KITTY_IMAGE_SHOWN.swap(0, Ordering::SeqCst);
+    if kitty_image != 0 {
+        let _ = execute!(stdout(), Print(output::kitty_delete(kitty_image)));
     }
     if SIXEL_SCROLLING_DISABLED.swap(false, Ordering::SeqCst) {
         let _ = execute!(stdout(), Print(output::SIXEL_ENABLE_SCROLLING));
@@ -452,7 +495,10 @@ mod tests {
             frame,
             status,
             (cols, rows),
-            None,
+            KittyImage {
+                id: 1,
+                write_shared: None,
+            },
             &mut out,
         )
         .unwrap();
@@ -709,7 +755,10 @@ mod tests {
             frame,
             None,
             (4, 3),
-            Some(write_shared),
+            KittyImage {
+                id: 1,
+                write_shared: Some(write_shared),
+            },
             &mut out,
         )
         .unwrap();

@@ -31,6 +31,10 @@ fn main() -> ExitCode {
         print!("{CONTROLS}");
         return ExitCode::SUCCESS;
     }
+    if args.detect_output {
+        println!("{}", output::choose(args.output_mode()).name());
+        return ExitCode::SUCCESS;
+    }
 
     // The terminal is restored when the app drops, so errors print on the normal screen
     let result = App::new(args).and_then(|mut app| app.run());

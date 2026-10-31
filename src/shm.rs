@@ -27,6 +27,10 @@ const QUERY_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_UNREAD: usize = 2;
 // If the terminal reads nothing for this long, shared memory isn't working
 const READ_TIMEOUT: Duration = Duration::from_secs(1);
+// When frames may be skipped on purpose, how long the oldest unread one waits
+// before it's removed. Removing one the terminal was about to read loses that
+// frame, so this leaves a busy terminal time to catch up.
+const SKIP_TIMEOUT: Duration = Duration::from_millis(100);
 
 // Numbers object names, so no two in this process collide
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
@@ -34,22 +38,29 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 // Shared memory objects holding frames for the terminal to read
 pub struct SharedFrames {
     unread: VecDeque<String>,
+    // Remove unread frames and carry on, rather than give up on shared memory
+    skip_unread: bool,
     read_timeout: Duration,
     // Set once the terminal stops reading; frames then go inline instead
     failed: bool,
 }
 
-impl Default for SharedFrames {
-    fn default() -> Self {
+impl SharedFrames {
+    // `skip_unread` is for callers that know the terminal reads shared memory
+    // but may drop some frames before it, like dcat.nvim
+    pub fn new(skip_unread: bool) -> Self {
         Self {
             unread: VecDeque::new(),
-            read_timeout: READ_TIMEOUT,
+            skip_unread,
+            read_timeout: if skip_unread {
+                SKIP_TIMEOUT
+            } else {
+                READ_TIMEOUT
+            },
             failed: false,
         }
     }
-}
 
-impl SharedFrames {
     // Copy a frame into a new shared memory object and return its name
     pub fn write(&mut self, data: &[u8]) -> io::Result<String> {
         if self.failed {
@@ -74,6 +85,12 @@ impl SharedFrames {
         loop {
             self.unread.retain(|name| exists(name));
             if self.unread.len() < MAX_UNREAD {
+                return Ok(());
+            }
+            if Instant::now() >= deadline && self.skip_unread {
+                if let Some(oldest) = self.unread.pop_front() {
+                    let _ = shm::unlink(&oldest);
+                }
                 return Ok(());
             }
             if Instant::now() >= deadline {
@@ -229,7 +246,7 @@ mod tests {
     fn frames_are_written_and_cleaned_up() {
         let data: Vec<u8> = (0..=255).collect();
         let name = {
-            let mut frames = SharedFrames::default();
+            let mut frames = SharedFrames::new(false);
             let name = frames.write(&data).unwrap();
             assert!(name.starts_with('/') && !name[1..].contains('/'));
             // macOS limits shared memory names to 31 characters
@@ -267,7 +284,7 @@ mod tests {
 
     #[test]
     fn waits_for_the_terminal_to_read() {
-        let mut frames = SharedFrames::default();
+        let mut frames = SharedFrames::new(false);
         let first = frames.write(&[1, 2, 3]).unwrap();
         let second = frames.write(&[1, 2, 3]).unwrap();
 
@@ -290,7 +307,7 @@ mod tests {
 
     #[test]
     fn gives_up_when_the_terminal_never_reads() {
-        let mut frames = SharedFrames::default();
+        let mut frames = SharedFrames::new(false);
         frames.read_timeout = Duration::from_millis(20);
         let names: Vec<String> = (0..MAX_UNREAD)
             .map(|_| frames.write(&[1, 2, 3]).unwrap())
@@ -303,10 +320,26 @@ mod tests {
     }
 
     #[test]
+    fn skips_frames_that_go_unread() {
+        let mut frames = SharedFrames::new(true);
+        frames.read_timeout = Duration::from_millis(20);
+        let mut names: Vec<String> = (0..MAX_UNREAD + 2)
+            .map(|_| frames.write(&[1, 2, 3]).unwrap())
+            .collect();
+
+        // Only the newest frames are kept for the terminal to read
+        let kept = names.split_off(names.len() - MAX_UNREAD);
+        assert!(names.iter().all(|name| !exists(name)));
+        assert!(kept.iter().all(|name| exists(name)));
+        drop(frames);
+        assert!(kept.iter().all(|name| !exists(name)));
+    }
+
+    #[test]
     #[ignore = "timing only; run with --release --ignored"]
     fn write_time() {
         let data = vec![30u8; 2560 * 1420 * 4];
-        let mut frames = SharedFrames::default();
+        let mut frames = SharedFrames::new(false);
         let start = Instant::now();
         for _ in 0..20 {
             frames.write(&data).unwrap();

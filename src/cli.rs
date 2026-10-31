@@ -31,7 +31,7 @@ r - zoom out
 #[command(after_help = "With no output-mode flag, the best supported terminal format is selected.")]
 pub struct Args {
     /// Path to the model file
-    #[arg(required_unless_present = "controls")]
+    #[arg(required_unless_present_any = ["controls", "detect_output"])]
     pub model_path: Option<PathBuf>,
 
     /// Path to the texture file
@@ -103,6 +103,15 @@ pub struct Args {
     )]
     pub kitty: bool,
 
+    /// Send Kitty frames through shared memory without asking the terminal
+    /// first. Falls back to inline frames if the terminal doesn't read them.
+    #[arg(long)]
+    pub kitty_shared_memory: bool,
+
+    /// Kitty image id, so dcat's image doesn't replace another program's
+    #[arg(long, value_name = "ID", default_value_t = 1, value_parser = value_parser!(u32).range(1..))]
+    pub kitty_image_id: u32,
+
     /// Use truecolor characters
     #[arg(short = 'T', long, group = "output_mode")]
     pub truecolor_characters: bool,
@@ -118,6 +127,11 @@ pub struct Args {
     /// Display controls
     #[arg(long)]
     pub controls: bool,
+
+    /// Print the output mode that would be used (kitty, sixel, truecolor,
+    /// palette or block) and exit
+    #[arg(long)]
+    pub detect_output: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -201,6 +215,8 @@ mod tests {
         assert_eq!(args.fps, 60);
         assert_eq!(args.mouse_sensitivity, 0.02);
         assert!(!args.status_bar);
+        assert!(!args.kitty_shared_memory);
+        assert_eq!(args.kitty_image_id, 1);
         assert_eq!(args.output_mode(), None);
     }
 
@@ -229,6 +245,9 @@ mod tests {
             "--mouse-sensitivity",
             "0.1",
             "-s",
+            "--kitty-shared-memory",
+            "--kitty-image-id",
+            "2147483000",
             "model.glb",
         ])
         .unwrap();
@@ -241,6 +260,8 @@ mod tests {
         assert_eq!(args.fps, 30);
         assert!(args.no_lighting && args.keyboard_controls && args.mouse_orbit && args.status_bar);
         assert_eq!(args.mouse_sensitivity, 0.1);
+        assert!(args.kitty_shared_memory);
+        assert_eq!(args.kitty_image_id, 2147483000);
     }
 
     #[test]
@@ -277,6 +298,7 @@ mod tests {
     fn model_required_unless_controls() {
         assert_eq!(parse_err(&[]), ErrorKind::MissingRequiredArgument);
         assert!(parse(&["--controls"]).unwrap().controls);
+        assert!(parse(&["--detect-output"]).unwrap().detect_output);
     }
 
     #[test]
@@ -324,6 +346,7 @@ mod tests {
             &["--cell-size", "0x18", "m.glb"],
             &["--cell-size", "9x-18", "m.glb"],
             &["--cell-size", "9x18x2", "m.glb"],
+            &["--kitty-image-id", "0", "m.glb"],
         ] {
             assert_eq!(parse_err(args), ErrorKind::ValueValidation, "{args:?}");
         }

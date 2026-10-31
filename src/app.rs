@@ -112,9 +112,7 @@ impl App {
             .model_path
             .as_deref()
             .ok_or("No model file specified")?;
-        let output_mode = args
-            .output_mode()
-            .unwrap_or_else(|| output::detect(|name| std::env::var(name).ok()));
+        let output_mode = output::choose(args.output_mode());
         let (width, height) = terminal::render_size(&args, output_mode)?;
 
         // Load everything before taking over the terminal so errors and
@@ -141,12 +139,7 @@ impl App {
 
         let quit_signal = register_quit_signals()?;
         let animation = model.animation.take();
-        let terminal = Terminal::new(
-            output_mode,
-            args.cell_size,
-            args.mouse_orbit,
-            args.keyboard_controls,
-        )?;
+        let terminal = Terminal::new(output_mode, &args)?;
         let held_keys = HeldKeys::new(terminal.reports_key_releases());
 
         Ok(Self {

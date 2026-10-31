@@ -48,6 +48,22 @@ impl OutputMode {
     pub fn uses_characters(self) -> bool {
         !matches!(self, Self::Kitty | Self::Sixel)
     }
+
+    // One word for the mode, as --detect-output prints it
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Sixel => "sixel",
+            Self::Kitty => "kitty",
+            Self::TruecolorCharacters => "truecolor",
+            Self::PaletteCharacters => "palette",
+            Self::BlockCharacters => "block",
+        }
+    }
+}
+
+// The output mode forced on the command line, or else the detected one
+pub fn choose(forced: Option<OutputMode>) -> OutputMode {
+    forced.unwrap_or_else(|| detect(|name| std::env::var(name).ok()))
 }
 
 // Pick the best output mode the terminal is known to support, judging by its
@@ -379,7 +395,7 @@ const KITTY_CHUNK_SIZE: usize = 4096;
 // Kitty graphics protocol: compressed RGBA, replacing the previous frame's
 // image and placement so they don't pile up. The cursor isn't moved, so a
 // full-height image can't scroll the screen.
-pub fn encode_kitty(frame: Frame, out: &mut Vec<u8>) -> io::Result<()> {
+pub fn encode_kitty(frame: Frame, image_id: u32, out: &mut Vec<u8>) -> io::Result<()> {
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
     encoder.write_all(frame.pixels)?;
     let payload = BASE64.encode(encoder.finish()?);
@@ -390,7 +406,7 @@ pub fn encode_kitty(frame: Frame, out: &mut Vec<u8>) -> io::Result<()> {
         if index == 0 {
             write!(
                 out,
-                "\x1b_Ga=T,f=32,o=z,s={},v={},i=1,p=1,q=2,C=1,m={more};",
+                "\x1b_Ga=T,f=32,o=z,s={},v={},i={image_id},p=1,q=2,C=1,m={more};",
                 frame.width, frame.height
             )?;
         } else {
@@ -404,10 +420,15 @@ pub fn encode_kitty(frame: Frame, out: &mut Vec<u8>) -> io::Result<()> {
 
 // Kitty graphics protocol with the pixels in a shared memory object, which
 // the terminal reads and removes, instead of in the escape sequence
-pub fn encode_kitty_shared(frame: Frame, shm_name: &str, out: &mut Vec<u8>) -> io::Result<()> {
+pub fn encode_kitty_shared(
+    frame: Frame,
+    image_id: u32,
+    shm_name: &str,
+    out: &mut Vec<u8>,
+) -> io::Result<()> {
     write!(
         out,
-        "\x1b_Ga=T,f=32,t=s,s={},v={},S={},i=1,p=1,q=2,C=1;{}\x1b\\",
+        "\x1b_Ga=T,f=32,t=s,s={},v={},S={},i={image_id},p=1,q=2,C=1;{}\x1b\\",
         frame.width,
         frame.height,
         frame.pixels.len(),
@@ -415,8 +436,10 @@ pub fn encode_kitty_shared(frame: Frame, shm_name: &str, out: &mut Vec<u8>) -> i
     )
 }
 
-// Removes every Kitty image, so none are left behind on exit
-pub const KITTY_DELETE_ALL: &str = "\x1b_Ga=d,d=A,q=2\x1b\\";
+// Removes dcat's image on exit, leaving other programs' images alone
+pub fn kitty_delete(image_id: u32) -> String {
+    format!("\x1b_Ga=d,d=I,i={image_id},q=2\x1b\\")
+}
 
 // Sixel palette: 6 levels of red and blue and 7 of green, which the eye is most sensitive to
 const SIXEL_LEVELS: [usize; 3] = [6, 7, 6];
@@ -821,7 +844,7 @@ mod tests {
             pixels: &pixels,
         };
         let mut out = Vec::new();
-        encode_kitty(frame, &mut out).unwrap();
+        encode_kitty(frame, 7, &mut out).unwrap();
         let text = String::from_utf8(out).unwrap();
 
         let commands: Vec<&str> = text
@@ -830,7 +853,7 @@ mod tests {
             .map(|c| c.strip_prefix("\x1b_G").unwrap())
             .collect();
         assert!(commands.len() > 1);
-        assert!(commands[0].starts_with("a=T,f=32,o=z,s=200,v=150,"));
+        assert!(commands[0].starts_with("a=T,f=32,o=z,s=200,v=150,i=7,p=1,"));
 
         let mut payload = String::new();
         for (index, command) in commands.iter().enumerate() {
@@ -858,14 +881,14 @@ mod tests {
             pixels: &pixels,
         };
         let mut out = Vec::new();
-        encode_kitty_shared(frame, "/dcat-1-7", &mut out).unwrap();
+        encode_kitty_shared(frame, 7, "/dcat-1-7", &mut out).unwrap();
         let text = String::from_utf8(out).unwrap();
         let command = text
             .strip_prefix("\x1b_G")
             .and_then(|t| t.strip_suffix("\x1b\\"))
             .unwrap();
         let (keys, payload) = command.split_once(';').unwrap();
-        assert_eq!(keys, "a=T,f=32,t=s,s=3,v=2,S=24,i=1,p=1,q=2,C=1");
+        assert_eq!(keys, "a=T,f=32,t=s,s=3,v=2,S=24,i=7,p=1,q=2,C=1");
         assert_eq!(BASE64.decode(payload).unwrap(), b"/dcat-1-7");
     }
 
@@ -1021,7 +1044,7 @@ mod bench {
             let start = std::time::Instant::now();
             for _ in 0..5 {
                 out.clear();
-                encode_kitty(frame, &mut out).unwrap();
+                encode_kitty(frame, 1, &mut out).unwrap();
             }
             eprintln!(
                 "kitty {width}x{height}: {:?} per frame, {} KB",
