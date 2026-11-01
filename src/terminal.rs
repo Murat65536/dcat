@@ -23,7 +23,7 @@ use std::{
 
 use crate::{
     cli::{Args, OutputMode},
-    output::{self, ColorDepth, Frame, KittyPlacement},
+    output::{self, ColorDepth, Frame, KittyPlacement, KittyPosition, Layout},
     profile,
 };
 
@@ -64,6 +64,11 @@ fn cell_pixels(mode: OutputMode, cell_size: Option<(u32, u32)>) -> (u32, u32) {
     }
 }
 
+// The id of the image the viewer shows and replaces each frame
+fn kitty_image_id(args: &Args) -> u32 {
+    args.kitty_image_id.unwrap_or(1)
+}
+
 // Whether the terminal says it can read frames from shared memory
 fn terminal_reads_shared_memory() -> bool {
     #[cfg(unix)]
@@ -79,15 +84,27 @@ fn reserved_rows(mode: OutputMode, status_bar: bool) -> u16 {
     u16::from(status_bar || mode == OutputMode::Sixel)
 }
 
+// Size of a terminal that output is redirected away from, for --once
+const REDIRECTED_SIZE: (u16, u16) = (80, 24);
+
 // Pixel size to render at: the explicit size if given, otherwise what fits
-// in the terminal above the reserved rows
+// in the terminal above the reserved rows. A single printed frame fills the
+// whole terminal.
 pub fn render_size(args: &Args, mode: OutputMode) -> io::Result<(u32, u32)> {
     if let (Some(width), Some(height)) = (args.width, args.height) {
         return Ok((width, height));
     }
 
-    let (cols, rows) = terminal::size()?;
-    let image_rows = rows.saturating_sub(reserved_rows(mode, args.status_bar));
+    let (cols, rows) = match terminal::size() {
+        Err(_) if args.once => REDIRECTED_SIZE,
+        size => size?,
+    };
+    let reserved = if args.once {
+        0
+    } else {
+        reserved_rows(mode, args.status_bar)
+    };
+    let image_rows = rows.saturating_sub(reserved);
     let (cell_width, cell_height) = cell_pixels(mode, args.cell_size);
     Ok((
         u32::from(cols.max(1)) * cell_width,
@@ -241,7 +258,7 @@ impl Terminal {
         enable_raw_mode()?;
 
         match mode {
-            OutputMode::Kitty => KITTY_IMAGE_SHOWN.store(args.kitty_image_id, Ordering::SeqCst),
+            OutputMode::Kitty => KITTY_IMAGE_SHOWN.store(kitty_image_id(args), Ordering::SeqCst),
             OutputMode::Sixel => {
                 execute!(stdout(), Print(output::SIXEL_DISABLE_SCROLLING))?;
                 SIXEL_SCROLLING_DISABLED.store(true, Ordering::SeqCst);
@@ -315,7 +332,7 @@ impl Terminal {
             reports_key_releases,
             writer: Some(FrameWriter::spawn(
                 mode,
-                args.kitty_image_id,
+                kitty_image_id(args),
                 shared_memory,
                 tmux,
             )?),
@@ -427,13 +444,15 @@ fn compose_frame(
 
     match mode {
         OutputMode::TruecolorCharacters => {
-            output::encode_symbols(frame, cols_used, rows_used, ColorDepth::Truecolor, out)?;
+            let cells = (cols_used, rows_used);
+            output::encode_symbols(frame, cells, ColorDepth::Truecolor, Layout::Screen, out)?;
         }
         OutputMode::PaletteCharacters => {
-            output::encode_symbols(frame, cols_used, rows_used, ColorDepth::Palette, out)?;
+            let cells = (cols_used, rows_used);
+            output::encode_symbols(frame, cells, ColorDepth::Palette, Layout::Screen, out)?;
         }
         OutputMode::BlockCharacters => {
-            output::encode_mono_blocks(frame, cols_used, rows_used, out)?;
+            output::encode_mono_blocks(frame, (cols_used, rows_used), Layout::Screen, out)?;
         }
         OutputMode::Kitty | OutputMode::Sixel => {
             // Crop anything that wouldn't fit on screen
@@ -460,9 +479,13 @@ fn compose_frame(
                         frame.width.div_ceil(cell_width) as u16,
                         frame.height.div_ceil(cell_height) as u16,
                     );
+                    let position = match kitty.placeholders_drawn {
+                        Some(_) => KittyPosition::Virtual(cells.0, cells.1),
+                        None => KittyPosition::Cursor,
+                    };
                     let placement = KittyPlacement {
-                        image_id: kitty.id,
-                        virtual_cells: kitty.placeholders_drawn.is_some().then_some(cells),
+                        image_id: Some(kitty.id),
+                        position,
                     };
                     let start = out.len();
                     match kitty.write_shared.map(|write| write(frame.pixels)) {
@@ -477,7 +500,12 @@ fn compose_frame(
                         let commands = out.split_off(start);
                         output::wrap_for_tmux(&commands, out);
                         if *drawn != Some(cells) {
-                            output::encode_kitty_placeholders(kitty.id, cells, out)?;
+                            output::encode_kitty_placeholders(
+                                kitty.id,
+                                cells,
+                                Layout::Screen,
+                                out,
+                            )?;
                             *drawn = Some(cells);
                         }
                     }
@@ -505,6 +533,79 @@ fn compose_frame(
     if synchronized {
         queue!(out, EndSynchronizedUpdate)?;
     }
+    Ok(())
+}
+
+// Print one frame at the cursor like text, for --once, leaving the cursor
+// below it
+pub fn print_frame(mode: OutputMode, args: &Args, frame: Frame) -> io::Result<()> {
+    let mut out = Vec::new();
+    let tmux = std::env::var_os("TMUX").is_some();
+    compose_inline(
+        mode,
+        cell_pixels(mode, args.cell_size),
+        frame,
+        (args.kitty_image_id, tmux),
+        &mut out,
+    )?;
+    let mut stdout = stdout().lock();
+    stdout.write_all(&out)?;
+    stdout.flush()
+}
+
+fn compose_inline(
+    mode: OutputMode,
+    (cell_width, cell_height): (u32, u32),
+    frame: Frame,
+    (kitty_image_id, tmux): (Option<u32>, bool),
+    out: &mut Vec<u8>,
+) -> io::Result<()> {
+    // The frame was rendered to fit, so every cell of it is shown
+    let all = (usize::MAX, usize::MAX);
+    match mode {
+        OutputMode::TruecolorCharacters => {
+            output::encode_symbols(frame, all, ColorDepth::Truecolor, Layout::Inline, out)?;
+        }
+        OutputMode::PaletteCharacters => {
+            output::encode_symbols(frame, all, ColorDepth::Palette, Layout::Inline, out)?;
+        }
+        OutputMode::BlockCharacters => {
+            output::encode_mono_blocks(frame, all, Layout::Inline, out)?;
+        }
+        // Inside tmux, placeholder text shows the image, so it scrolls with
+        // the rest of the pane
+        OutputMode::Kitty if tmux => {
+            // Printed images stay in the scrollback, so each needs its own id,
+            // which a later image with the same one would replace. The
+            // placeholders name it, in a 256-color index tmux passes on.
+            let id = kitty_image_id.unwrap_or(std::process::id() % 255 + 1);
+            let cells = (
+                frame.width.div_ceil(cell_width) as u16,
+                frame.height.div_ceil(cell_height) as u16,
+            );
+            let placement = KittyPlacement {
+                image_id: Some(id),
+                position: KittyPosition::Virtual(cells.0, cells.1),
+            };
+            let mut commands = Vec::new();
+            output::encode_kitty(frame, placement, &mut commands)?;
+            output::wrap_for_tmux(&commands, out);
+            output::encode_kitty_placeholders(id, cells, Layout::Inline, out)?;
+        }
+        // Without an id unless given one, so no later image replaces it
+        OutputMode::Kitty => {
+            let placement = KittyPlacement {
+                image_id: kitty_image_id,
+                position: KittyPosition::Inline,
+            };
+            output::encode_kitty(frame, placement, out)?;
+        }
+        OutputMode::Sixel => {
+            output::encode_sixel(frame, out)?;
+        }
+    }
+    // Text and images alike leave the cursor at the end of their last row
+    out.extend_from_slice(b"\r\n");
     Ok(())
 }
 
@@ -909,6 +1010,72 @@ mod tests {
         let text = compose_kitty(&mut |_: &[u8]| Err(io::Error::other("no space")));
         assert!(text.contains("o=z"), "{text}");
         assert!(!text.contains("t=s"), "{text}");
+    }
+
+    fn print_inline(mode: OutputMode, frame: Frame, tmux: bool) -> Vec<u8> {
+        let mut out = Vec::new();
+        compose_inline(mode, PIXEL_CELL_SIZE, frame, (None, tmux), &mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn printed_frames_start_at_the_cursor() {
+        let (width, height, pixels) = shaped_frame(3, 2);
+        let frame = Frame {
+            width,
+            height,
+            pixels: &pixels,
+        };
+        let out = print_inline(OutputMode::TruecolorCharacters, frame, false);
+        // Nothing is placed at a fixed screen position
+        assert!(!String::from_utf8_lossy(&out).contains('H'), "{out:?}");
+
+        // Printed below a line of text, every cell comes out right, and the
+        // cursor ends up on the line after
+        let mut parser =
+            vt100::Parser::new(NonZeroU16::new(6).unwrap(), NonZeroU16::new(10).unwrap(), 0);
+        parser.process(b"$ dcat\r\n");
+        parser.process(&out);
+        for row in 0..2 {
+            for col in 0..3 {
+                let expected: Vec<Vt> = source_cell(&pixels, width, col, row)
+                    .into_iter()
+                    .map(rgb)
+                    .collect();
+                assert_eq!(
+                    shown_cell(&parser, col, row + 1),
+                    expected,
+                    "({col}, {row})"
+                );
+            }
+        }
+        assert_eq!(parser.screen().cursor_position(), (3, 0));
+    }
+
+    #[test]
+    fn printed_kitty_images_move_the_cursor() {
+        let pixels = vec![120; 20 * 40 * 4];
+        let frame = Frame {
+            width: 20,
+            height: 40,
+            pixels: &pixels,
+        };
+        let text = String::from_utf8(print_inline(OutputMode::Kitty, frame, false)).unwrap();
+        // Without an id, so a later image can't replace it
+        assert!(
+            text.starts_with("\x1b_Ga=T,f=32,o=z,s=20,v=40,q=2,m=0;"),
+            "{text:?}"
+        );
+        // Kitty leaves the cursor beside the image's last row
+        assert!(text.ends_with("\x1b\\\r\n"), "{text:?}");
+
+        // Inside tmux, placeholder text follows the image, ending on a new line
+        let text = String::from_utf8(print_inline(OutputMode::Kitty, frame, true)).unwrap();
+        assert!(text.starts_with("\x1bPtmux;"), "{text:?}");
+        assert!(text.contains(",U=1,c=2,r=2,"), "{text:?}");
+        assert_eq!(text.matches('\u{10EEEE}').count(), 4);
+        assert!(!text.contains("\x1b[1;1H"), "{text:?}");
+        assert!(text.ends_with("\r\n"), "{text:?}");
     }
 
     #[test]

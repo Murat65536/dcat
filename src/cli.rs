@@ -116,8 +116,9 @@ pub struct Args {
     pub kitty_shared_memory: bool,
 
     /// Kitty image id, so dcat's image doesn't replace another program's
-    #[arg(long, value_name = "ID", default_value_t = 1, value_parser = value_parser!(u32).range(1..))]
-    pub kitty_image_id: u32,
+    /// [default: 1, or none for --once]
+    #[arg(long, value_name = "ID", value_parser = value_parser!(u32).range(1..))]
+    pub kitty_image_id: Option<u32>,
 
     /// Use truecolor characters
     #[arg(short = 'T', long, group = "output_mode")]
@@ -130,6 +131,10 @@ pub struct Args {
     /// Use monochrome block characters
     #[arg(short = 'B', long, group = "output_mode")]
     pub block_characters: bool,
+
+    /// Print a single frame at the cursor and exit
+    #[arg(long)]
+    pub once: bool,
 
     /// Display controls
     #[arg(long)]
@@ -223,7 +228,7 @@ mod tests {
         assert_eq!(args.mouse_sensitivity, 0.02);
         assert!(!args.status_bar);
         assert!(!args.kitty_shared_memory);
-        assert_eq!(args.kitty_image_id, 1);
+        assert_eq!(args.kitty_image_id, None);
         assert_eq!(args.output_mode(), None);
     }
 
@@ -268,7 +273,7 @@ mod tests {
         assert!(args.no_lighting && args.keyboard_controls && args.mouse_orbit && args.status_bar);
         assert_eq!(args.mouse_sensitivity, 0.1);
         assert!(args.kitty_shared_memory);
-        assert_eq!(args.kitty_image_id, 2147483000);
+        assert_eq!(args.kitty_image_id, Some(2147483000));
     }
 
     #[test]

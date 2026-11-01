@@ -334,13 +334,32 @@ fn cell_extent(frame: Frame, cols: usize, rows: usize) -> (usize, usize) {
     )
 }
 
+// Where rows of text go
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Layout {
+    // Each on its own line of the screen, from the top
+    Screen,
+    // One after another from the cursor, like printed text
+    Inline,
+}
+
+// Move to the start of a row. Inline, colors are reset first, so a newline
+// that scrolls doesn't fill the new line with the background color.
+fn start_row(layout: Layout, row: usize, out: &mut Vec<u8>) -> io::Result<()> {
+    match layout {
+        Layout::Screen => queue!(out, MoveTo(0, row as u16)),
+        Layout::Inline if row > 0 => queue!(out, ResetColor, Print("\r\n")),
+        Layout::Inline => Ok(()),
+    }
+}
+
 // Block characters with a foreground and background color per cell, each
 // cell showing 2x4 source pixels
 pub fn encode_symbols(
     frame: Frame,
-    cols: usize,
-    rows: usize,
+    (cols, rows): (usize, usize),
     depth: ColorDepth,
+    layout: Layout,
     out: &mut Vec<u8>,
 ) -> io::Result<()> {
     let to_color = |[r, g, b]: [u8; 3]| match depth {
@@ -352,7 +371,10 @@ pub fn encode_symbols(
     // Colors persist between cells, so only emit them when they change
     let (mut foreground, mut background) = (None, None);
     for row in 0..rows {
-        queue!(out, MoveTo(0, row as u16))?;
+        start_row(layout, row, out)?;
+        if layout == Layout::Inline {
+            (foreground, background) = (None, None);
+        }
         for col in 0..cols {
             let (pixels, present) = cell_pixels(frame, col, row);
             let cell = best_symbol(&pixels, present);
@@ -408,8 +430,8 @@ pub fn best_mono_glyph(top: f32, bottom: f32) -> char {
 // Monochrome characters in the terminal's own foreground and background colors
 pub fn encode_mono_blocks(
     frame: Frame,
-    cols: usize,
-    rows: usize,
+    (cols, rows): (usize, usize),
+    layout: Layout,
     out: &mut Vec<u8>,
 ) -> io::Result<()> {
     let (cols, rows) = cell_extent(frame, cols, rows);
@@ -436,7 +458,7 @@ pub fn encode_mono_blocks(
 
     queue!(out, ResetColor)?;
     for row in 0..rows {
-        queue!(out, MoveTo(0, row as u16))?;
+        start_row(layout, row, out)?;
         let line: String = (0..cols)
             .map(|col| {
                 let (pixels, present) = cell_pixels(frame, col, row);
@@ -454,28 +476,41 @@ pub fn encode_mono_blocks(
 // Escape sequences are limited to this many bytes of base64 payload each
 const KITTY_CHUNK_SIZE: usize = 4096;
 
-// Kitty graphics protocol: compressed RGBA, replacing the previous frame's
-// image and placement so they don't pile up. The cursor isn't moved, so a
-// full-height image can't scroll the screen.
 // Where a Kitty image is shown
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum KittyPosition {
+    // At the cursor, which stays put, so a full-height image can't scroll the
+    // screen
+    Cursor,
+    // At the cursor, which moves past it like after printed text
+    Inline,
+    // A virtual placement this many cells wide and tall, which Unicode
+    // placeholders show (see encode_kitty_placeholders)
+    Virtual(u16, u16),
+}
+
 #[derive(Clone, Copy)]
 pub struct KittyPlacement {
-    pub image_id: u32,
-    // A virtual placement this many cells wide and tall, which Unicode
-    // placeholders show (see encode_kitty_placeholders), or None to show the
-    // image at the cursor
-    pub virtual_cells: Option<(u16, u16)>,
+    // None for an image no later one replaces, which can't be deleted either
+    pub image_id: Option<u32>,
+    pub position: KittyPosition,
 }
 
 impl KittyPlacement {
     fn keys(self) -> String {
-        let id = self.image_id;
-        match self.virtual_cells {
-            Some((cols, rows)) => format!("i={id},p=1,q=2,U=1,c={cols},r={rows}"),
-            None => format!("i={id},p=1,q=2,C=1"),
+        let id = self
+            .image_id
+            .map_or(String::new(), |id| format!("i={id},p=1,"));
+        match self.position {
+            KittyPosition::Cursor => format!("{id}q=2,C=1"),
+            KittyPosition::Inline => format!("{id}q=2"),
+            KittyPosition::Virtual(cols, rows) => format!("{id}q=2,U=1,c={cols},r={rows}"),
         }
     }
 }
+
+// Kitty graphics protocol: compressed RGBA, replacing the previous frame's
+// image and placement so they don't pile up
 
 pub fn encode_kitty(frame: Frame, placement: KittyPlacement, out: &mut Vec<u8>) -> io::Result<()> {
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
@@ -574,6 +609,7 @@ const PLACEHOLDER_DIACRITICS: [char; 297] = [
 pub fn encode_kitty_placeholders(
     image_id: u32,
     (cols, rows): (u16, u16),
+    layout: Layout,
     out: &mut Vec<u8>,
 ) -> io::Result<()> {
     // Ids that fit go in a 256-color index, which tmux passes on as it is.
@@ -585,8 +621,8 @@ pub fn encode_kitty_placeholders(
             (Color::Rgb { r, g, b }, Some(top))
         }
     };
-    queue!(out, SetForegroundColor(color))?;
     for row in 0..rows.min(PLACEHOLDER_DIACRITICS.len() as u16) {
+        start_row(layout, usize::from(row), out)?;
         let mut text = String::from(PLACEHOLDER);
         text.push(PLACEHOLDER_DIACRITICS[usize::from(row)]);
         text.push(PLACEHOLDER_DIACRITICS[0]);
@@ -597,7 +633,7 @@ pub fn encode_kitty_placeholders(
             PLACEHOLDER,
             usize::from(cols).saturating_sub(1),
         ));
-        queue!(out, MoveTo(0, row), Print(text))?;
+        queue!(out, SetForegroundColor(color), Print(text))?;
     }
     queue!(out, ResetColor)
 }
@@ -1003,7 +1039,7 @@ mod tests {
 
     fn encode(frame: Frame, cols: usize, rows: usize, depth: ColorDepth) -> String {
         let mut out = Vec::new();
-        encode_symbols(frame, cols, rows, depth, &mut out).unwrap();
+        encode_symbols(frame, (cols, rows), depth, Layout::Screen, &mut out).unwrap();
         String::from_utf8(out).unwrap()
     }
 
@@ -1066,7 +1102,7 @@ mod tests {
             pixels: &pixels,
         };
         let mut out = Vec::new();
-        encode_mono_blocks(frame, 4, 1, &mut out).unwrap();
+        encode_mono_blocks(frame, (4, 1), Layout::Screen, &mut out).unwrap();
         let text = String::from_utf8(out).unwrap();
         assert!(text.ends_with("▀▄█ "), "{text:?}");
     }
@@ -1114,8 +1150,8 @@ mod tests {
         };
         let mut out = Vec::new();
         let placement = KittyPlacement {
-            image_id: 7,
-            virtual_cells: None,
+            image_id: Some(7),
+            position: KittyPosition::Cursor,
         };
         encode_kitty(frame, placement, &mut out).unwrap();
         let text = String::from_utf8(out).unwrap();
@@ -1154,8 +1190,8 @@ mod tests {
             pixels: &pixels,
         };
         let placement = KittyPlacement {
-            image_id: 7,
-            virtual_cells: Some((4, 3)),
+            image_id: Some(7),
+            position: KittyPosition::Virtual(4, 3),
         };
         let mut out = Vec::new();
         encode_kitty_shared(frame, placement, "/dcat-1-7", &mut out).unwrap();
@@ -1167,7 +1203,7 @@ mod tests {
     fn kitty_placeholders() {
         let placeholder = |cell: &vt100::Cell| cell.contents().to_string();
         let mut out = Vec::new();
-        encode_kitty_placeholders(42, (3, 2), &mut out).unwrap();
+        encode_kitty_placeholders(42, (3, 2), Layout::Screen, &mut out).unwrap();
         let mut parser = vt100::Parser::new(
             std::num::NonZeroU16::new(4).unwrap(),
             std::num::NonZeroU16::new(5).unwrap(),
@@ -1187,9 +1223,9 @@ mod tests {
 
         // Ids above 255 go in truecolor, with their top byte as a third diacritic
         let mut out = Vec::new();
-        encode_kitty_placeholders(0x0201_0203, (1, 1), &mut out).unwrap();
+        encode_kitty_placeholders(0x0201_0203, (1, 1), Layout::Screen, &mut out).unwrap();
         let text = String::from_utf8(out).unwrap();
-        assert!(text.starts_with("\x1b[38;2;1;2;3m"), "{text:?}");
+        assert!(text.contains("\x1b[38;2;1;2;3m"), "{text:?}");
         assert!(
             text.contains("\u{10EEEE}\u{0305}\u{0305}\u{030e}"),
             "{text:?}"
@@ -1216,8 +1252,8 @@ mod tests {
         };
         let mut out = Vec::new();
         let placement = KittyPlacement {
-            image_id: 7,
-            virtual_cells: None,
+            image_id: Some(7),
+            position: KittyPosition::Cursor,
         };
         encode_kitty_shared(frame, placement, "/dcat-1-7", &mut out).unwrap();
         let text = String::from_utf8(out).unwrap();
@@ -1383,8 +1419,8 @@ mod bench {
             for _ in 0..5 {
                 out.clear();
                 let placement = KittyPlacement {
-                    image_id: 1,
-                    virtual_cells: None,
+                    image_id: Some(1),
+                    position: KittyPosition::Cursor,
                 };
                 encode_kitty(frame, placement, &mut out).unwrap();
             }

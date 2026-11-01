@@ -23,7 +23,8 @@ use crate::{
     cli::{Args, OutputMode},
     input::{HeldKey, HeldKeys},
     model::{AnimationData, ModelData, TextureOverrides},
-    output, profile,
+    output::{self, Frame},
+    profile,
     renderer::{FrameParams, Renderer},
     terminal::{self, Terminal},
 };
@@ -107,17 +108,20 @@ pub struct App {
     bone_matrices: Vec<Mat4>,
 }
 
-impl App {
-    pub fn new(args: Args) -> Result<Self, Box<dyn Error>> {
+// The model loaded and ready to render, with the camera framing it
+struct Scene {
+    renderer: Renderer,
+    camera: Camera,
+    base_model_matrix: Mat4,
+    animation: Option<AnimationData>,
+}
+
+impl Scene {
+    fn load(args: &Args, width: u32, height: u32) -> Result<Self, Box<dyn Error>> {
         let model_path = args
             .model_path
             .as_deref()
             .ok_or("No model file specified")?;
-        let output_mode = output::choose(args.output_mode());
-        let (width, height) = terminal::render_size(&args, output_mode)?;
-
-        // Load everything before taking over the terminal so errors and
-        // warnings print normally
         let mut model = {
             profiling::scope!("Load model");
             ModelData::load(
@@ -134,9 +138,78 @@ impl App {
         };
 
         let framing = Framing::from_bounds(&model.bounds);
-        let base_model_matrix = framing.model_matrix(model.coordinate_system, args.model_scale);
         let camera_position = framing.camera_position(args.model_scale, args.camera_distance);
-        let camera = Camera::new(camera_position, Vec3::ZERO, width, height);
+        Ok(Self {
+            renderer,
+            camera: Camera::new(camera_position, Vec3::ZERO, width, height),
+            base_model_matrix: framing.model_matrix(model.coordinate_system, args.model_scale),
+            animation: model.animation.take(),
+        })
+    }
+}
+
+// What a frame is rendered with
+fn frame_params<'a>(
+    camera: &Camera,
+    model: Mat4,
+    lighting: bool,
+    bones: &'a [Mat4],
+) -> FrameParams<'a> {
+    FrameParams {
+        view_projection: camera.projection_matrix() * camera.view_matrix(),
+        model,
+        camera_position: camera.position,
+        // Light the model from the camera
+        light_direction: -camera.forward(),
+        lighting,
+        bones,
+    }
+}
+
+// Render one frame, the start of the first animation if any, and print it at
+// the cursor without taking over the terminal
+pub fn print_once(args: &Args) -> Result<(), Box<dyn Error>> {
+    let output_mode = output::choose(args.output_mode());
+    let (width, height) = terminal::render_size(args, output_mode)?;
+    let scene = Scene::load(args, width, height)?;
+
+    let mut bones = Vec::new();
+    if let Some(data) = &scene.animation {
+        let start = data.animations.first().map(|animation| (animation, 0.0));
+        data.skeleton.pose(start, &mut bones);
+    }
+    let mut pixels = Vec::new();
+    scene.renderer.render_into(
+        &frame_params(
+            &scene.camera,
+            scene.base_model_matrix,
+            !args.no_lighting,
+            &bones,
+        ),
+        &mut pixels,
+    )?;
+    let frame = Frame {
+        width,
+        height,
+        pixels: &pixels,
+    };
+    terminal::print_frame(output_mode, args, frame)?;
+    Ok(())
+}
+
+impl App {
+    pub fn new(args: Args) -> Result<Self, Box<dyn Error>> {
+        let output_mode = output::choose(args.output_mode());
+        let (width, height) = terminal::render_size(&args, output_mode)?;
+
+        // Load everything before taking over the terminal so errors and
+        // warnings print normally
+        let Scene {
+            renderer,
+            camera,
+            base_model_matrix,
+            animation,
+        } = Scene::load(&args, width, height)?;
 
         // Opened first so a warning prints on the normal screen. It's only
         // used if the terminal turns out not to report key releases.
@@ -150,7 +223,6 @@ impl App {
             });
 
         let quit_signal = register_quit_signals()?;
-        let animation = model.animation.take();
         let mut terminal = Terminal::new(output_mode, &args)?;
         let keyboard = keyboard.filter(|_| !terminal.reports_key_releases());
         if keyboard.is_some() {
@@ -261,15 +333,12 @@ impl App {
         {
             profiling::scope!("Render");
             self.renderer.render_into(
-                &FrameParams {
-                    view_projection: self.camera.projection_matrix() * self.camera.view_matrix(),
-                    model: Mat4::from_rotation_y(self.spin_angle) * self.base_model_matrix,
-                    camera_position: self.camera.position,
-                    // Light the model from the camera
-                    light_direction: -self.camera.forward(),
-                    lighting: !self.args.no_lighting,
-                    bones: &self.bone_matrices,
-                },
+                &frame_params(
+                    &self.camera,
+                    Mat4::from_rotation_y(self.spin_angle) * self.base_model_matrix,
+                    !self.args.no_lighting,
+                    &self.bone_matrices,
+                ),
                 &mut pixels,
             )?;
         }
