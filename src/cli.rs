@@ -136,6 +136,11 @@ pub struct Args {
     #[arg(long)]
     pub once: bool,
 
+    /// Save a single frame as an image instead, in the format its extension
+    /// names (png, jpg, webp, ...), 1024x1024 unless -W and -H are given
+    #[arg(long, value_name = "PATH", conflicts_with = "once")]
+    pub image: Option<PathBuf>,
+
     /// Display controls
     #[arg(long)]
     pub controls: bool,
@@ -311,6 +316,14 @@ mod tests {
         assert_eq!(parse_err(&[]), ErrorKind::MissingRequiredArgument);
         assert!(parse(&["--controls"]).unwrap().controls);
         assert!(parse(&["--detect-output"]).unwrap().detect_output);
+        assert_eq!(
+            parse(&["--image", "out.png", "m.glb"]).unwrap().image,
+            Some(PathBuf::from("out.png"))
+        );
+        assert_eq!(
+            parse_err(&["--image", "out.png", "--once", "m.glb"]),
+            ErrorKind::ArgumentConflict
+        );
     }
 
     #[test]

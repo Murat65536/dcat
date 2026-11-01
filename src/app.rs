@@ -2,6 +2,7 @@ use std::{
     error::Error,
     f32::consts::PI,
     io,
+    path::Path,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -14,6 +15,7 @@ use crossterm::event::{
     MouseEventKind,
 };
 use glam::{Mat4, Vec3};
+use image::{DynamicImage, RgbaImage};
 use input_query::InputHandler;
 use pollster::block_on;
 
@@ -166,13 +168,12 @@ fn frame_params<'a>(
     }
 }
 
-// Render one frame, the start of the first animation if any, and print it at
-// the cursor without taking over the terminal
-pub fn print_once(args: &Args) -> Result<(), Box<dyn Error>> {
-    let output_mode = output::choose(args.output_mode());
-    let (width, height) = terminal::render_size(args, output_mode)?;
-    let scene = Scene::load(args, width, height)?;
+// Size of a saved image unless given
+const DEFAULT_IMAGE_SIZE: (u32, u32) = (1024, 1024);
 
+// One frame as RGBA pixels: the start of the first animation, if any
+fn render_still(args: &Args, width: u32, height: u32) -> Result<Vec<u8>, Box<dyn Error>> {
+    let scene = Scene::load(args, width, height)?;
     let mut bones = Vec::new();
     if let Some(data) = &scene.animation {
         let start = data.animations.first().map(|animation| (animation, 0.0));
@@ -188,12 +189,34 @@ pub fn print_once(args: &Args) -> Result<(), Box<dyn Error>> {
         ),
         &mut pixels,
     )?;
+    Ok(pixels)
+}
+
+// Print one frame at the cursor without taking over the terminal
+pub fn print_once(args: &Args) -> Result<(), Box<dyn Error>> {
+    let output_mode = output::choose(args.output_mode());
+    let (width, height) = terminal::render_size(args, output_mode)?;
+    let pixels = render_still(args, width, height)?;
     let frame = Frame {
         width,
         height,
         pixels: &pixels,
     };
     terminal::print_frame(output_mode, args, frame)?;
+    Ok(())
+}
+
+// Save one frame as an image, in the format the file extension names. The
+// background is opaque, so it's saved without alpha, which every format takes.
+pub fn save_image(args: &Args, path: &Path) -> Result<(), Box<dyn Error>> {
+    let (width, height) = args.width.zip(args.height).unwrap_or(DEFAULT_IMAGE_SIZE);
+    let pixels = render_still(args, width, height)?;
+    let image =
+        RgbaImage::from_raw(width, height, pixels).ok_or("rendered frame has the wrong size")?;
+    DynamicImage::ImageRgba8(image)
+        .to_rgb8()
+        .save(path)
+        .map_err(|error| format!("can't save {}: {error}", path.display()))?;
     Ok(())
 }
 
