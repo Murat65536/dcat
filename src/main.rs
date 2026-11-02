@@ -14,12 +14,8 @@ pub mod cli;
 pub mod gpu_model;
 pub mod input;
 pub mod model;
-pub mod output;
 pub mod profile;
 pub mod renderer;
-#[cfg(unix)]
-pub mod shm;
-pub mod terminal;
 pub mod texture;
 
 fn main() -> ExitCode {
@@ -32,7 +28,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     if args.detect_output {
-        println!("{}", output::choose(args.output_mode()).name());
+        println!("{}", args.chosen_output_mode().name());
         return ExitCode::SUCCESS;
     }
 

@@ -551,26 +551,22 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 name = "dcat"
 version = "1.7.0"
 dependencies = [
- "ansi_colours",
  "asset-importer",
- "base64",
  "bytemuck",
  "clap",
  "crossterm",
- "flate2",
  "glam",
  "image",
  "input_query",
  "naga",
  "pollster",
  "profiling",
- "rustix",
  "signal-hook 0.4.6",
  "spin_sleep",
+ "termblit",
  "tracy-client",
  "tracy-client-sys",
  "typed-path",
- "vt100",
  "wgpu",
 ]
 
@@ -2236,6 +2232,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "termblit"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20a61414e394fd6bd64e67bc5107234328cd9f364083e51ac791cc65188edb83"
+dependencies = [
+ "ansi_colours",
+ "base64",
+ "crossterm",
+ "flate2",
+ "profiling",
+ "rustix",
+]
+
+[[package]]
 name = "termcolor"
 version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2449,27 +2459,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "vt100"
-version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb05cdd19ae8707bf6a0a269972c07e6358103a7079faec749dec318a5b3dc23"
-dependencies = [
- "itoa",
- "unicode-width",
- "vte",
-]
-
-[[package]]
-name = "vte"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd"
-dependencies = [
- "arrayvec",
- "memchr",
-]
 
 [[package]]
 name = "wasi"

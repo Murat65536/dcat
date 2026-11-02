@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{ArgGroup, Parser, value_parser};
+use termblit::OutputMode;
 
 pub const CONTROLS: &str = "\
 Controls:
@@ -151,15 +152,6 @@ pub struct Args {
     pub detect_output: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OutputMode {
-    Sixel,
-    Kitty,
-    TruecolorCharacters,
-    PaletteCharacters,
-    BlockCharacters,
-}
-
 impl Args {
     // The output mode forced on the command line, if any
     pub fn output_mode(&self) -> Option<OutputMode> {
@@ -172,6 +164,21 @@ impl Args {
         ]
         .into_iter()
         .find_map(|(set, mode)| set.then_some(mode))
+    }
+
+    // The forced output mode, or else the best the terminal supports
+    pub fn chosen_output_mode(&self) -> OutputMode {
+        self.output_mode().unwrap_or_else(termblit::detect)
+    }
+
+    pub fn terminal_options(&self) -> termblit::Options {
+        termblit::Options {
+            cell_size: self.cell_size,
+            kitty_image_id: self.kitty_image_id,
+            kitty_shared_memory: self.kitty_shared_memory,
+            mouse_capture: self.mouse_orbit,
+            key_releases: self.keyboard_controls,
+        }
     }
 }
 

@@ -18,17 +18,16 @@ use glam::{Mat4, Vec3};
 use image::{DynamicImage, RgbaImage};
 use input_query::InputHandler;
 use pollster::block_on;
+use termblit::{Frame, OutputMode, Terminal};
 
 use crate::{
     animation::AnimationPlayer,
     camera::{Camera, Framing},
-    cli::{Args, OutputMode},
+    cli::Args,
     input::{HeldKey, HeldKeys},
     model::{AnimationData, ModelData, TextureOverrides},
-    output::{self, Frame},
     profile,
     renderer::{FrameParams, Renderer},
-    terminal::{self, Terminal},
 };
 
 // Orbit step per key press
@@ -168,6 +167,20 @@ fn frame_params<'a>(
     }
 }
 
+// Pixel size to render at: the explicit size if given, otherwise what fills
+// the terminal
+fn render_size(args: &Args, mode: OutputMode) -> io::Result<(u32, u32)> {
+    if let (Some(width), Some(height)) = (args.width, args.height) {
+        return Ok((width, height));
+    }
+    let options = args.terminal_options();
+    if args.once {
+        Ok(termblit::print_size(mode, &options))
+    } else {
+        termblit::screen_size(mode, &options, args.status_bar)
+    }
+}
+
 // Size of a saved image unless given
 const DEFAULT_IMAGE_SIZE: (u32, u32) = (1024, 1024);
 
@@ -194,15 +207,15 @@ fn render_still(args: &Args, width: u32, height: u32) -> Result<Vec<u8>, Box<dyn
 
 // Print one frame at the cursor without taking over the terminal
 pub fn print_once(args: &Args) -> Result<(), Box<dyn Error>> {
-    let output_mode = output::choose(args.output_mode());
-    let (width, height) = terminal::render_size(args, output_mode)?;
+    let output_mode = args.chosen_output_mode();
+    let (width, height) = render_size(args, output_mode)?;
     let pixels = render_still(args, width, height)?;
     let frame = Frame {
         width,
         height,
         pixels: &pixels,
     };
-    terminal::print_frame(output_mode, args, frame)?;
+    termblit::print_frame(output_mode, &args.terminal_options(), frame)?;
     Ok(())
 }
 
@@ -222,8 +235,8 @@ pub fn save_image(args: &Args, path: &Path) -> Result<(), Box<dyn Error>> {
 
 impl App {
     pub fn new(args: Args) -> Result<Self, Box<dyn Error>> {
-        let output_mode = output::choose(args.output_mode());
-        let (width, height) = terminal::render_size(&args, output_mode)?;
+        let output_mode = args.chosen_output_mode();
+        let (width, height) = render_size(&args, output_mode)?;
 
         // Load everything before taking over the terminal so errors and
         // warnings print normally
@@ -246,7 +259,7 @@ impl App {
             });
 
         let quit_signal = register_quit_signals()?;
-        let mut terminal = Terminal::new(output_mode, &args)?;
+        let mut terminal = Terminal::new(output_mode, &args.terminal_options())?;
         let keyboard = keyboard.filter(|_| !terminal.reports_key_releases());
         if keyboard.is_some() {
             terminal.report_focus()?;
@@ -512,7 +525,7 @@ impl App {
 
     fn resize(&mut self) -> Result<(), Box<dyn Error>> {
         self.resize_pending = false;
-        let (width, height) = terminal::render_size(&self.args, self.output_mode)?;
+        let (width, height) = render_size(&self.args, self.output_mode)?;
         if (width, height) != (self.width, self.height) {
             self.width = width;
             self.height = height;
